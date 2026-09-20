@@ -1,0 +1,81 @@
+.node-graph-node {
+    min-width: 190px;
+    flex-shrink: 0;
+    background-color: rgba(31, 36, 46, 0.98);
+    border-top-left-radius: 6px;
+    border-top-right-radius: 6px;
+    border-bottom-left-radius: 6px;
+    border-bottom-right-radius: 6px;
+    border-top-width: 1px;
+    border-right-width: 1px;
+    border-bottom-width: 1px;
+    border-left-width: 1px;
+    border-top-color: rgb(82, 92, 115);
+    border-right-color: rgb(82, 92, 115);
+    border-bottom-color: rgb(82, 92, 115);
+    border-left-color: rgb(82, 92, 115);
+}
+
+.node-graph-node.selected {
+    border-top-color: rgb(104, 180, 255);
+    border-right-color: rgb(104, 180, 255);
+    border-bottom-color: rgb(104, 180, 255);
+    border-left-color: rgb(104, 180, 255);
+}
+
+.node-root {
+    flex-grow: 1;
+}
+
+.node-header {
+    height: 28px;
+    flex-shrink: 0;
+    padding-left: 8px;
+    padding-right: 8px;
+    justify-content: center;
+    background-color: rgb(46, 56, 77);
+}
+
+.node-title {
+    -unity-text-align: middle-center;
+    color: rgb(235, 240, 250);
+    -unity-font-style: bold;
+}
+
+.node-ports {
+    flex-direction: row;
+    justify-content: space-between;
+    padding-left: 5px;
+    padding-right: 5px;
+}
+
+.input-ports,
+.output-ports {
+    flex-grow: 1;
+}
+
+.output-ports {
+    align-items: flex-end;
+}
+
+.node-body {
+    padding-left: 8px;
+    padding-right: 8px;
+    padding-top: 6px;
+    padding-bottom: 6px;
+    color: rgb(210, 218, 232);
+}
+
+.node-body .sample-description {
+    color: rgb(176, 187, 207);
+    white-space: normal;
+}
+
+.node-body .placeholder-description {
+    color: rgb(255, 115, 115);
+    white-space: normal;
+}
+
+.node-body .number-body {
+    min-width: 174px;
+}

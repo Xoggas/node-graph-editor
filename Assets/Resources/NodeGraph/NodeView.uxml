@@ -1,0 +1,12 @@
+<ui:UXML xmlns:ui="UnityEngine.UIElements">
+    <ui:VisualElement name="node-root" class="node-root">
+        <ui:VisualElement name="node-header" class="node-header">
+            <ui:Label name="node-title" class="node-title" />
+        </ui:VisualElement>
+        <ui:VisualElement name="node-ports" class="node-ports">
+            <ui:VisualElement name="input-ports" class="input-ports" />
+            <ui:VisualElement name="output-ports" class="output-ports" />
+        </ui:VisualElement>
+        <ui:VisualElement name="node-body" class="node-body" />
+    </ui:VisualElement>
+</ui:UXML>

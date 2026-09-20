@@ -1,0 +1,35 @@
+.port-root {
+    height: 22px;
+    min-width: 85px;
+    flex-direction: row;
+    align-items: center;
+}
+
+.output-port .port-root {
+    flex-direction: row-reverse;
+}
+
+.port-dot {
+    width: 10px;
+    height: 10px;
+    flex-shrink: 0;
+    border-top-left-radius: 5px;
+    border-top-right-radius: 5px;
+    border-bottom-left-radius: 5px;
+    border-bottom-right-radius: 5px;
+}
+
+.input-dot {
+    margin-right: 4px;
+    background-color: rgb(89, 191, 242);
+}
+
+.output-dot {
+    margin-left: 4px;
+    background-color: rgb(242, 184, 82);
+}
+
+.port-label {
+    color: rgb(216, 224, 238);
+    white-space: nowrap;
+}

@@ -1,0 +1,39 @@
+.node-graph-editor {
+    flex-grow: 1;
+    flex-direction: column;
+}
+
+.graph-toolbar {
+    height: 34px;
+    flex-shrink: 0;
+    flex-direction: row;
+    align-items: center;
+    padding-left: 5px;
+    padding-right: 5px;
+    background-color: rgb(26, 31, 41);
+}
+
+.graph-toolbar Button {
+    margin-right: 4px;
+}
+
+.node-palette {
+    flex-grow: 1;
+    flex-direction: row;
+    align-items: center;
+}
+
+.node-palette Button {
+    margin-right: 4px;
+}
+
+.status-label {
+    min-width: 160px;
+    flex-shrink: 1;
+    -unity-text-align: middle-right;
+    color: rgb(190, 198, 214);
+}
+
+.graph-canvas-host {
+    flex-grow: 1;
+}

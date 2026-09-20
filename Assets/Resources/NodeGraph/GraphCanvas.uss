@@ -1,0 +1,13 @@
+.node-graph-canvas {
+    flex-grow: 1;
+    background-color: rgb(14, 17, 23);
+}
+
+.graph-canvas-root,
+.graph-canvas-layer {
+    position: absolute;
+    left: 0;
+    top: 0;
+    right: 0;
+    bottom: 0;
+}

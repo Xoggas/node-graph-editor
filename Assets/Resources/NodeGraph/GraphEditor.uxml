@@ -1,0 +1,12 @@
+<ui:UXML xmlns:ui="UnityEngine.UIElements">
+    <ui:VisualElement name="editor-root" class="node-graph-editor">
+        <ui:VisualElement name="toolbar" class="graph-toolbar">
+            <ui:Button name="new-button" text="New" />
+            <ui:Button name="open-button" text="Open" />
+            <ui:Button name="save-button" text="Save" />
+            <ui:VisualElement name="node-palette" class="node-palette" />
+            <ui:Label name="status-label" class="status-label" />
+        </ui:VisualElement>
+        <ui:VisualElement name="canvas-host" class="graph-canvas-host" />
+    </ui:VisualElement>
+</ui:UXML>
