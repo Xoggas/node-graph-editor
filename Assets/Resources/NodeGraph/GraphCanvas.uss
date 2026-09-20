@@ -1,6 +1,10 @@
 .node-graph-canvas {
     flex-grow: 1;
-    background-color: rgb(14, 17, 23);
+    background-color: rgb(24, 25, 29);
+}
+
+.graph-canvas-root {
+    background-color: transparent;
 }
 
 .graph-canvas-root,
@@ -10,4 +14,18 @@
     top: 0;
     right: 0;
     bottom: 0;
+}
+
+.graph-selection-rect {
+    display: none;
+    position: absolute;
+    background-color: rgba(161, 171, 188, 0.1);
+    border-top-width: 1px;
+    border-right-width: 1px;
+    border-bottom-width: 1px;
+    border-left-width: 1px;
+    border-top-color: rgba(190, 198, 211, 0.72);
+    border-right-color: rgba(190, 198, 211, 0.72);
+    border-bottom-color: rgba(190, 198, 211, 0.72);
+    border-left-color: rgba(190, 198, 211, 0.72);
 }

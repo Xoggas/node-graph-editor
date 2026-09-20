@@ -34,6 +34,11 @@ namespace NodeGraph.App
         {
             var zoom = Mathf.Max(_viewModel.Zoom.Value, 0.1f);
             var graphPosition = (new Vector2(160f, 100f) - _viewModel.ViewportPosition.Value) / zoom;
+            AddNode(typeId, graphPosition);
+        }
+
+        public void AddNode(string typeId, Vector2 graphPosition)
+        {
             try
             {
                 _viewModel.CreateNode(typeId, graphPosition);

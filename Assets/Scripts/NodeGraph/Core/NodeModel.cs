@@ -11,12 +11,13 @@ namespace NodeGraph.Core
         private readonly List<Port> _ports = new List<Port>();
         private GraphModel _graph;
         private GraphTypeRegistry _typeRegistry;
+        private string _displayName;
 
         public Guid Id { get; }
         public string TypeId { get; private set; }
         public Vector2 Position { get; private set; }
         public IReadOnlyList<Port> Ports => _ports;
-        public virtual string DisplayName => TypeId;
+        public virtual string DisplayName => string.IsNullOrWhiteSpace(_displayName) ? TypeId : _displayName;
         public Subject<NodeChange> Changes { get; } = new Subject<NodeChange>();
 
         protected NodeModel(Guid id)
@@ -234,6 +235,11 @@ namespace NodeGraph.Core
         internal void SetTypeId(string typeId)
         {
             TypeId = typeId;
+        }
+
+        internal void SetDisplayName(string displayName)
+        {
+            _displayName = displayName;
         }
 
         internal virtual Type StateType => null;

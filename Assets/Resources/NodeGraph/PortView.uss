@@ -1,11 +1,19 @@
 .port-root {
-    height: 22px;
-    min-width: 85px;
+    height: 23px;
+    min-width: 94px;
     flex-direction: row;
     align-items: center;
+    padding-left: 2px;
+    padding-right: 2px;
 }
 
-.output-port .port-root {
+.input-port .port-root,
+.port-root.input-port {
+    flex-direction: row;
+}
+
+.output-port .port-root,
+.port-root.output-port {
     flex-direction: row-reverse;
 }
 
@@ -17,19 +25,32 @@
     border-top-right-radius: 5px;
     border-bottom-left-radius: 5px;
     border-bottom-right-radius: 5px;
+    border-top-width: 1px;
+    border-right-width: 1px;
+    border-bottom-width: 1px;
+    border-left-width: 1px;
+    border-top-color: rgb(184, 188, 197);
+    border-right-color: rgb(184, 188, 197);
+    border-bottom-color: rgb(184, 188, 197);
+    border-left-color: rgb(184, 188, 197);
 }
 
 .input-dot {
-    margin-right: 4px;
-    background-color: rgb(89, 191, 242);
+    margin-right: 6px;
+    background-color: rgb(184, 188, 197);
 }
 
 .output-dot {
-    margin-left: 4px;
-    background-color: rgb(242, 184, 82);
+    margin-left: 6px;
+    background-color: rgb(184, 188, 197);
 }
 
 .port-label {
-    color: rgb(216, 224, 238);
+    align-self: center;
+    color: rgb(214, 217, 222);
+    font-size: 12px;
+    height: 18px;
+    min-height: 18px;
     white-space: nowrap;
+    -unity-text-align: middle-left;
 }

@@ -1,52 +1,74 @@
-.node-graph-node {
-    min-width: 190px;
+.node-graph-node,
+.node-root.node-graph-node {
+    min-width: 220px;
+    min-height: 96px;
     flex-shrink: 0;
-    background-color: rgba(31, 36, 46, 0.98);
-    border-top-left-radius: 6px;
-    border-top-right-radius: 6px;
-    border-bottom-left-radius: 6px;
-    border-bottom-right-radius: 6px;
+    background-color: rgb(51, 53, 59);
     border-top-width: 1px;
     border-right-width: 1px;
     border-bottom-width: 1px;
     border-left-width: 1px;
-    border-top-color: rgb(82, 92, 115);
-    border-right-color: rgb(82, 92, 115);
-    border-bottom-color: rgb(82, 92, 115);
-    border-left-color: rgb(82, 92, 115);
+    border-top-color: rgb(99, 103, 112);
+    border-right-color: rgb(99, 103, 112);
+    border-bottom-color: rgb(99, 103, 112);
+    border-left-color: rgb(99, 103, 112);
+    border-top-left-radius: 6px;
+    border-top-right-radius: 6px;
+    border-bottom-left-radius: 6px;
+    border-bottom-right-radius: 6px;
 }
 
-.node-graph-node.selected {
-    border-top-color: rgb(104, 180, 255);
-    border-right-color: rgb(104, 180, 255);
-    border-bottom-color: rgb(104, 180, 255);
-    border-left-color: rgb(104, 180, 255);
+.node-graph-node:hover,
+.node-root.node-graph-node:hover {
+    border-top-color: rgb(145, 149, 158);
+    border-right-color: rgb(145, 149, 158);
+    border-bottom-color: rgb(145, 149, 158);
+    border-left-color: rgb(145, 149, 158);
+}
+
+.node-graph-node.selected,
+.node-root.node-graph-node.selected {
+    border-top-color: rgb(220, 223, 228);
+    border-right-color: rgb(220, 223, 228);
+    border-bottom-color: rgb(220, 223, 228);
+    border-left-color: rgb(220, 223, 228);
 }
 
 .node-root {
     flex-grow: 1;
+    min-height: 96px;
+    background-color: rgb(51, 53, 59);
 }
 
 .node-header {
-    height: 28px;
+    height: 32px;
     flex-shrink: 0;
-    padding-left: 8px;
-    padding-right: 8px;
+    padding-left: 10px;
+    padding-right: 10px;
     justify-content: center;
-    background-color: rgb(46, 56, 77);
+    background-color: rgb(69, 72, 79);
+    border-top-left-radius: 5px;
+    border-top-right-radius: 5px;
+    border-bottom-width: 1px;
+    border-bottom-color: rgb(105, 109, 118);
 }
 
 .node-title {
-    -unity-text-align: middle-center;
-    color: rgb(235, 240, 250);
+    color: rgb(245, 246, 248);
+    font-size: 13px;
     -unity-font-style: bold;
+    -unity-text-align: middle-center;
 }
 
 .node-ports {
+    min-height: 28px;
     flex-direction: row;
     justify-content: space-between;
-    padding-left: 5px;
-    padding-right: 5px;
+    padding-left: 7px;
+    padding-right: 7px;
+    padding-top: 3px;
+    padding-bottom: 3px;
+    background-color: rgb(43, 45, 50);
 }
 
 .input-ports,
@@ -59,23 +81,43 @@
 }
 
 .node-body {
-    padding-left: 8px;
-    padding-right: 8px;
-    padding-top: 6px;
-    padding-bottom: 6px;
-    color: rgb(210, 218, 232);
+    min-height: 32px;
+    padding-left: 10px;
+    padding-right: 10px;
+    padding-top: 8px;
+    padding-bottom: 8px;
+    color: rgb(222, 224, 229);
+    background-color: rgb(51, 53, 59);
 }
 
-.node-body .sample-description {
-    color: rgb(176, 187, 207);
+.node-body Label,
+.node-body .sample-description,
+.node-body .placeholder-description {
+    color: rgb(207, 210, 216);
     white-space: normal;
 }
 
 .node-body .placeholder-description {
-    color: rgb(255, 115, 115);
-    white-space: normal;
+    color: rgb(190, 193, 200);
 }
 
 .node-body .number-body {
-    min-width: 174px;
+    min-width: 198px;
+}
+
+.node-body .unity-base-field__label {
+    color: rgb(207, 210, 216);
+}
+
+.node-body .unity-base-field__input {
+    color: rgb(241, 242, 244);
+    background-color: rgb(69, 72, 79);
+    border-top-width: 1px;
+    border-right-width: 1px;
+    border-bottom-width: 1px;
+    border-left-width: 1px;
+    border-top-color: rgb(112, 116, 125);
+    border-right-color: rgb(112, 116, 125);
+    border-bottom-color: rgb(112, 116, 125);
+    border-left-color: rgb(112, 116, 125);
 }

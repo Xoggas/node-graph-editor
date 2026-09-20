@@ -1,6 +1,11 @@
 <ui:UXML xmlns:ui="UnityEngine.UIElements">
     <ui:VisualElement name="canvas-root" class="graph-canvas-root">
-        <ui:VisualElement name="edge-layer" class="graph-canvas-layer" />
+        <ui:VisualElement name="grid-layer" class="graph-canvas-layer" />
         <ui:VisualElement name="node-layer" class="graph-canvas-layer" />
+        <ui:VisualElement name="selection-layer" class="graph-canvas-layer">
+            <ui:VisualElement name="selection-rect" class="graph-selection-rect" />
+        </ui:VisualElement>
+        <ui:VisualElement name="edge-layer" class="graph-canvas-layer" />
+        <ui:VisualElement name="connection-preview-layer" class="graph-canvas-layer" />
     </ui:VisualElement>
 </ui:UXML>

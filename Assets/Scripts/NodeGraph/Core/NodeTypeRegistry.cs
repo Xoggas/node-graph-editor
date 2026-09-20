@@ -82,6 +82,7 @@ namespace NodeGraph.Core
             }
 
             node.SetTypeId(typeId);
+            node.SetDisplayName(descriptor.DisplayName);
             node.InitializeFresh(DataTypes);
             return node;
         }
