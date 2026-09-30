@@ -227,19 +227,19 @@ export default function App() {
       </header>
 
       <main className="workspace">
+        {problemsOpen && (
+          <ProblemsPanel
+            problems={snapshot.problems}
+            loadWarnings={snapshot.warnings}
+            onShow={(problem) => {
+              const target = problem.viewId ?? problem.nodeId;
+              if (target) rendererRef.current?.focusView(target);
+            }}
+            onClose={() => setProblemsOpen(false)}
+          />
+        )}
         <div className="canvas-area">
           <GraphCanvas editor={editor} onRenderer={onRenderer} />
-          {problemsOpen && (
-            <ProblemsPanel
-              problems={snapshot.problems}
-              loadWarnings={snapshot.warnings}
-              onShow={(problem) => {
-                const target = problem.viewId ?? problem.nodeId;
-                if (target) rendererRef.current?.focusView(target);
-              }}
-              onClose={() => setProblemsOpen(false)}
-            />
-          )}
           {searchRequest > 0 && (
             <SearchPanel editor={editor} renderer={() => rendererRef.current} focusRequest={searchRequest} onClose={closeSearch} />
           )}

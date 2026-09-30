@@ -8,12 +8,12 @@ interface ProblemsPanelProps {
   onClose: () => void;
 }
 
-/** The results of the graph checks; clicking a row goes to its node. */
+/** The results of the graph checks, docked left of the canvas; clicking a row goes to its node. */
 export function ProblemsPanel({ problems, loadWarnings, onShow, onClose }: ProblemsPanelProps) {
   const rows: Problem[] = [...problems, ...loadWarnings.map((message) => ({ severity: "warning" as const, message }))];
   const errors = rows.filter((row) => row.severity === "error").length;
   return (
-    <div className="problems-panel" onKeyDown={(event) => event.key === "Escape" && onClose()}>
+    <aside className="problems-panel" onKeyDown={(event) => event.key === "Escape" && onClose()}>
       <div className="problems-header">
         <span>
           Problems <span className="problems-count">{summary(errors, rows.length - errors)}</span>
@@ -39,7 +39,7 @@ export function ProblemsPanel({ problems, loadWarnings, onShow, onClose }: Probl
           ))}
         </div>
       )}
-    </div>
+    </aside>
   );
 }
 
