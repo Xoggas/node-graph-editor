@@ -951,53 +951,51 @@ body,
 }
 
 .dialog {
-  width: min(580px, calc(100vw - 32px));
-  padding: 24px 26px 22px;
+  width: min(696px, calc(100vw - 32px));
+  padding: 28px;
   background: #2b2e35;
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: 12px;
   box-shadow: 0 16px 48px rgba(0, 0, 0, 0.55);
 }
 
 .dialog h2 {
-  margin: 0 0 10px;
+  margin: 0 0 12px;
   color: #f5f6f8;
-  font-size: 18px;
+  font-size: 22px;
   font-weight: 600;
 }
 
 .dialog p {
-  margin: 0 0 22px;
+  margin: 0 0 26px;
   color: #c8ccd4;
-  font-size: 14px;
+  font-size: 17px;
   line-height: 1.6;
 }
 
 .dialog-actions {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
 }
 
 .dialog-actions-spacer {
   flex: 1;
 }
 
-/* Same size for every choice: the label on the left, its key on the right. */
+/* The label and its key side by side, with the same padding on both ends. */
 .dialog-button {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: 12px;
-  min-width: 112px;
-  height: 36px;
-  padding: 0 10px 0 14px;
+  height: 44px;
+  padding: 0 12px 0 18px;
   color: #e5e7eb;
   font: inherit;
-  font-size: 14px;
+  font-size: 17px;
   background: var(--button);
   border: 1px solid var(--button-border);
-  border-radius: 5px;
+  border-radius: 6px;
   cursor: pointer;
 }
 
@@ -1025,11 +1023,11 @@ body,
 }
 
 .dialog-button kbd {
-  min-width: 22px;
-  padding: 0 5px;
+  min-width: 26px;
+  padding: 0 6px;
   color: #d6d9de;
-  font-size: 12px;
-  line-height: 20px;
+  font-size: 14px;
+  line-height: 24px;
   text-align: center;
   background: rgba(0, 0, 0, 0.25);
   border: none;
@@ -1046,10 +1044,10 @@ body,
   top: calc(100% + 10px);
   left: 0;
   z-index: 1;
-  width: 340px;
-  padding: 10px 12px;
+  width: 408px;
+  padding: 12px 14px;
   color: #e5e7eb;
-  font-size: 13px;
+  font-size: 15px;
   line-height: 1.5;
   background: #1f2126;
   border: 1px solid #5b5f68;
