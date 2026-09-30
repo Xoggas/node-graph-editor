@@ -23,8 +23,18 @@ export interface PackInfo {
   resourceCount: number;
 }
 
+/** `info` goes to the status bar; warnings and errors also pop up as toasts. */
+export type StatusKind = "info" | "warning" | "error";
+
+/** A warning or error, delivered to toast listeners one by one (snapshots only keep the last status). */
+export interface Notice {
+  kind: Exclude<StatusKind, "info">;
+  message: string;
+}
+
 export interface EditorSnapshot {
   status: string;
+  statusKind: StatusKind;
   /** Incremented on every status message, so repeated identical messages are still noticed. */
   statusId: number;
   dirty: boolean;
@@ -84,12 +94,14 @@ export class Editor {
   private localizationStore = new LocalizationStore([]);
   private unobserveLocalization: () => void = () => {};
   private readonly localizationListeners = new Set<LocalizationListener>();
+  private readonly noticeListeners = new Set<(notice: Notice) => void>();
 
   constructor(options: { files?: GraphFileSystem } = {}) {
     this.files = options.files ?? createFileSystem();
     this.currentGraph = new GraphModel(this.currentRegistry);
     this.state = {
       status: "",
+      statusKind: "info",
       statusId: 0,
       dirty: false,
       fileName: null,
@@ -124,6 +136,12 @@ export class Editor {
   }
 
   /** Called with the change, or with null when all texts may have changed (pack reload, language switch). */
+  /** Warnings and errors, as they happen. */
+  onNotice(listener: (notice: Notice) => void): () => void {
+    this.noticeListeners.add(listener);
+    return () => this.noticeListeners.delete(listener);
+  }
+
   onLocalizationChanged(listener: LocalizationListener): () => void {
     this.localizationListeners.add(listener);
     return () => this.localizationListeners.delete(listener);
@@ -153,7 +171,7 @@ export class Editor {
         await this.loadPackFolder(folder);
         return;
       } catch (error) {
-        this.setStatus(`Could not load the schema pack from '${folder}': ${errorMessage(error)}`);
+        this.setStatus(`Could not load the schema pack from '${folder}': ${errorMessage(error)}`, "error");
       }
     }
     this.applyPack(bundledPack.files, { kind: "bundled" });
@@ -170,7 +188,7 @@ export class Editor {
       }
       await this.loadPackFolder(folder);
     } catch (error) {
-      this.setStatus(`Could not load the schema pack: ${errorMessage(error)}`);
+      this.setStatus(`Could not load the schema pack: ${errorMessage(error)}`, "error");
     }
   }
 
@@ -185,7 +203,7 @@ export class Editor {
         this.applyPack(bundledPack.files, { kind: "bundled" });
       }
     } catch (error) {
-      this.setStatus(`Could not reload the schema pack: ${errorMessage(error)}`);
+      this.setStatus(`Could not reload the schema pack: ${errorMessage(error)}`, "error");
     }
   }
 
@@ -200,7 +218,7 @@ export class Editor {
     const packDir = source.kind === "folder" ? source.path : bundledPack.dir;
     const pack = parseSchemaPack(files, packDir);
     const localization = LocalizationStore.fromFiles(pack.languages, files, pack.warnings);
-    this.files.setResourceRoots(pack.resources.roots).catch((error) => this.setStatus(`Resource folders: ${errorMessage(error)}`));
+    this.files.setResourceRoots(pack.resources.roots).catch((error) => this.setStatus(`Resource folders: ${errorMessage(error)}`, "error"));
     const registry = new SchemaRegistry(pack);
     const json = new GraphJsonSerializer(this.currentRegistry).serialize(this.graph);
     const { graph, warnings } = new GraphJsonSerializer(registry).deserialize(json);
@@ -228,6 +246,7 @@ export class Editor {
       descriptors: registry.descriptors(),
       warnings: warnings.filter((warning) => !warning.startsWith("The graph was made with schema pack")),
       dirty,
+      statusKind: pack.warnings.length === 0 ? "info" : "warning",
       status:
         pack.warnings.length === 0
           ? `Schema pack loaded: ${pack.name} (${pack.nodes.size} nodes).`
@@ -325,7 +344,7 @@ export class Editor {
       this.replaceGraph(graph, file.path, status, warnings, false);
       this.update({ fileName: file.name });
     } catch (error) {
-      this.setStatus(`Open failed: ${errorMessage(error)}`);
+      this.setStatus(`Open failed: ${errorMessage(error)}`, "error");
     }
   }
 
@@ -334,21 +353,21 @@ export class Editor {
     try {
       savedLanguages = await this.saveLocalization();
     } catch (error) {
-      this.setStatus(`Localization was not saved: ${errorMessage(error)}`);
+      this.setStatus(`Localization was not saved: ${errorMessage(error)}`, "error");
       return;
     }
     try {
       const json = new GraphJsonSerializer(this.registry).serialize(this.graph);
       const saved = await this.files.save(json, this.filePath, chooseLocation);
       if (!saved) {
-        if (savedLanguages) this.setStatus(`Saved localization (${savedLanguages}); the graph was not saved.`);
+        if (savedLanguages) this.setStatus(`Saved localization (${savedLanguages}); the graph was not saved.`, "warning");
         return;
       }
       this.filePath = saved.path;
       const localizationNote = savedLanguages ? ` and localization (${savedLanguages})` : "";
       this.update({ dirty: false, fileName: saved.name, filePath: saved.path, status: `Saved: ${saved.name}${localizationNote}` });
     } catch (error) {
-      this.setStatus(`Save failed: ${errorMessage(error)}`);
+      this.setStatus(`Save failed: ${errorMessage(error)}`, "error");
     }
   }
 
@@ -372,13 +391,14 @@ export class Editor {
       const count = Object.keys(graph.nodes).length;
       this.update({
         warnings,
+        statusKind: warnings.length === 0 ? "info" : "warning",
         status:
           warnings.length === 0
             ? `Exported ${count} node(s) to ${saved.name}.`
             : `Exported ${count} node(s) to ${saved.name} with ${warnings.length} warning(s).`,
       });
     } catch (error) {
-      this.setStatus(`Export failed: ${errorMessage(error)}`);
+      this.setStatus(`Export failed: ${errorMessage(error)}`, "error");
     }
   }
 
@@ -387,7 +407,7 @@ export class Editor {
   addNode(schemaId: string, position: Vec2): string | null {
     const schema = this.registry.getSchema(schemaId);
     if (schema?.singleton && [...this.graph.nodes].some((node) => node.schemaId === schemaId)) {
-      this.setStatus(`Only one '${schema.title}' node is allowed per graph.`);
+      this.setStatus(`Only one '${schema.title}' node is allowed per graph.`, "error");
       return null;
     }
     try {
@@ -398,7 +418,7 @@ export class Editor {
       }
       return node.id;
     } catch (error) {
-      this.setStatus(`Could not add node: ${errorMessage(error)}`);
+      this.setStatus(`Could not add node: ${errorMessage(error)}`, "error");
       return null;
     }
   }
@@ -425,12 +445,16 @@ export class Editor {
       return;
     }
     if (first.direction === second.direction) {
-      this.setStatus("A connection must go from Output to Input.");
+      this.setStatus("A connection must go from Output to Input.", "error");
       return;
     }
     const [output, input] = first.direction === "Output" ? [first, second] : [second, first];
     const result = this.graph.connect(output.id, input.id);
-    this.setStatus(result.success ? `Connected ${output.displayName} → ${input.displayName}.` : result.message);
+    if (result.success) {
+      this.setStatus(`Connected ${output.displayName} → ${input.displayName}.`);
+    } else {
+      this.setStatus(result.message, "error");
+    }
   }
 
   /** Sets a value in a node's data; `path` is a field id followed by list indices / record field ids. */
@@ -454,14 +478,14 @@ export class Editor {
   addListItem(nodeId: string, path: DataPath): void {
     const node = this.graph.getNode(nodeId);
     if (node?.schema && !this.updateData(nodeId, (data) => listAdd(node.schema!, data, path))) {
-      this.setStatus("The list is full.");
+      this.setStatus("The list is full.", "error");
     }
   }
 
   removeListItem(nodeId: string, path: DataPath, index: number): void {
     const node = this.graph.getNode(nodeId);
     if (node?.schema && !this.updateData(nodeId, (data) => listRemove(node.schema!, data, path, index))) {
-      this.setStatus("This item cannot be removed.");
+      this.setStatus("This item cannot be removed.", "error");
     }
   }
 
@@ -525,7 +549,7 @@ export class Editor {
     }
     const name = rawName.trim();
     if (name && naming.pattern && !naming.pattern.test(name)) {
-      this.setStatus(`'${name}' is not a valid name for '${node.schema!.title}'.`);
+      this.setStatus(`'${name}' is not a valid name for '${node.schema!.title}'.`, "error");
       return false;
     }
     if (name && naming.unique) {
@@ -533,7 +557,7 @@ export class Editor {
         (other) => other !== node && other.schema?.naming.unique && other.name === name,
       );
       if (clash) {
-        this.setStatus(`The name '${name}' is already used by another node.`);
+        this.setStatus(`The name '${name}' is already used by another node.`, "error");
         return false;
       }
     }
@@ -623,7 +647,7 @@ export class Editor {
       (entry) => this.registry.getSchema(entry.schemaId)?.singleton && [...this.graph.nodes].some((node) => node.schemaId === entry.schemaId),
     );
     if (singletons.length > 0) {
-      this.setStatus(`${verb} failed: only one '${this.registry.getSchema(singletons[0].schemaId)!.title}' node is allowed.`);
+      this.setStatus(`${verb} failed: only one '${this.registry.getSchema(singletons[0].schemaId)!.title}' node is allowed.`, "error");
       return [];
     }
     try {
@@ -647,7 +671,7 @@ export class Editor {
       this.setStatus(`${verb} ${ids.length} node(s).`);
       return ids;
     } catch (error) {
-      this.setStatus(`${verb} failed: ${errorMessage(error)}`);
+      this.setStatus(`${verb} failed: ${errorMessage(error)}`, "error");
       return [];
     }
   }
@@ -658,8 +682,8 @@ export class Editor {
     }
   }
 
-  setStatus(status: string): void {
-    this.update({ status });
+  setStatus(status: string, statusKind: StatusKind = "info"): void {
+    this.update({ status, statusKind });
   }
 
   /**
@@ -673,7 +697,7 @@ export class Editor {
       return input && output && this.registry.isAssignable(input.type, output.type);
     });
     if (!schema) {
-      this.setStatus("The schema pack has no node with a connectable input and output.");
+      this.setStatus("The schema pack has no node with a connectable input and output.", "error");
       return;
     }
     if (!(await this.confirmDiscard())) {
@@ -759,7 +783,13 @@ export class Editor {
 
   private update(patch: Partial<EditorSnapshot>): void {
     const statusId = patch.status !== undefined ? this.state.statusId + 1 : this.state.statusId;
-    this.state = { ...this.state, ...patch, statusId };
+    const statusKind = patch.status !== undefined ? (patch.statusKind ?? "info") : this.state.statusKind;
+    this.state = { ...this.state, ...patch, statusId, statusKind };
+    if (patch.status && statusKind !== "info") {
+      for (const listener of this.noticeListeners) {
+        listener({ kind: statusKind, message: patch.status });
+      }
+    }
     // Bulk graph edits can produce thousands of changes in one task; notify React once.
     if (!this.notifyScheduled) {
       this.notifyScheduled = true;

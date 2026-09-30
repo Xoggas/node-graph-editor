@@ -1244,7 +1244,7 @@ export class GraphRenderer {
     } else if (field.type === "localizedText") {
       const key = localizationKey(view.node, field, path, value);
       if (!key) {
-        this.editor.setStatus("Name the node first: its name is the localization key.");
+        this.editor.setStatus("Name the node first: its name is the localization key.", "error");
         this.openRenameEditor(view);
         return;
       }
@@ -1296,7 +1296,7 @@ export class GraphRenderer {
         onCommit: (text) => {
           const parsed = Number(text.trim().replace(",", "."));
           if (text.trim() === "" || !Number.isFinite(parsed)) {
-            this.editor.setStatus(`'${text}' is not a number.`);
+            this.editor.setStatus(`'${text}' is not a number.`, "error");
             return;
           }
           const number = clampNumber(field, field.type === "int" ? Math.round(parsed) : parsed);

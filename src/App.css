@@ -566,3 +566,76 @@ kbd {
   color: var(--muted);
   font-size: 11px;
 }
+
+/* Toasts: warnings and errors over the canvas */
+
+.canvas-area {
+  position: relative;
+  display: flex;
+  flex: 1;
+  min-width: 0;
+}
+
+/* Bottom-right corner of the canvas, newest at the bottom. */
+.toasts {
+  position: absolute;
+  right: 16px;
+  bottom: 16px;
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+  max-width: min(480px, calc(100% - 32px));
+  pointer-events: none;
+}
+
+.toast {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 14px;
+  color: #f5f6f8;
+  font-size: 13px;
+  line-height: 1.4;
+  background: #2b2e35;
+  border: 1px solid var(--border);
+  border-left-width: 4px;
+  border-radius: 6px;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.45);
+  cursor: pointer;
+  pointer-events: auto;
+  animation: toast-in 0.15s ease-out;
+}
+
+.toast-error {
+  border-left-color: #e5645a;
+}
+
+.toast-warning {
+  border-left-color: #f0b45a;
+}
+
+.toast-icon {
+  flex-shrink: 0;
+  font-weight: 700;
+}
+
+.toast-error .toast-icon {
+  color: #e5645a;
+}
+
+.toast-warning .toast-icon {
+  color: #f0b45a;
+}
+
+.toast-message {
+  overflow-wrap: anywhere;
+}
+
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}

@@ -23,7 +23,7 @@ export function GraphCanvas({ editor, onRenderer }: GraphCanvasProps) {
           (window as unknown as { __renderer: GraphRenderer }).__renderer = renderer;
         }
       })
-      .catch((error: unknown) => editor.setStatus(`Renderer failed to start: ${String(error)}`));
+      .catch((error: unknown) => editor.setStatus(`Renderer failed to start: ${String(error)}`, "error"));
     return () => {
       active = false;
       onRenderer(null);

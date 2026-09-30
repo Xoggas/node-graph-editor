@@ -113,6 +113,18 @@ describe("localization", () => {
   });
 });
 
+describe("status", () => {
+  it("marks failures as errors so they pop up as toasts", async () => {
+    const first = editor.addNode("line", { x: 0, y: 0 })!;
+    editor.addNode("line", { x: 0, y: 0 });
+    expect(editor.getSnapshot().statusKind).toBe("info");
+    expect(editor.renameNode(first, "1.2")).toBe(false);
+    expect(editor.getSnapshot()).toMatchObject({ statusKind: "error", status: "The name '1.2' is already used by another node." });
+    editor.undo();
+    expect(editor.getSnapshot().statusKind).toBe("info");
+  });
+});
+
 describe("export", () => {
   it("writes a compact runtime file next to the graph and re-exports without asking", async () => {
     const id = editor.addNode("line", { x: 0, y: 0 })!;

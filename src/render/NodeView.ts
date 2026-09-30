@@ -20,6 +20,8 @@ import { fitText, makeText, measureText } from "./text";
 import { theme } from "./theme";
 
 const HEADER_HEIGHT = 32;
+/** Space between a node's name and its "(Type)" in the header. */
+const TYPE_GAP = 6;
 const PORT_ROW_HEIGHT = 24;
 const PORTS_PADDING = 4;
 const BODY_PADDING = 8;
@@ -179,6 +181,12 @@ export class NodeView {
     // Header
     const title = this.detail.addChild(makeText(fitText(node.displayName, width - 24, 13, true), 13, theme.textPrimary, true));
     title.position.set(12, Math.round((HEADER_HEIGHT - title.height) / 2));
+    const typeLabel = this.typeLabel();
+    const typeSpace = width - 24 - title.width - TYPE_GAP;
+    if (typeLabel && typeSpace > 24) {
+      const type = this.detail.addChild(makeText(fitText(typeLabel, typeSpace, 12), 12, theme.textSecondary));
+      type.position.set(12 + title.width + TYPE_GAP, Math.round((HEADER_HEIGHT - type.height) / 2));
+    }
 
     // Ports that repeat per list element sit on their element's row; the rest go to the port band.
     const alignedLists = this.alignedLists();
@@ -328,10 +336,18 @@ export class NodeView {
     return result;
   }
 
+  /** "(Line)" after a custom name, so named nodes still show what they are. */
+  private typeLabel(): string | null {
+    const schema = this.node.schema;
+    return schema && this.node.displayName !== schema.title ? `(${schema.title})` : null;
+  }
+
   private measureWidth(fields: FieldSchema[]): number {
     const node = this.node;
     const maxLabel = (ports: Port[]) => ports.reduce((max, port) => Math.max(max, measureText(port.displayName, 12)), 0);
-    let width = Math.max(MIN_WIDTH, measureText(node.displayName, 13, true) + 40);
+    const typeLabel = this.typeLabel();
+    const titleWidth = measureText(node.displayName, 13, true) + (typeLabel ? TYPE_GAP + measureText(typeLabel, 12) : 0);
+    let width = Math.max(MIN_WIDTH, titleWidth + 40);
     width = Math.max(width, maxLabel(node.inputs) + maxLabel(node.outputs) + PORT_LABEL_OFFSET * 2 + 24);
     const labelWidth = scalarLabelWidth(fields);
     let limit = MAX_WIDTH;

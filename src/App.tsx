@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
-import { Editor } from "./app/editor";
+import { Editor, type Notice } from "./app/editor";
 import { physicalKey } from "./app/keys";
 import { findShortcut, isEditableTarget } from "./app/shortcuts";
 import type { GraphRenderer, RendererStats } from "./render/GraphRenderer";
@@ -12,6 +12,14 @@ import "./App.css";
 const DROP_OFFSET = { x: 110, y: 48 };
 
 const STATUS_VISIBLE_MS = 4000;
+const TOAST_VISIBLE_MS = 5000;
+const MAX_TOASTS = 3;
+
+interface Toast extends Notice {
+  id: number;
+}
+
+let nextToastId = 1;
 
 const editor = new Editor();
 void editor.loadInitialPack();
@@ -91,6 +99,19 @@ export default function App() {
     const timer = window.setTimeout(() => setStatusVisible(false), STATUS_VISIBLE_MS);
     return () => window.clearTimeout(timer);
   }, [snapshot.statusId, snapshot.status]);
+  // Warnings and errors also pop up over the canvas, where they are hard to miss.
+  const [toasts, setToasts] = useState<Toast[]>([]);
+  const dismissToast = useCallback((id: number) => setToasts((current) => current.filter((toast) => toast.id !== id)), []);
+  useEffect(
+    () =>
+      editor.onNotice((notice) => {
+        const toast = { ...notice, id: nextToastId++ };
+        // The same message again replaces the old toast instead of stacking a copy.
+        setToasts((current) => [...current.filter((other) => other.message !== toast.message), toast].slice(-MAX_TOASTS));
+        window.setTimeout(() => dismissToast(toast.id), TOAST_VISIBLE_MS);
+      }),
+    [dismissToast],
+  );
   const unsaved = snapshot.dirty || snapshot.localizationDirty;
   const title = `${documentName}${unsaved ? " *" : ""}`;
   useEffect(() => {
@@ -137,7 +158,19 @@ export default function App() {
       </header>
 
       <main className="workspace">
-        <GraphCanvas editor={editor} onRenderer={onRenderer} />
+        <div className="canvas-area">
+          <GraphCanvas editor={editor} onRenderer={onRenderer} />
+          {toasts.length > 0 && (
+            <div className="toasts" role="status" aria-live="polite">
+              {toasts.map((toast) => (
+                <div key={toast.id} className={`toast toast-${toast.kind}`} onClick={() => dismissToast(toast.id)} title="Click to dismiss">
+                  <span className="toast-icon">{toast.kind === "error" ? "✕" : "⚠"}</span>
+                  <span className="toast-message">{toast.message}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
         <NodePalette
           descriptors={snapshot.descriptors}
           pack={snapshot.pack}
@@ -167,7 +200,9 @@ export default function App() {
         <span className="status-path" title={snapshot.filePath ?? undefined}>
           <bdi>{snapshot.filePath ?? (snapshot.fileName ? `${snapshot.fileName} (not on disk)` : "Not saved yet")}</bdi>
         </span>
-        <span className={`status-message${statusVisible ? " visible" : ""}`}>{snapshot.status}</span>
+        <span className={`status-message${statusVisible && snapshot.statusKind === "info" ? " visible" : ""}`}>
+          {snapshot.statusKind === "info" && snapshot.status}
+        </span>
         {snapshot.warnings.length > 0 && (
           <span className="status-warnings" title={snapshot.warnings.join("\n")}>
             ⚠ {snapshot.warnings.length} warning(s)
