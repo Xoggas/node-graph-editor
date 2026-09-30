@@ -12,6 +12,16 @@ export interface TextEditRequest {
   onCommit: (value: string) => void;
 }
 
+export interface TextsEditRequest {
+  rect: Rect;
+  key: string;
+  languages: readonly string[];
+  values: Record<string, string>;
+  /** Language whose field gets the focus. */
+  focusLanguage: string | null;
+  onCommit: (values: Record<string, string>) => void;
+}
+
 export interface ListPickRequest {
   rect: Rect;
   fontSize: number;
@@ -71,6 +81,56 @@ export class InlineEditor {
     this.open(element, commit);
     element.focus();
     element.select();
+  }
+
+  /** A panel with one text area per language; Ctrl+Enter or clicking outside saves, Escape cancels. */
+  editTexts(request: TextsEditRequest): void {
+    this.close(true);
+    const panel = document.createElement("div");
+    panel.className = "ng-texts-panel";
+    Object.assign(panel.style, {
+      left: `${request.rect.x}px`,
+      top: `${request.rect.y}px`,
+      width: `${Math.max(request.rect.width, 340)}px`,
+    });
+    const header = document.createElement("div");
+    header.className = "ng-texts-header";
+    header.textContent = `Key: ${request.key}`;
+    panel.appendChild(header);
+
+    const areas = new Map<string, HTMLTextAreaElement>();
+    for (const language of request.languages) {
+      const label = document.createElement("label");
+      label.className = "ng-texts-language";
+      label.textContent = language.toUpperCase();
+      const area = document.createElement("textarea");
+      area.value = request.values[language] ?? "";
+      area.rows = 3;
+      area.spellcheck = true;
+      area.lang = language;
+      label.appendChild(area);
+      panel.appendChild(label);
+      areas.set(language, area);
+    }
+    const hint = document.createElement("div");
+    hint.className = "ng-texts-hint";
+    hint.textContent = "Ctrl+Enter to save · Esc to cancel";
+    panel.appendChild(hint);
+
+    panel.addEventListener("keydown", (event) => {
+      event.stopPropagation();
+      if (event.key === "Escape") {
+        event.preventDefault();
+        this.close(false);
+      } else if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) {
+        event.preventDefault();
+        this.close(true);
+      }
+    });
+    this.open(panel, () => request.onCommit(Object.fromEntries([...areas].map(([language, area]) => [language, area.value]))));
+    const focus = areas.get(request.focusLanguage ?? "") ?? areas.values().next().value;
+    focus?.focus();
+    focus?.setSelectionRange(focus.value.length, focus.value.length);
   }
 
   pick(request: ListPickRequest): void {

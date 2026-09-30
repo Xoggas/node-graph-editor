@@ -6,6 +6,7 @@ import { DotGrid } from "./DotGrid";
 import { EdgeView, traceEdgePath } from "./EdgeView";
 import { type Bounds, computeEdgePath, hitTestEdge, rectsIntersect } from "./geometry";
 import { clampNumber } from "../graph/schema";
+import { localizationKey } from "../graph/localization";
 import { resourcesOfType } from "../graph/resources";
 import { ImageCache } from "./ImageCache";
 import { InlineEditor } from "./InlineEditor";
@@ -62,6 +63,7 @@ export class GraphRenderer {
   private graph!: GraphModel;
   private unsubscribeGraph: () => void = () => {};
   private unsubscribeEditor: () => void = () => {};
+  private unsubscribeLocalization: () => void = () => {};
   private readonly nodeViews = new Map<string, NodeView>();
   private readonly viewsByContainer = new Map<Container, NodeView>();
   private readonly edgeViews = new Map<string, EdgeView>();
@@ -162,6 +164,7 @@ export class GraphRenderer {
     this.initialized = true;
     this.setGraph(this.editor.graph, { frameAll: false });
     this.unsubscribeEditor = this.editor.onGraphReplaced((graph, options) => this.setGraph(graph, options));
+    this.unsubscribeLocalization = this.editor.onLocalizationChanged((change) => this.refreshTexts(change?.key ?? null));
   }
 
   destroy(): void {
@@ -172,6 +175,7 @@ export class GraphRenderer {
     this.inlineEditor.close(false);
     this.unsubscribeGraph();
     this.unsubscribeEditor();
+    this.unsubscribeLocalization();
     this.resizeObserver?.disconnect();
     window.removeEventListener("keydown", this.onKeyDown);
     window.removeEventListener("keyup", this.onKeyUp);
@@ -437,6 +441,11 @@ export class GraphRenderer {
       portHighlight: (port) => this.portHighlight(port),
       portColor: (typeId) => this.portColor(typeId),
       resources: () => this.graph.registry.pack?.resources ?? null,
+      localizedText: (field, path, value) => {
+        const key = localizationKey(node, field, path, value);
+        const language = this.editor.getSnapshot().displayLanguage;
+        return { key, language, text: key && language ? this.editor.localization.get(language, key) : undefined };
+      },
       image: (path, view) => this.images.get(path, view),
       referenceLabel: (field, id) =>
         field.type === "nodeRef" ? (this.graph.getNode(id)?.displayName ?? null) : itemRefLabel(this.graph, id),
@@ -1182,6 +1191,16 @@ export class GraphRenderer {
     }
   }
 
+  /** Rebuilds nodes showing `key` (every node with texts when null, e.g. after a language switch). */
+  private refreshTexts(key: string | null): void {
+    for (const view of this.nodeViews.values()) {
+      if (key === null ? view.localizedKeys.size === 0 && !view.hasUnnamedTexts : !view.localizedKeys.has(key)) continue;
+      if (view.container.visible) view.rebuild();
+      else view.staleLayout = true;
+    }
+    this.requestFrame();
+  }
+
   /** Nodes showing item references re-read labels after the referenced node changes. */
   private refreshReferences(changedNodeId: string): void {
     for (const view of this.nodeViews.values()) {
@@ -1220,6 +1239,26 @@ export class GraphRenderer {
         searchable: true,
         emptyText: field.type === "itemRef" ? "No matching elements." : "No matching nodes.",
         onPick: (picked) => this.editor.setValue(nodeId, path, picked || null),
+      });
+    } else if (field.type === "localizedText") {
+      const key = localizationKey(view.node, field, path, value);
+      if (!key) {
+        this.editor.setStatus("Name the node first: its name is the localization key.");
+        this.openRenameEditor(view);
+        return;
+      }
+      const store = this.editor.localization;
+      const { languages, displayLanguage } = this.editor.getSnapshot();
+      this.inlineEditor.editTexts({
+        rect: { ...rect, height: 0 },
+        key,
+        languages,
+        values: Object.fromEntries(languages.map((language) => [language, store.get(language, key) ?? ""])),
+        focusLanguage: displayLanguage,
+        onCommit: (values) => {
+          const changed = Object.fromEntries(Object.entries(values).filter(([language, text]) => (store.get(language, key) ?? "") !== text));
+          if (Object.keys(changed).length > 0) this.editor.setTexts(key, changed);
+        },
       });
     } else if (field.type === "resource") {
       const library = this.graph.registry.pack?.resources;

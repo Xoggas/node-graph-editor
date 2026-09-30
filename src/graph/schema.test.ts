@@ -39,9 +39,9 @@ describe("parseSchemaPack", () => {
   it("keeps fields of unknown types as unsupported instead of failing", () => {
     const loaded = parseSchemaPack([
       testPackFiles[0],
-      { path: "nodes/future.json", text: JSON.stringify({ id: "future", fields: [{ id: "line", type: "localizedText" }] }) },
+      { path: "nodes/future.json", text: JSON.stringify({ id: "future", fields: [{ id: "line", type: "hologram" }] }) },
     ]);
-    expect(loaded.nodes.get("future")?.fields[0]).toMatchObject({ type: "unsupported", declaredType: "localizedText" });
+    expect(loaded.nodes.get("future")?.fields[0]).toMatchObject({ type: "unsupported", declaredType: "hologram" });
   });
 
   it("validates repeat sources", () => {

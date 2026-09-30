@@ -84,6 +84,17 @@ export interface ItemRefField extends FieldBase {
   list: string;
 }
 
+/**
+ * Text in every pack language, stored in the localization files. The node data keeps an explicit key
+ * or null; with `keyFrom: "name"` a null value means "the node name (+ keySuffix)".
+ */
+export interface LocalizedTextField extends FieldBase {
+  type: "localizedText";
+  keyFrom: "name" | "none";
+  keySuffix: string;
+  multiline: boolean;
+}
+
 /** Reference to an item of the pack's resource library (by the resource id). */
 export interface ResourceField extends FieldBase {
   type: "resource";
@@ -134,6 +145,7 @@ export type FieldSchema =
   | NodeRefField
   | ResourceField
   | ResourceVariantField
+  | LocalizedTextField
   | MatrixField
   | UnsupportedField;
 
@@ -143,6 +155,8 @@ export interface NamingRules {
   /** Names must be unique among nodes of schemas with `unique: true`. */
   unique: boolean;
   pattern?: RegExp;
+  /** Name given to new nodes: "chapter.index" continues the "1.12"-style numbering of the graph. */
+  auto: "chapter.index" | null;
 }
 
 export interface NodeSchema {
@@ -194,6 +208,7 @@ const FIELD_TYPES = new Set([
   "nodeRef",
   "resource",
   "resourceVariant",
+  "localizedText",
   "matrix",
 ]);
 const ID_PATTERN = /^[A-Za-z_][A-Za-z0-9_.-]*$/;
@@ -407,6 +422,7 @@ export function parseNodeSchema(json: unknown, location: string, pack: Pick<Sche
       editable: reader.bool(naming, "editable", true),
       unique: reader.bool(naming, "unique", false),
       pattern: patternRegex,
+      auto: naming.auto === undefined ? null : reader.enum(naming, "auto", ["chapter.index"] as const, "naming"),
     },
     singleton: reader.bool(root, "singleton", false),
     meta: reader.optionalObject(root, "meta") ?? {},
@@ -514,6 +530,15 @@ function parseField(reader: Reader, raw: unknown, path: string, requireId = true
         source: reader.string(field, "source", "", path),
         collection: reader.string(field, "collection", "", path),
       };
+    case "localizedText":
+      return {
+        id,
+        label,
+        type,
+        keyFrom: reader.enum(field, "keyFrom", ["name", "none"] as const, path, "name"),
+        keySuffix: reader.string(field, "keySuffix", ""),
+        multiline: reader.bool(field, "multiline", true),
+      };
     case "matrix":
       return {
         id,
@@ -555,6 +580,7 @@ export function defaultValue(field: FieldSchema): unknown {
     case "nodeRef":
     case "resource":
     case "resourceVariant":
+    case "localizedText":
     case "unsupported":
       return null;
     case "matrix":
@@ -677,6 +703,7 @@ export function normalizeValue(field: FieldSchema, value: unknown, path: string,
     case "nodeRef":
     case "resource":
     case "resourceVariant":
+    case "localizedText":
       return value === null || typeof value === "string" ? value ?? null : fallback("expected an id");
     case "matrix":
       return isRecord(value) ? value : fallback("expected an object");

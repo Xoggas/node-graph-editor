@@ -1,10 +1,12 @@
 import type { GraphChange, GraphModel } from "./graph";
 import type { Vec2 } from "./types";
 
-interface Step {
+export interface HistoryStep {
   undo(graph: GraphModel): void;
   redo(graph: GraphModel): void;
 }
+
+type Step = HistoryStep;
 
 interface Transaction {
   steps: Step[];
@@ -55,6 +57,18 @@ export class GraphHistory {
 
   begin(): void {
     this.explicitDepth++;
+  }
+
+  /**
+   * Records changes of another source (e.g. localization texts) into the same undo entries as
+   * graph changes made in the same task. Returns a function that stops observing.
+   */
+  observe<C>(subscribe: (listener: (change: C) => void) => () => void, toStep: (change: C) => HistoryStep | null): () => void {
+    return subscribe((change) => {
+      if (this.applying) return;
+      const step = toStep(change);
+      if (step) this.open().steps.push(step);
+    });
   }
 
   end(): void {

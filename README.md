@@ -110,8 +110,18 @@ re-reads it from disk (the open graph keeps its data). The last folder is rememb
   drawn on the element's row, so reordering elements keeps connections; `repeat: { count }` creates one
   per number of an int field.
   Capacity defaults come from the port type.
-- **Naming:** `editable`, `unique`, `pattern`. `singleton: true` allows one node per graph.
+- **Localized text:** `localizedText` (`keyFrom: "name"`, `keySuffix`, `multiline`) — the text lives in
+  `localization/<language>.json` of the pack (languages come from `pack.json`); by default the node name
+  is the key. Nodes show the language picked in the toolbar; clicking the field edits every language.
+- **Naming:** `editable`, `unique`, `pattern`, `auto: "chapter.index"` (new nodes continue the `1.12`
+  numbering). `singleton: true` allows one node per graph.
 - Problems in a node schema skip that node and are listed under ⚠ in the palette.
+
+### Localization
+
+`localization/ru.json`, `localization/en.json`, … are flat `{ "key": "text" }` files shared by all graphs
+of the pack. Renaming a node moves its texts to the new key (one undo step with the rename), duplicating
+a node copies them, and **Save** writes the changed language files together with the graph.
 
 ### Resource library
 

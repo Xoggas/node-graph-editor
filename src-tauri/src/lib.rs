@@ -81,6 +81,27 @@ fn collect_json(root: &Path, directory: &Path, depth: usize, files: &mut Vec<Pac
     Ok(())
 }
 
+/// Writes a file of the pack (e.g. `localization/ru.json`); the path must stay inside the pack folder.
+#[tauri::command]
+fn write_pack_file(pack_dir: PathBuf, relative_path: String, contents: String) -> Result<(), String> {
+    let target = pack_path(&pack_dir, &relative_path)?;
+    write_atomically(&target, contents.as_bytes()).map_err(|error| format!("Could not write '{}': {error}", target.display()))
+}
+
+fn pack_path(pack_dir: &Path, relative_path: &str) -> Result<PathBuf, String> {
+    let relative = Path::new(relative_path);
+    let escapes = relative
+        .components()
+        .any(|part| !matches!(part, std::path::Component::Normal(_) | std::path::Component::CurDir));
+    if relative_path.is_empty() || escapes {
+        return Err(format!("'{relative_path}' is not a path inside the pack."));
+    }
+    if !pack_dir.join("pack.json").is_file() {
+        return Err(format!("'{}' is not a schema pack.", pack_dir.display()));
+    }
+    Ok(pack_dir.join(relative))
+}
+
 #[tauri::command]
 fn set_resource_roots(roots: Vec<PathBuf>, state: tauri::State<ResourceRoots>) {
     let canonical = roots.iter().filter_map(|root| root.canonicalize().ok()).collect();
@@ -111,7 +132,8 @@ pub fn run() {
             write_graph_file,
             read_schema_pack,
             set_resource_roots,
-            read_resource_file
+            read_resource_file,
+            write_pack_file
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
@@ -143,6 +165,18 @@ mod tests {
         assert_eq!(read_within_roots(&directory.join("art").join("hero.png"), &roots).unwrap(), b"png");
         assert!(read_within_roots(&directory.join("secret.txt"), &roots).is_err());
         assert!(read_within_roots(&directory.join("art").join("..").join("secret.txt"), &roots).is_err());
+        fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn writes_pack_files_only_inside_the_pack() {
+        let directory = std::env::temp_dir().join(format!("node-graph-editor-packw-{}", std::process::id()));
+        write_atomically(&directory.join("pack.json"), b"{}").unwrap();
+        write_pack_file(directory.clone(), "localization/ru.json".into(), "{}".into()).unwrap();
+        assert_eq!(fs::read_to_string(directory.join("localization").join("ru.json")).unwrap(), "{}");
+        assert!(write_pack_file(directory.clone(), "../escape.json".into(), "x".into()).is_err());
+        assert!(write_pack_file(directory.clone(), "C:/escape.json".into(), "x".into()).is_err());
+        assert!(write_pack_file(directory.clone(), "/escape.json".into(), "x".into()).is_err());
         fs::remove_dir_all(directory).unwrap();
     }
 

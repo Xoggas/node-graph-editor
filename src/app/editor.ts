@@ -1,6 +1,8 @@
 import { type ClipboardData, copyNodes, pasteNodes } from "../graph/clipboard";
 import { type GraphChange, GraphModel } from "../graph/graph";
 import { GraphHistory } from "../graph/history";
+import { LOCALIZATION_DIR, type LocalizationChange, LocalizationStore, localizedEntries } from "../graph/localization";
+import { autoName } from "../graph/naming";
 import { type NodeDescriptor, SchemaRegistry } from "../graph/registry";
 import { type DataPath, getIn, listAdd, listMove, listRemove, setIn } from "../graph/dataOps";
 import { defaultVariant } from "../graph/resources";
@@ -36,6 +38,11 @@ export interface EditorSnapshot {
   pack: PackInfo | null;
   /** Problems found while loading the schema pack. */
   packWarnings: readonly string[];
+  languages: readonly string[];
+  /** Language whose texts nodes show. */
+  displayLanguage: string | null;
+  /** Localization texts changed since the last save. */
+  localizationDirty: boolean;
   descriptors: readonly NodeDescriptor[];
   canUndo: boolean;
   canRedo: boolean;
@@ -53,6 +60,7 @@ export interface GraphReplacedOptions {
 }
 
 type GraphReplacedListener = (graph: GraphModel, options: GraphReplacedOptions) => void;
+type LocalizationListener = (change: LocalizationChange | null) => void;
 
 export class Editor {
   private currentRegistry = new SchemaRegistry();
@@ -70,6 +78,9 @@ export class Editor {
   );
   private clipboard: ClipboardData | null = null;
   private pasteCount = 0;
+  private localizationStore = new LocalizationStore([]);
+  private unobserveLocalization: () => void = () => {};
+  private readonly localizationListeners = new Set<LocalizationListener>();
 
   constructor(options: { files?: GraphFileSystem } = {}) {
     this.files = options.files ?? createFileSystem();
@@ -86,6 +97,9 @@ export class Editor {
       warnings: [],
       pack: null,
       packWarnings: [],
+      languages: [],
+      displayLanguage: null,
+      localizationDirty: false,
       descriptors: [],
       canUndo: false,
       canRedo: false,
@@ -100,6 +114,16 @@ export class Editor {
 
   get registry(): SchemaRegistry {
     return this.currentRegistry;
+  }
+
+  get localization(): LocalizationStore {
+    return this.localizationStore;
+  }
+
+  /** Called with the change, or with null when all texts may have changed (pack reload, language switch). */
+  onLocalizationChanged(listener: LocalizationListener): () => void {
+    this.localizationListeners.add(listener);
+    return () => this.localizationListeners.delete(listener);
   }
 
   // --- React store protocol -------------------------------------------------
@@ -134,6 +158,9 @@ export class Editor {
 
   async choosePackFolder(): Promise<void> {
     try {
+      if (!(await this.confirmDiscardLocalization())) {
+        return;
+      }
       const folder = await this.files.pickPackFolder();
       if (!folder) {
         return;
@@ -146,6 +173,9 @@ export class Editor {
 
   async reloadPack(): Promise<void> {
     try {
+      if (!(await this.confirmDiscardLocalization())) {
+        return;
+      }
       if (this.packSource?.kind === "folder") {
         await this.loadPackFolder(this.packSource.path);
       } else {
@@ -164,7 +194,9 @@ export class Editor {
 
   /** Switches to a new pack and rebinds the open graph to it; node data is preserved. */
   applyPack(files: PackFile[], source: NonNullable<Editor["packSource"]>): void {
-    const pack = parseSchemaPack(files, source.kind === "folder" ? source.path : bundledPack.dir);
+    const packDir = source.kind === "folder" ? source.path : bundledPack.dir;
+    const pack = parseSchemaPack(files, packDir);
+    const localization = LocalizationStore.fromFiles(pack.languages, files, pack.warnings);
     this.files.setResourceRoots(pack.resources.roots).catch((error) => this.setStatus(`Resource folders: ${errorMessage(error)}`));
     const registry = new SchemaRegistry(pack);
     const json = new GraphJsonSerializer(this.currentRegistry).serialize(this.graph);
@@ -174,6 +206,9 @@ export class Editor {
     this.currentRegistry = registry;
     this.packSource = source;
     this.attach(graph);
+    this.setLocalization(localization);
+    const displayLanguage =
+      this.state.displayLanguage && pack.languages.includes(this.state.displayLanguage) ? this.state.displayLanguage : pack.languages[0] ?? null;
     this.update({
       pack: {
         id: pack.id,
@@ -184,6 +219,9 @@ export class Editor {
         resourceCount: pack.resources.items.size,
       },
       packWarnings: pack.warnings,
+      languages: pack.languages,
+      displayLanguage,
+      localizationDirty: false,
       descriptors: registry.descriptors(),
       warnings: warnings.filter((warning) => !warning.startsWith("The graph was made with schema pack")),
       dirty,
@@ -193,6 +231,72 @@ export class Editor {
           : `Schema pack loaded with ${pack.warnings.length} problem(s).`,
     });
     this.notifyGraphReplaced(graph, false);
+    this.notifyLocalization(null);
+  }
+
+  // --- Localization -----------------------------------------------------------
+
+  setDisplayLanguage(language: string): void {
+    if (this.state.languages.includes(language) && language !== this.state.displayLanguage) {
+      this.update({ displayLanguage: language });
+      this.notifyLocalization(null);
+    }
+  }
+
+  /** Sets texts of one key in several languages as one undo step. */
+  setTexts(key: string, texts: Record<string, string>): void {
+    for (const [language, text] of Object.entries(texts)) {
+      this.localizationStore.set(language, key, text === "" && this.localizationStore.get(language, key) === undefined ? undefined : text);
+    }
+  }
+
+  private setLocalization(store: LocalizationStore): void {
+    this.unobserveLocalization();
+    this.localizationStore = store;
+    const unsubscribe = store.subscribe((change) => {
+      this.update({ localizationDirty: store.isDirty });
+      this.notifyLocalization(change);
+    });
+    const unobserve = this.history.observe<LocalizationChange>(
+      (listener) => store.subscribe(listener),
+      (change) => ({
+        undo: () => store.set(change.language, change.key, change.previous),
+        redo: () => store.set(change.language, change.key, change.next),
+      }),
+    );
+    this.unobserveLocalization = () => {
+      unsubscribe();
+      unobserve();
+    };
+  }
+
+  private notifyLocalization(change: LocalizationChange | null): void {
+    for (const listener of this.localizationListeners) {
+      listener(change);
+    }
+  }
+
+  private async confirmDiscardLocalization(): Promise<boolean> {
+    return !this.localizationStore.isDirty || this.files.confirm("Discard unsaved localization changes?");
+  }
+
+  /** Writes changed language files into the pack folder. */
+  private async saveLocalization(): Promise<string | null> {
+    const store = this.localizationStore;
+    if (!store.isDirty) {
+      return null;
+    }
+    const packDir = this.packSource?.kind === "folder" ? this.packSource.path : bundledPack.dir;
+    if (!packDir) {
+      throw new Error("the built-in pack cannot be written; choose the pack folder first");
+    }
+    const languages = [...store.dirtyLanguages];
+    for (const language of languages) {
+      await this.files.writePackFile(packDir, `${LOCALIZATION_DIR}/${language}.json`, store.serialize(language));
+      store.markSaved(language);
+    }
+    this.update({ localizationDirty: store.isDirty });
+    return languages.join(", ");
   }
 
   // --- Document commands -----------------------------------------------------
@@ -223,14 +327,23 @@ export class Editor {
   }
 
   async save(chooseLocation = false): Promise<void> {
+    let savedLanguages: string | null = null;
+    try {
+      savedLanguages = await this.saveLocalization();
+    } catch (error) {
+      this.setStatus(`Localization was not saved: ${errorMessage(error)}`);
+      return;
+    }
     try {
       const json = new GraphJsonSerializer(this.registry).serialize(this.graph);
       const saved = await this.files.save(json, this.filePath, chooseLocation);
       if (!saved) {
+        if (savedLanguages) this.setStatus(`Saved localization (${savedLanguages}); the graph was not saved.`);
         return;
       }
       this.filePath = saved.path;
-      this.update({ dirty: false, fileName: saved.name, filePath: saved.path, status: `Saved: ${saved.name}` });
+      const localizationNote = savedLanguages ? ` and localization (${savedLanguages})` : "";
+      this.update({ dirty: false, fileName: saved.name, filePath: saved.path, status: `Saved: ${saved.name}${localizationNote}` });
     } catch (error) {
       this.setStatus(`Save failed: ${errorMessage(error)}`);
     }
@@ -245,7 +358,12 @@ export class Editor {
       return null;
     }
     try {
-      return this.graph.addNode(schemaId, position).id;
+      const node = this.graph.addNode(schemaId, position);
+      const name = schema ? autoName(this.graph, schema) : null;
+      if (name) {
+        this.graph.renameNode(node.id, name);
+      }
+      return node.id;
     } catch (error) {
       this.setStatus(`Could not add node: ${errorMessage(error)}`);
       return null;
@@ -386,7 +504,15 @@ export class Editor {
         return false;
       }
     }
+    // Texts keyed by the node name follow it to the new name, in the same undo step.
+    const before = localizedEntries(node).map((entry) => entry.key);
     this.graph.renameNode(nodeId, name);
+    localizedEntries(node).forEach((entry, index) => {
+      const from = before[index];
+      if (from && entry.key && from !== entry.key) {
+        this.localizationStore.move(from, entry.key);
+      }
+    });
     return true;
   }
 
@@ -469,6 +595,22 @@ export class Editor {
     }
     try {
       const ids = pasteNodes(this.graph, data, offset);
+      ids.forEach((id, index) => {
+        const node = this.graph.getNode(id)!;
+        const name = node.schema ? autoName(this.graph, node.schema) : null;
+        if (name) {
+          this.graph.renameNode(id, name);
+        }
+        // Copies keep their texts under their own keys.
+        const entry = data.nodes[index];
+        const sourceKeys = localizedEntries({ name: entry.name, schema: node.schema, data: entry.data }).map((item) => item.key);
+        localizedEntries(node).forEach((item, itemIndex) => {
+          const from = sourceKeys[itemIndex];
+          if (from && item.key && from !== item.key) {
+            this.localizationStore.copy(from, item.key);
+          }
+        });
+      });
       this.setStatus(`${verb} ${ids.length} node(s).`);
       return ids;
     } catch (error) {

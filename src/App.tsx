@@ -90,7 +90,8 @@ export default function App() {
     const timer = window.setTimeout(() => setStatusVisible(false), STATUS_VISIBLE_MS);
     return () => window.clearTimeout(timer);
   }, [snapshot.statusId, snapshot.status]);
-  const title = `${documentName}${snapshot.dirty ? " *" : ""}`;
+  const unsaved = snapshot.dirty || snapshot.localizationDirty;
+  const title = `${documentName}${unsaved ? " *" : ""}`;
   useEffect(() => {
     document.title = `${title} — Node Graph Editor`;
   }, [title]);
@@ -110,6 +111,18 @@ export default function App() {
           Redo
         </button>
         <span className="toolbar-spacer" />
+        {snapshot.languages.length > 0 && (
+          <label className="toolbar-language" title="Language shown on nodes">
+            Text
+            <select value={snapshot.displayLanguage ?? ""} onChange={(event) => editor.setDisplayLanguage(event.target.value)}>
+              {snapshot.languages.map((language) => (
+                <option key={language} value={language}>
+                  {language.toUpperCase()}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
         <button onClick={() => setHelpOpen(true)} title="Keyboard shortcuts (F1)">
           ?
         </button>
@@ -129,10 +142,19 @@ export default function App() {
       </main>
 
       <footer className="statusbar">
-        <span className="status-document" title={snapshot.dirty ? "Unsaved changes" : "All changes saved"}>
+        <span
+          className="status-document"
+          title={
+            unsaved
+              ? [snapshot.dirty && "The graph has unsaved changes.", snapshot.localizationDirty && "Localization texts have unsaved changes."]
+                  .filter(Boolean)
+                  .join("\n")
+              : "All changes saved"
+          }
+        >
           <span className="status-document-label">Graph:</span>
           <span className="status-document-name">{documentName}</span>
-          {snapshot.dirty && <span className="status-document-dirty">● unsaved</span>}
+          {unsaved && <span className="status-document-dirty">● unsaved{snapshot.localizationDirty && !snapshot.dirty ? " texts" : ""}</span>}
         </span>
         <span className="status-path" title={snapshot.filePath ?? undefined}>
           <bdi>{snapshot.filePath ?? (snapshot.fileName ? `${snapshot.fileName} (not on disk)` : "Not saved yet")}</bdi>

@@ -9,6 +9,7 @@ import {
   formatLabel,
   isRecord,
   type ListField,
+  type LocalizedTextField,
   type MatrixField,
   type ResourceField,
   type ResourceVariantField,
@@ -62,6 +63,7 @@ export type FieldKind =
   | "reference"
   | "resource"
   | "variant"
+  | "localized"
   | "readonly";
 
 export type ListAction =
@@ -90,6 +92,8 @@ export interface NodeViewContext {
   /** Display label of a referenced list element or node, or null when it does not exist. */
   referenceLabel(field: FieldSchema, id: string): string | null;
   resources(): ResourceLibrary | null;
+  /** Key and text (in the display language) of a localized text field. */
+  localizedText(field: LocalizedTextField, path: DataPath, value: unknown): { key: string | null; text: string | undefined; language: string | null };
   /** A preview texture; while loading, the view is rebuilt once it is ready. */
   image(path: string, view: NodeView): Texture | "loading" | "error";
 }
@@ -102,6 +106,9 @@ export class NodeView {
   controls: Control[] = [];
   /** True when a field shows other nodes' data (item references) and must follow their changes. */
   hasReferences = false;
+  /** Localization keys shown by this node, to refresh it when their texts change. */
+  localizedKeys = new Set<string>();
+  hasUnnamedTexts = false;
 
   selected = false;
   hovered = false;
@@ -160,6 +167,8 @@ export class NodeView {
     this.itemRects = [];
     this.previewRects = [];
     this.hasReferences = false;
+    this.localizedKeys = new Set();
+    this.hasUnnamedTexts = false;
     this.staleLayout = false;
 
     const node = this.node;
@@ -367,7 +376,8 @@ export class NodeView {
     }
 
     const kind = fieldKind(field);
-    const height = kind === "multiline" ? FIELD_HEIGHT + LINE_HEIGHT * (MULTILINE_LINES - 1) : FIELD_HEIGHT;
+    const tall = kind === "multiline" || (kind === "localized" && (field as LocalizedTextField).multiline);
+    const height = tall ? FIELD_HEIGHT + LINE_HEIGHT * (MULTILINE_LINES - 1) : FIELD_HEIGHT;
     const key = path.join(".");
     if (kind === "bool") {
       const label = this.detail.addChild(makeText(fitText(field.label, width - 28, LABEL_SIZE), LABEL_SIZE, theme.textSecondary));
@@ -595,6 +605,30 @@ export class NodeView {
         text.position.set(box.x + 8, centerY(text));
         return [text, this.arrow(box)];
       }
+      case "localized": {
+        const localized = this.context.localizedText(field as LocalizedTextField, control.path, value);
+        if (!localized.key) {
+          this.hasUnnamedTexts = true;
+          const text = makeText(fitText("Name the node to write text", inner, SMALL_SIZE), SMALL_SIZE, theme.textMuted);
+          text.position.set(box.x + 8, centerY(text));
+          return [text];
+        }
+        this.localizedKeys.add(localized.key);
+        const keyText = makeText(fitText(localized.key, inner / 2, 10), 10, theme.textMuted);
+        keyText.position.set(Math.round(box.x + box.width - 6 - keyText.width), Math.round(box.y + box.height - keyText.height - 3));
+        if (!localized.text) {
+          const empty = makeText(`No ${localized.language ?? ""} text`.replace("  ", " "), SMALL_SIZE, theme.textMuted);
+          empty.position.set(box.x + 8, Math.round(box.y + 5));
+          return [empty, keyText];
+        }
+        const lines = (field as LocalizedTextField).multiline ? MULTILINE_LINES : 1;
+        const texts = wrapLines(localized.text, inner, lines).map((line, index) => {
+          const text = makeText(line, VALUE_SIZE, theme.textPrimary);
+          text.position.set(box.x + 8, Math.round(box.y + 4 + index * LINE_HEIGHT));
+          return text;
+        });
+        return [...texts, keyText];
+      }
       case "resource": {
         const item = typeof value === "string" ? this.context.resources()?.items.get(value) : undefined;
         const missing = typeof value === "string" && !item;
@@ -704,6 +738,8 @@ export function fieldKind(field: FieldSchema): FieldKind {
       return "reference";
     case "resource":
       return "resource";
+    case "localizedText":
+      return "localized";
     case "resourceVariant":
       return "variant";
     default:

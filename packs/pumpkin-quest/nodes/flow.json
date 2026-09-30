@@ -64,7 +64,8 @@
     "color": "#508cdc",
     "naming": {
       "unique": true,
-      "pattern": "^[\\p{L}0-9 ,.']+$"
+      "pattern": "^[\\p{L}0-9 ,.']+$",
+      "auto": "chapter.index"
     },
     "meta": {
       "nodeType": "Blocking"
@@ -114,7 +115,8 @@
     "color": "#5abeaa",
     "naming": {
       "unique": true,
-      "pattern": "^[\\p{L}0-9 ,.']+$"
+      "pattern": "^[\\p{L}0-9 ,.']+$",
+      "auto": "chapter.index"
     },
     "meta": {
       "nodeType": "NonBlocking"
