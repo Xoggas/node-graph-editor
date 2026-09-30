@@ -18,6 +18,8 @@ import { theme, typeColor } from "./theme";
 
 /** Below this zoom texts are hidden: they are unreadable anyway and dominate the draw cost. */
 const DETAIL_ZOOM = 0.4;
+/** `focusView` zooms in to at least this, so the focused node is readable. */
+const FOCUS_MIN_ZOOM = 0.75;
 /** Edges keep at least this on-screen width (px) when zoomed out. */
 const MIN_EDGE_SCREEN_WIDTH = 1.3;
 const EDGE_BASE_WIDTH = 2.25;
@@ -356,6 +358,18 @@ export class GraphRenderer {
     }
   }
 
+  /**
+   * Selects a view and centers it, zooming in far enough to read it when the view is zoomed out.
+   */
+  focusView(viewId: string): void {
+    const view = this.nodeViews.get(viewId);
+    if (!view) return;
+    this.selectViews([viewId]);
+    const { x, y, width, height } = view.rect;
+    const zoom = Math.max(this.viewport.zoom, FOCUS_MIN_ZOOM);
+    this.setViewport({ x: this.screen.width / 2 - (x + width / 2) * zoom, y: this.screen.height / 2 - (y + height / 2) * zoom, zoom });
+  }
+
   /** Selects the next view of the selected node (the node, then its linked copies) and pans to it. */
   goToNextLinkedView(): boolean {
     const current = this.selection.size === 1 ? [...this.selection][0] : null;
@@ -366,13 +380,7 @@ export class GraphRenderer {
       return false;
     }
     const next = views[(views.indexOf(current) + 1) % views.length];
-    this.selectViews([next]);
-    const view = this.nodeViews.get(next);
-    if (view) {
-      const { x, y, width, height } = view.rect;
-      const zoom = this.viewport.zoom;
-      this.setViewport({ x: this.screen.width / 2 - (x + width / 2) * zoom, y: this.screen.height / 2 - (y + height / 2) * zoom, zoom });
-    }
+    this.focusView(next);
     this.editor.setStatus(next === node!.id ? "Original node." : `Linked copy ${views.indexOf(next)} of ${views.length - 1}.`);
     return true;
   }

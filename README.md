@@ -29,6 +29,7 @@ Requires Node.js and a Rust toolchain ([Tauri prerequisites](https://tauri.app/s
 | Copy / Cut / Paste / Duplicate | Ctrl+C / Ctrl+X / Ctrl+V (at the cursor) / Ctrl+D |
 | Create linked copy / Go to the next linked copy | Ctrl+L / Ctrl+Shift+L |
 | Rename node / Context menu | F2 / Right click (right drag pans) |
+| Find nodes (name, type, texts in all languages, fields) | Ctrl+F — arrows preview, Enter goes, Esc closes |
 | Delete | Delete / Backspace (selected nodes or connection) |
 | Nudge selection | Arrows (Shift: further) |
 | Select all / Clear selection | Ctrl+A / Esc |

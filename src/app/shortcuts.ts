@@ -6,6 +6,7 @@ export interface ShortcutContext {
   editor: Editor;
   renderer: GraphRenderer | null;
   toggleHelp: () => void;
+  openSearch: () => void;
 }
 
 interface KeyBinding {
@@ -30,7 +31,8 @@ export type ShortcutId =
   | "delete"
   | "selectAll"
   | "frameSelection"
-  | "frameAll";
+  | "frameAll"
+  | "find";
 
 export interface Shortcut {
   id?: ShortcutId;
@@ -207,6 +209,15 @@ export const shortcuts: Shortcut[] = [
     keys: ["Delete", "Backspace"],
     bindings: [{ code: "Delete" }, { code: "Backspace" }],
     run: whenIdle((renderer) => renderer.deleteSelection()),
+  },
+  {
+    group: "Selection",
+    id: "find",
+    description: "Find nodes (name, type, texts, fields)",
+    keys: ["Ctrl+F"],
+    bindings: [{ code: "KeyF", ctrl: true }],
+    global: true,
+    run: ({ openSearch }) => openSearch(),
   },
   {
     group: "Selection",

@@ -7,6 +7,7 @@ import { ContextMenu, type ContextMenuItem } from "./ui/ContextMenu";
 import { buildContextMenu } from "./ui/contextMenuItems";
 import { GraphCanvas } from "./ui/GraphCanvas";
 import { NodePalette } from "./ui/NodePalette";
+import { SearchPanel } from "./ui/SearchPanel";
 import { ShortcutHelp } from "./ui/ShortcutHelp";
 import "./App.css";
 
@@ -39,6 +40,9 @@ export default function App() {
   const helpOpenRef = useRef(helpOpen);
   helpOpenRef.current = helpOpen;
 
+  // Bumped on every Ctrl+F, so pressing it again refocuses and selects the query.
+  const [searchRequest, setSearchRequest] = useState(0);
+  const closeSearch = useCallback(() => setSearchRequest(0), []);
   const [menu, setMenu] = useState<{ x: number; y: number; items: ContextMenuItem[] } | null>(null);
   const closeMenu = useCallback(() => setMenu(null), []);
 
@@ -90,7 +94,7 @@ export default function App() {
         return;
       }
       event.preventDefault();
-      shortcut.run({ editor, renderer: rendererRef.current, toggleHelp: () => setHelpOpen((open) => !open) }, event);
+      shortcut.run({ editor, renderer: rendererRef.current, toggleHelp: () => setHelpOpen((open) => !open), openSearch: () => setSearchRequest((request) => request + 1) }, event);
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
@@ -169,6 +173,9 @@ export default function App() {
       <main className="workspace">
         <div className="canvas-area">
           <GraphCanvas editor={editor} onRenderer={onRenderer} />
+          {searchRequest > 0 && (
+            <SearchPanel editor={editor} renderer={() => rendererRef.current} focusRequest={searchRequest} onClose={closeSearch} />
+          )}
           {toasts.length > 0 && (
             <div className="toasts" role="status" aria-live="polite">
               {toasts.map((toast) => (
