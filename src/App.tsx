@@ -25,7 +25,7 @@ interface Toast extends Notice {
 let nextToastId = 1;
 
 const editor = new Editor();
-void editor.loadInitialPack();
+void editor.start();
 
 if (import.meta.env.DEV) {
   // Console access for manual checks, e.g. `__editor.generateStressGraph(1000)`.

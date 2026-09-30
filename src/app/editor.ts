@@ -11,7 +11,7 @@ import { exportRuntimeGraph } from "../graph/export";
 import { GraphJsonSerializer } from "../graph/serializer";
 import type { Vec2 } from "../graph/types";
 import { bundledPack } from "./bundledPack";
-import { createFileSystem, type GraphFileSystem } from "./files";
+import { createFileSystem, type GraphFileSystem, type OpenedFile } from "./files";
 
 export interface PackInfo {
   id: string;
@@ -66,6 +66,8 @@ const PASTE_STEP = 32;
 /** Where a new linked copy appears relative to the node it links to. */
 const LINK_OFFSET = { x: 48, y: 48 };
 const PACK_FOLDER_KEY = "node-graph-editor.packFolder";
+/** Path of the last opened or saved graph, reopened on start. */
+const LAST_GRAPH_KEY = "node-graph-editor.lastGraph";
 
 export interface GraphReplacedOptions {
   /** Fit the whole graph into view instead of restoring the saved viewport. */
@@ -166,8 +168,28 @@ export class Editor {
   // --- Schema pack ------------------------------------------------------------
 
   /** Loads the remembered pack folder, or the built-in example pack. */
+  /** Startup: the last schema pack folder, then the last opened or saved graph. */
+  async start(): Promise<void> {
+    await this.loadInitialPack();
+    await this.reopenLastGraph();
+  }
+
+  private async reopenLastGraph(): Promise<void> {
+    const path = readStored(LAST_GRAPH_KEY);
+    if (!path) {
+      return;
+    }
+    try {
+      const file = await this.files.readFile(path);
+      this.openFile(file);
+    } catch (error) {
+      removeStored(LAST_GRAPH_KEY);
+      this.setStatus(`Could not reopen the last graph '${path}': ${errorMessage(error)}`, "warning");
+    }
+  }
+
   async loadInitialPack(): Promise<void> {
-    const folder = readStoredFolder();
+    const folder = readStored(PACK_FOLDER_KEY);
     if (folder) {
       try {
         await this.loadPackFolder(folder);
@@ -212,7 +234,7 @@ export class Editor {
   private async loadPackFolder(folder: string): Promise<void> {
     const files = await this.files.readPackFolder(folder);
     this.applyPack(files, { kind: "folder", path: folder });
-    writeStoredFolder(folder);
+    writeStored(PACK_FOLDER_KEY, folder);
   }
 
   /** Switches to a new pack and rebinds the open graph to it; node data is preserved. */
@@ -341,13 +363,18 @@ export class Editor {
       if (!file) {
         return;
       }
-      const { graph, warnings } = new GraphJsonSerializer(this.registry).deserialize(file.text);
-      const status = warnings.length === 0 ? `Opened: ${file.name}` : `Opened ${file.name} with ${warnings.length} warning(s).`;
-      this.replaceGraph(graph, file.path, status, warnings, false);
-      this.update({ fileName: file.name });
+      this.openFile(file);
     } catch (error) {
       this.setStatus(`Open failed: ${errorMessage(error)}`, "error");
     }
+  }
+
+  private openFile(file: OpenedFile): void {
+    const { graph, warnings } = new GraphJsonSerializer(this.registry).deserialize(file.text);
+    const status = warnings.length === 0 ? `Opened: ${file.name}` : `Opened ${file.name} with ${warnings.length} warning(s).`;
+    this.replaceGraph(graph, file.path, status, warnings, false);
+    this.update({ fileName: file.name });
+    if (file.path) writeStored(LAST_GRAPH_KEY, file.path);
   }
 
   async save(chooseLocation = false): Promise<void> {
@@ -366,6 +393,7 @@ export class Editor {
         return;
       }
       this.filePath = saved.path;
+      if (saved.path) writeStored(LAST_GRAPH_KEY, saved.path);
       const localizationNote = savedLanguages ? ` and localization (${savedLanguages})` : "";
       this.update({ dirty: false, fileName: saved.name, filePath: saved.path, status: `Saved: ${saved.name}${localizationNote}` });
     } catch (error) {
@@ -833,19 +861,29 @@ export class Editor {
   }
 }
 
-function readStoredFolder(): string | null {
+// Remembered paths are a convenience only: storage failures are ignored.
+
+function readStored(key: string): string | null {
   try {
-    return localStorage.getItem(PACK_FOLDER_KEY);
+    return localStorage.getItem(key);
   } catch {
     return null;
   }
 }
 
-function writeStoredFolder(folder: string): void {
+function writeStored(key: string, value: string): void {
   try {
-    localStorage.setItem(PACK_FOLDER_KEY, folder);
+    localStorage.setItem(key, value);
   } catch {
-    // Remembering the folder is a convenience only.
+    // ignored
+  }
+}
+
+function removeStored(key: string): void {
+  try {
+    localStorage.removeItem(key);
+  } catch {
+    // ignored
   }
 }
 

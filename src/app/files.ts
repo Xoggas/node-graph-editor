@@ -21,6 +21,8 @@ export interface SaveOptions {
 
 export interface GraphFileSystem {
   open(): Promise<OpenedFile | null>;
+  /** Reads a graph file by path, e.g. the last opened one; not available in a plain browser. */
+  readFile(path: string): Promise<OpenedFile>;
   /** `options.defaultPath` pre-fills the dialog when there is no current path. */
   save(text: string, currentPath: string | null, chooseLocation: boolean, options?: SaveOptions): Promise<SavedFile | null>;
   confirm(message: string): Promise<boolean>;
@@ -48,6 +50,10 @@ class TauriFileSystem implements GraphFileSystem {
     if (typeof path !== "string") {
       return null;
     }
+    return this.readFile(path);
+  }
+
+  async readFile(path: string): Promise<OpenedFile> {
     const text = await invoke<string>("read_graph_file", { path });
     return { path, name: fileName(path), text };
   }
@@ -128,6 +134,10 @@ class BrowserFileSystem implements GraphFileSystem {
     link.click();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
     return { path: null, name };
+  }
+
+  async readFile(path: string): Promise<OpenedFile> {
+    throw new Error(`reading '${path}' needs the desktop app`);
   }
 
   async confirm(message: string): Promise<boolean> {

@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Editor } from "./editor";
 import type { GraphFileSystem } from "./files";
 
@@ -37,6 +37,13 @@ class FakeFiles implements Partial<GraphFileSystem> {
   }
   async readPackFolder() {
     return packFiles;
+  }
+  /** Files on "disk" for `readFile`, by path. */
+  disk = new Map<string, string>();
+  async readFile(path: string) {
+    const text = this.disk.get(path);
+    if (text === undefined) throw new Error("file not found");
+    return { path, name: path.split("/").pop()!, text };
   }
   saves: { text: string; current: string | null; choose: boolean; defaultPath?: string }[] = [];
   async save(text: string, current: string | null, choose: boolean, options: { defaultPath?: string } = {}) {
@@ -125,6 +132,37 @@ describe("status", () => {
     expect(editor.getSnapshot()).toMatchObject({ statusKind: "error", status: "The name '1.2' is already used by another node." });
     editor.undo();
     expect(editor.getSnapshot().statusKind).toBe("info");
+  });
+});
+
+describe("last graph", () => {
+  const storage = new Map<string, string>();
+  beforeEach(() => {
+    storage.clear();
+    vi.stubGlobal("localStorage", {
+      getItem: (key: string) => storage.get(key) ?? null,
+      setItem: (key: string, value: string) => void storage.set(key, value),
+      removeItem: (key: string) => void storage.delete(key),
+    });
+  });
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("reopens the last saved graph on start and forgets a missing one", async () => {
+    const id = editor.addNode("line", { x: 0, y: 0 })!;
+    await editor.save();
+    files.disk.set("C:/graphs/g.json", files.saves[files.saves.length - 1].text);
+
+    const next = new Editor({ files: files as unknown as GraphFileSystem });
+    await next.start();
+    expect(next.graph.getNode(id)).toBeDefined();
+    expect(next.getSnapshot()).toMatchObject({ fileName: "g.json", filePath: "C:/graphs/g.json", dirty: false });
+
+    files.disk.clear();
+    const third = new Editor({ files: files as unknown as GraphFileSystem });
+    await third.start();
+    expect(third.graph.nodeCount).toBe(0);
+    expect(third.getSnapshot().statusKind).toBe("warning");
+    expect(storage.has("node-graph-editor.lastGraph")).toBe(false);
   });
 });
 
