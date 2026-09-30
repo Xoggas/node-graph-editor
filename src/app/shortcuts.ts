@@ -1,5 +1,6 @@
 import type { GraphRenderer } from "../render/GraphRenderer";
 import type { Editor } from "./editor";
+import { physicalKey } from "./keys";
 
 export interface ShortcutContext {
   editor: Editor;
@@ -164,7 +165,7 @@ export const shortcuts: Shortcut[] = [
     bindings: ARROWS.flatMap((code) => [{ code }, { code, shift: true }]),
     run: whenIdle((renderer, _, event) => {
       const step = event.shiftKey ? NUDGE_LARGE : NUDGE;
-      const [dx, dy] = ARROW_DIRECTIONS[event.code];
+      const [dx, dy] = ARROW_DIRECTIONS[physicalKey(event)];
       renderer.nudgeSelection(dx * step, dy * step);
     }),
   },
@@ -237,10 +238,11 @@ export const mouseControls: { description: string; keys: string[] }[] = [
 
 export function findShortcut(event: KeyboardEvent): Shortcut | undefined {
   const ctrl = event.ctrlKey || event.metaKey;
+  const code = physicalKey(event);
   return shortcuts.find((shortcut) =>
     shortcut.bindings.some(
       (binding) =>
-        binding.code === event.code &&
+        binding.code === code &&
         !!binding.ctrl === ctrl &&
         !!binding.shift === event.shiftKey &&
         !!binding.alt === event.altKey,

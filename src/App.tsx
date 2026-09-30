@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { Editor } from "./app/editor";
+import { physicalKey } from "./app/keys";
 import { findShortcut, isEditableTarget } from "./app/shortcuts";
 import type { GraphRenderer, RendererStats } from "./render/GraphRenderer";
 import { GraphCanvas } from "./ui/GraphCanvas";
@@ -62,7 +63,7 @@ export default function App() {
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      if (helpOpenRef.current && event.code === "Escape") {
+      if (helpOpenRef.current && physicalKey(event) === "Escape") {
         event.preventDefault();
         setHelpOpen(false);
         return;

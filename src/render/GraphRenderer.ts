@@ -7,6 +7,7 @@ import { EdgeView, traceEdgePath } from "./EdgeView";
 import { type Bounds, computeEdgePath, hitTestEdge, rectsIntersect } from "./geometry";
 import { clampNumber } from "../graph/schema";
 import { localizationKey } from "../graph/localization";
+import { physicalKey } from "../app/keys";
 import { resourcesOfType } from "../graph/resources";
 import { ImageCache } from "./ImageCache";
 import { InlineEditor } from "./InlineEditor";
@@ -1135,7 +1136,7 @@ export class GraphRenderer {
 
   /** Only Space (hold to pan) lives here; all other shortcuts are dispatched by the app keymap. */
   private readonly onKeyDown = (event: KeyboardEvent): void => {
-    if (event.code === "Space" && !this.spaceDown && !isEditableTarget(event.target)) {
+    if (physicalKey(event) === "Space" && !this.spaceDown && !isEditableTarget(event.target)) {
       this.spaceDown = true;
       if (this.interaction.kind === "none") {
         this.app.canvas.style.cursor = "grab";
@@ -1145,7 +1146,7 @@ export class GraphRenderer {
   };
 
   private readonly onKeyUp = (event: KeyboardEvent): void => {
-    if (event.code === "Space") {
+    if (physicalKey(event) === "Space") {
       this.spaceDown = false;
       if (this.interaction.kind === "none") {
         this.app.canvas.style.cursor = "";
