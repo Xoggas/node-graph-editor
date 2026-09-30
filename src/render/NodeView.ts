@@ -1027,10 +1027,12 @@ function checkbox(g: Graphics, x: number, y: number, size: number, checked: bool
     .fill(checked ? theme.checkboxChecked : theme.widgetBackground)
     .stroke({ width: 1, color: checked ? theme.checkboxCheckedBorder : border, alignment: 1 });
   if (!checked) return;
-  g.moveTo(x + size * 0.26, y + size * 0.52)
-    .lineTo(x + size * 0.43, y + size * 0.69)
-    .lineTo(x + size * 0.75, y + size * 0.33)
-    .stroke({ width: Math.max(1.6, size * 0.13), color: theme.checkMark, cap: "round", join: "round" });
+  // The same check as the HTML checkboxes (a 16-unit path, scaled to the box).
+  const k = size / 16;
+  g.moveTo(x + 3.6 * k, y + 8.4 * k)
+    .lineTo(x + 6.5 * k, y + 11.3 * k)
+    .lineTo(x + 12.4 * k, y + 4.9 * k)
+    .stroke({ width: 2.1 * k, color: theme.checkMark, cap: "round", join: "round" });
 }
 
 /** Rectangle path with separate top and bottom corner radii. */
