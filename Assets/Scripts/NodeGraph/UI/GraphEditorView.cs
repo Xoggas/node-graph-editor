@@ -135,7 +135,12 @@ namespace NodeGraph.UI
                 return;
             }
 
-            if (_canvas.DeleteSelectedConnection())
+            if (_canvas.IsInteractiveTarget(evt.target as VisualElement))
+            {
+                return;
+            }
+
+            if (_canvas.DeleteSelectedElements())
             {
                 evt.StopPropagation();
             }

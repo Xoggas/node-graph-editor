@@ -22,7 +22,7 @@ namespace NodeGraph.Samples
             DefineOutput("value", typeof(float), "Value");
         }
 
-        public void SetValue(float value)
+        internal void SetValue(float value)
         {
             if (Math.Abs(Value - value) < 0.0001f)
             {
@@ -211,7 +211,7 @@ namespace NodeGraph.Samples
                 "Output 1"));
         }
 
-        public void AddOutput()
+        internal void AddOutput()
         {
             var index = Ports.Count + 1;
             AddDynamicPort(new PortDefinition(

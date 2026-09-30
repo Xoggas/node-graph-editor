@@ -12,19 +12,29 @@ namespace NodeGraph.Core
         private readonly Dictionary<Guid, Port> _ports = new Dictionary<Guid, Port>();
         private readonly List<Connection> _connections = new List<Connection>();
         private readonly Dictionary<Guid, IDisposable> _nodeSubscriptions = new Dictionary<Guid, IDisposable>();
+        private readonly Subject<GraphChange> _changes = new Subject<GraphChange>();
 
         public Guid Id { get; }
         public NodeGraphRegistry Registry { get; }
         public IReadOnlyCollection<NodeModel> Nodes => _nodes.Values;
         public IReadOnlyList<Connection> Connections => _connections;
         public List<UnresolvedConnection> UnresolvedConnections { get; } = new List<UnresolvedConnection>();
-        public Subject<GraphChange> Changes { get; } = new Subject<GraphChange>();
+        public Observable<GraphChange> Changes => _changes;
         public GraphViewport Viewport { get; private set; } = new GraphViewport(Vector2.zero, 1f);
 
-        public GraphModel(NodeGraphRegistry registry, Guid? id = null)
+        public GraphModel(NodeGraphRegistry registry) : this(registry, Guid.NewGuid())
+        {
+        }
+
+        public GraphModel(NodeGraphRegistry registry, Guid id)
         {
             Registry = registry ?? throw new ArgumentNullException(nameof(registry));
-            Id = id ?? Guid.NewGuid();
+            if (id == Guid.Empty)
+            {
+                throw new ArgumentException("A graph id is required.", nameof(id));
+            }
+
+            Id = id;
         }
 
         public NodeModel AddNode(string typeId, Vector2 position)
@@ -61,9 +71,9 @@ namespace NodeGraph.Core
 
             _nodeSubscriptions.Add(node.Id, node.Changes.Subscribe(change =>
             {
-                Changes.OnNext(new GraphChange(GraphChangeKind.NodeChanged, node, message: change.Kind.ToString()));
+                _changes.OnNext(new GraphChange(GraphChangeKind.NodeChanged, node, message: change.Kind.ToString()));
             }));
-            Changes.OnNext(new GraphChange(GraphChangeKind.NodeAdded, node));
+            _changes.OnNext(new GraphChange(GraphChangeKind.NodeAdded, node));
             return node;
         }
 
@@ -92,7 +102,7 @@ namespace NodeGraph.Core
             _nodes.Remove(nodeId);
             node.Detach();
             node.Dispose();
-            Changes.OnNext(new GraphChange(GraphChangeKind.NodeRemoved, node));
+            _changes.OnNext(new GraphChange(GraphChangeKind.NodeRemoved, node));
             return true;
         }
 
@@ -141,7 +151,7 @@ namespace NodeGraph.Core
 
             var connection = new Connection(connectionId ?? Guid.NewGuid(), output, input);
             _connections.Add(connection);
-            Changes.OnNext(new GraphChange(GraphChangeKind.ConnectionAdded, connection: connection));
+            _changes.OnNext(new GraphChange(GraphChangeKind.ConnectionAdded, connection: connection));
             return ConnectionResult.Succeeded(connection);
         }
 
@@ -151,7 +161,7 @@ namespace NodeGraph.Core
             {
                 return false;
             }
-            Changes.OnNext(new GraphChange(GraphChangeKind.ConnectionRemoved, connection: connection));
+            _changes.OnNext(new GraphChange(GraphChangeKind.ConnectionRemoved, connection: connection));
             return true;
         }
 
@@ -220,7 +230,7 @@ namespace NodeGraph.Core
         public void SetViewport(GraphViewport viewport)
         {
             Viewport = viewport;
-            Changes.OnNext(new GraphChange(GraphChangeKind.NodeChanged, message: "Viewport"));
+            _changes.OnNext(new GraphChange(GraphChangeKind.NodeChanged, message: "Viewport"));
         }
 
         public void AddUnresolvedConnection(UnresolvedConnection connection)
@@ -246,7 +256,7 @@ namespace NodeGraph.Core
             _nodes.Clear();
             _ports.Clear();
             _connections.Clear();
-            Changes.Dispose();
+            _changes.Dispose();
         }
     }
 }

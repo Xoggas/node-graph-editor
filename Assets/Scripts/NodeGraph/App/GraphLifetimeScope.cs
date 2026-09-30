@@ -1,5 +1,6 @@
 using System;
 using NodeGraph.Core;
+using NodeGraph.Flow;
 using NodeGraph.Serialization;
 using NodeGraph.UI;
 using VContainer;
@@ -20,8 +21,16 @@ namespace NodeGraph.App
             builder.RegisterInstance(registry.Nodes);
             builder.RegisterInstance(viewRegistry);
 
-            builder.Register<GraphModel>(container => new GraphModel(container.Resolve<NodeGraphRegistry>()), Lifetime.Scoped);
+            builder.Register<IEventBus, EventBus>(Lifetime.Scoped);
+            builder.Register<StateMachine>(Lifetime.Scoped);
+            builder.Register<GraphSession>(container => new GraphSession(new GraphModel(container.Resolve<NodeGraphRegistry>())), Lifetime.Scoped);
+            builder.Register<IGraphMutationService, GraphMutationService>(Lifetime.Scoped);
+            builder.Register<ISampleNodeMutationService, SampleNodeMutationService>(Lifetime.Scoped);
             builder.Register<GraphViewModel>(Lifetime.Scoped);
+            builder.Register<GraphMutationState>(Lifetime.Scoped);
+            builder.Register<GraphDocumentState>(Lifetime.Scoped);
+            builder.Register<SampleNodeState>(Lifetime.Scoped);
+            builder.RegisterEntryPoint<GraphStateLifetime>();
             builder.Register<GraphJsonSerializer>(Lifetime.Singleton);
             builder.Register<IGraphFileDialog, SfbGraphFileDialog>(Lifetime.Singleton);
             builder.Register<GraphFileService>(Lifetime.Singleton);

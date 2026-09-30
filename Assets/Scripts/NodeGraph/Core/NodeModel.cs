@@ -12,13 +12,14 @@ namespace NodeGraph.Core
         private GraphModel _graph;
         private GraphTypeRegistry _typeRegistry;
         private string _displayName;
+        private readonly Subject<NodeChange> _changes = new Subject<NodeChange>();
 
         public Guid Id { get; }
         public string TypeId { get; private set; }
         public Vector2 Position { get; private set; }
         public IReadOnlyList<Port> Ports => _ports;
         public virtual string DisplayName => string.IsNullOrWhiteSpace(_displayName) ? TypeId : _displayName;
-        public Subject<NodeChange> Changes { get; } = new Subject<NodeChange>();
+        public Observable<NodeChange> Changes => _changes;
 
         protected NodeModel(Guid id)
         {
@@ -258,7 +259,7 @@ namespace NodeGraph.Core
 
         protected void RaiseChanged(NodeChangeKind kind)
         {
-            Changes.OnNext(new NodeChange(this, kind));
+            _changes.OnNext(new NodeChange(this, kind));
         }
 
         private Port DefinePort(string key, PortDirection direction, string typeId, string displayName, PortCapacity capacity, bool isDynamic, Guid? id)
@@ -305,7 +306,7 @@ namespace NodeGraph.Core
 
         public virtual void Dispose()
         {
-            Changes.Dispose();
+            _changes.Dispose();
         }
     }
 

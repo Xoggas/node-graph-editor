@@ -38,8 +38,6 @@ namespace NodeGraph.UI
         public event Action<NodeView, PointerDownEvent> DragStarted;
         public event Action<NodeView, PointerMoveEvent> DragMoved;
         public event Action<NodeView, PointerUpEvent> DragEnded;
-        public event Action<NodeView, PointerDownEvent> Selected;
-        public event Action<NodeView> DeleteRequested;
         public event Action<NodeView> LayoutChanged;
         public event Action<PortView> ConnectionRequested;
         public event Action<PortView> ConnectionReleased;
@@ -78,7 +76,6 @@ namespace NodeGraph.UI
             RegisterCallback<PointerDownEvent>(OnPointerDown);
             RegisterCallback<PointerMoveEvent>(OnPointerMove);
             RegisterCallback<PointerUpEvent>(OnPointerUp);
-            RegisterCallback<KeyDownEvent>(OnKeyDown);
             RegisterCallback<GeometryChangedEvent>(OnGeometryChanged);
             focusable = true;
         }
@@ -284,7 +281,6 @@ namespace NodeGraph.UI
             }
 
             Focus();
-            Selected?.Invoke(this, evt);
             _dragging = true;
             _dragPointerId = evt.pointerId;
             _dragStartPointer = evt.position;
@@ -343,15 +339,6 @@ namespace NodeGraph.UI
         {
             var delta = (pointerPosition - _dragStartPointer) / Mathf.Max(zoom, 0.01f);
             return _dragStartPosition + delta;
-        }
-
-        private void OnKeyDown(KeyDownEvent evt)
-        {
-            if (evt.keyCode == KeyCode.Delete || evt.keyCode == KeyCode.Backspace)
-            {
-                DeleteRequested?.Invoke(this);
-                evt.StopPropagation();
-            }
         }
 
         public virtual void Dispose()

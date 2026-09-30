@@ -20,7 +20,7 @@ namespace NodeGraph.Samples
             }
 
             field.SetValueWithoutNotify(model.Value);
-            field.RegisterValueChangedCallback(change => model.SetValue(change.newValue));
+            field.RegisterValueChangedCallback(change => viewModel.RequestNumberValue(change.newValue));
             Bindings.Add(model.Changes.Subscribe(change =>
             {
                 if (change.Kind == NodeChangeKind.State)
@@ -90,7 +90,7 @@ namespace NodeGraph.Samples
             {
                 throw new InvalidOperationException("DynamicOutputNode.uxml must contain add-output-button.");
             }
-            button.clicked += model.AddOutput;
+            button.clicked += viewModel.RequestAddDynamicOutput;
         }
     }
 }

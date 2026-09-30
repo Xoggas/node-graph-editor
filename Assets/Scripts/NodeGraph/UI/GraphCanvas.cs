@@ -97,10 +97,9 @@ namespace NodeGraph.UI
             RegisterCallback<PointerMoveEvent>(OnPointerMove, TrickleDown.TrickleDown);
             RegisterCallback<PointerUpEvent>(OnPointerUp, TrickleDown.TrickleDown);
             RegisterCallback<WheelEvent>(OnWheel);
-            RegisterCallback<KeyDownEvent>(OnKeyDown, TrickleDown.TrickleDown);
             _canvasRoot.RegisterCallback<GeometryChangedEvent>(_ => RefreshEdges());
 
-            _subscriptions.Add(_viewModel.Graph.Changes.Subscribe(OnGraphChanged));
+            _subscriptions.Add(_viewModel.SubscribeToChanges(OnGraphChanged));
             RebuildNodes();
         }
 
@@ -222,11 +221,9 @@ namespace NodeGraph.UI
             foreach (var nodeViewModel in _viewModel.Nodes)
             {
                 var nodeView = _viewRegistry.Create(nodeViewModel);
-                nodeView.Selected += OnNodeSelected;
                 nodeView.DragStarted += OnNodeDragStarted;
                 nodeView.DragMoved += OnNodeDragged;
                 nodeView.DragEnded += OnNodeDragEnded;
-                nodeView.DeleteRequested += OnDeleteRequested;
                 nodeView.LayoutChanged += OnNodeLayoutChanged;
                 _nodeViews.Add(nodeViewModel.Model.Id, nodeView);
                 _nodeLayer.Add(nodeView);
@@ -247,7 +244,7 @@ namespace NodeGraph.UI
             var pan = _viewModel.ViewportPosition.Value;
             foreach (var pair in _nodeViews)
             {
-                if (_viewModel.Graph.TryGetNode(pair.Key, out var model))
+                if (_viewModel.TryGetNode(pair.Key, out var model))
                 {
                     pair.Value.ApplyGraphPosition(model.Position, zoom, pan);
                 }
@@ -263,7 +260,7 @@ namespace NodeGraph.UI
             _edgeViews.Clear();
 
             var selectedConnectionExists = false;
-            foreach (var connection in _viewModel.Graph.Connections)
+            foreach (var connection in _viewModel.Connections)
             {
                 var edgeView = new GraphEdgeView(connection, GetPortPosition, GetNodeBounds);
                 if (_selectedConnectionId.HasValue && connection.Id == _selectedConnectionId.Value)
@@ -321,19 +318,11 @@ namespace NodeGraph.UI
             RefreshEdges();
         }
 
-        private void OnNodeSelected(NodeView nodeView, PointerDownEvent evt)
+        private void SelectNodeFromPointer(NodeView nodeView, PointerDownEvent evt)
         {
-            var edgeView = FindEdgeAt(evt.position);
-            if (edgeView != null)
-            {
-                SelectConnection(edgeView.Connection);
-                Focus();
-                return;
-            }
-
             ClearConnectionSelection();
 
-            if (evt.ctrlKey)
+            if (evt.ctrlKey || evt.commandKey)
             {
                 ToggleSelection(nodeView);
                 return;
@@ -380,16 +369,11 @@ namespace NodeGraph.UI
             var delta = position - startPosition;
             foreach (var pair in _dragStartPositions)
             {
-                pair.Key.ViewModel.SetPosition(pair.Value + delta);
+                pair.Key.ViewModel.RequestPosition(pair.Value + delta);
             }
 
             ApplyLayout();
             RefreshEdges();
-        }
-
-        private void OnDeleteRequested(NodeView nodeView)
-        {
-            _viewModel.DeleteNode(nodeView.ViewModel.Model.Id);
         }
 
         private void ClearSelection()
@@ -459,7 +443,7 @@ namespace NodeGraph.UI
                 }
             }
 
-            _viewModel.SetStatus("Connection selected.");
+            _viewModel.RequestStatus("Connection selected.");
         }
 
         private void AddToSelection(NodeView nodeView)
@@ -583,8 +567,15 @@ namespace NodeGraph.UI
                     _connectionPointerId = evt.pointerId;
                     _connectionPointerPosition = evt.position;
                     PointerCaptureHelper.CapturePointer(this, evt.pointerId);
-                    _viewModel.SetStatus($"Connecting from {portView.ViewModel.DisplayName}...");
+                    _viewModel.RequestStatus($"Connecting from {portView.ViewModel.DisplayName}...");
                     evt.StopPropagation();
+                }
+                else if (FindNodeView(evt.target as VisualElement) is { } nodeView)
+                {
+                    if (!IsInteractiveTarget(evt.target as VisualElement))
+                    {
+                        SelectNodeFromPointer(nodeView, evt);
+                    }
                 }
                 else if (FindEdgeAt(evt.position) is { } edgeView)
                 {
@@ -592,9 +583,9 @@ namespace NodeGraph.UI
                     Focus();
                     evt.StopPropagation();
                 }
-                else if (FindNodeView(evt.target as VisualElement) == null)
+                else
                 {
-                    BeginSelection(evt.position, evt.pointerId, evt.shiftKey, evt.ctrlKey);
+                    BeginSelection(evt.position, evt.pointerId, evt.shiftKey, evt.ctrlKey || evt.commandKey);
                     PointerCaptureHelper.CapturePointer(this, evt.pointerId);
                     evt.StopPropagation();
                 }
@@ -615,42 +606,51 @@ namespace NodeGraph.UI
             evt.StopPropagation();
         }
 
-        public bool DeleteSelectedConnection()
+        public bool DeleteSelectedElements()
         {
-            if (!_selectedConnectionId.HasValue)
+            if (_selectedConnectionId.HasValue)
             {
-                return false;
-            }
-
-            var selectedConnectionId = _selectedConnectionId.Value;
-            var connection = _viewModel.Graph.Connections.FirstOrDefault(item => item.Id == selectedConnectionId);
-            if (connection == null)
-            {
+                var selectedConnectionId = _selectedConnectionId.Value;
+                var connection = _viewModel.Connections.FirstOrDefault(item => item.Id == selectedConnectionId);
                 ClearConnectionSelection();
-                return false;
+                if (connection == null)
+                {
+                    return false;
+                }
+
+                _viewModel.RequestDisconnect(connection.Id);
+                return true;
             }
 
-            ClearConnectionSelection();
-            if (!_viewModel.Disconnect(connection))
+            if (_selectedNodes.Count == 0)
             {
                 return false;
             }
 
-            _viewModel.SetStatus("Connection deleted.");
+            var nodeIds = _selectedNodes.Select(nodeView => nodeView.ViewModel.Model.Id).ToArray();
+            ClearSelection();
+            foreach (var nodeId in nodeIds)
+            {
+                _viewModel.RequestDeleteNode(nodeId);
+            }
+
             return true;
         }
 
-        private void OnKeyDown(KeyDownEvent evt)
+        public bool IsInteractiveTarget(VisualElement target)
         {
-            if (evt.keyCode != KeyCode.Delete && evt.keyCode != KeyCode.Backspace)
+            var element = target;
+            while (element != null && element != this)
             {
-                return;
+                if (element is PortView || element is Button || element is TextField || element is FloatField || element.ClassListContains("unity-base-field"))
+                {
+                    return true;
+                }
+
+                element = element.parent;
             }
 
-            if (DeleteSelectedConnection())
-            {
-                evt.StopPropagation();
-            }
+            return false;
         }
 
         private void OnPointerMove(PointerMoveEvent evt)
@@ -677,7 +677,7 @@ namespace NodeGraph.UI
 
             var currentPointer = new Vector2(evt.position.x, evt.position.y);
             var delta = currentPointer - _panStartPointer;
-            _viewModel.SetViewport(_panStartPosition + delta, _viewModel.Zoom.Value);
+            _viewModel.RequestViewport(_panStartPosition + delta, _viewModel.Zoom.Value);
             ApplyLayout();
             RefreshEdges();
             MarkCanvasDirty();
@@ -738,7 +738,7 @@ namespace NodeGraph.UI
 
             if (sourcePort == null || portView == null || sourcePort == portView)
             {
-                _viewModel.SetStatus("Connection cancelled.");
+                _viewModel.RequestStatus("Connection cancelled.");
                 return;
             }
 
@@ -749,11 +749,11 @@ namespace NodeGraph.UI
 
             if (output.Direction == PortDirection.Output && input.Direction == PortDirection.Input)
             {
-                _viewModel.Connect(output, input);
+                _viewModel.RequestConnect(output, input);
             }
             else
             {
-                _viewModel.SetStatus("A connection must go from Output to Input.");
+                _viewModel.RequestStatus("A connection must go from Output to Input.");
             }
         }
 
@@ -788,7 +788,7 @@ namespace NodeGraph.UI
             var currentPan = _viewModel.ViewportPosition.Value;
             var zoomRatio = newZoom / Mathf.Max(oldZoom, 0.0001f);
             var newPan = cursorPosition - (cursorPosition - currentPan) * zoomRatio;
-            _viewModel.SetViewport(newPan, newZoom);
+            _viewModel.RequestViewport(newPan, newZoom);
             ApplyLayout();
             RefreshEdges();
             MarkCanvasDirty();
