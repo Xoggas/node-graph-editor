@@ -1,7 +1,13 @@
 {
   "id": "dialogue.line",
-  "title": "Line",
-  "description": "Реплика: персонаж Character с эмоцией Emotion произносит текст Line. Имя ноды — ключ локализации текста. Варианты ответа — ноды Choice, подключённые к Next.\n\nБлокирующая: диалог ждёт, пока игрок не продолжит.",
+  "title": {
+    "en": "Line",
+    "ru": "Реплика"
+  },
+  "description": {
+    "en": "A line: Character with the Emotion says the Line text. The node name is the localization key of the text. Answers are Choice nodes connected to Next.\n\nBlocking: the dialogue waits until the player goes on.",
+    "ru": "Реплика: «Персонаж» с «Эмоцией» произносит текст «Реплики». Имя ноды — ключ локализации текста. Варианты ответа — ноды «Выбор», подключённые к «Далее».\n\nБлокирующая: диалог ждёт, пока игрок не продолжит."
+  },
   "menu": "Dialogue",
   "order": 1,
   "color": "#5b8fd9",
@@ -16,14 +22,20 @@
       "id": "in",
       "direction": "input",
       "type": "flow",
-      "label": "Input"
+      "label": {
+        "en": "Input",
+        "ru": "Вход"
+      }
     },
     {
       "id": "next",
       "direction": "output",
       "type": "flow",
       "capacity": "multiple",
-      "label": "Next"
+      "label": {
+        "en": "Next",
+        "ru": "Далее"
+      }
     }
   ],
   "fields": [
@@ -31,7 +43,10 @@
       "id": "speaker",
       "type": "resource",
       "resourceType": "character",
-      "label": "Character",
+      "label": {
+        "en": "Character",
+        "ru": "Персонаж"
+      },
       "previewHeight": 200
     },
     {
@@ -39,14 +54,20 @@
       "type": "resourceVariant",
       "source": "speaker",
       "collection": "emotions",
-      "label": "Emotion"
+      "label": {
+        "en": "Emotion",
+        "ru": "Эмоция"
+      }
     },
     {
       "id": "line",
       "type": "localizedText",
       "keyFrom": "name",
       "multiline": true,
-      "label": "Line"
+      "label": {
+        "en": "Line",
+        "ru": "Реплика"
+      }
     }
   ]
 }

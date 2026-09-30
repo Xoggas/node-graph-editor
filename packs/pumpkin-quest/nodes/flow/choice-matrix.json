@@ -1,7 +1,13 @@
 {
   "id": "dialogue.choice-matrix",
-  "title": "Choice Matrix",
-  "description": "Выбирает исход по сделанным ранее выборам. Столбцы (C1, C2…) — выборы из списка Conditions, строки (O1, O2…) — исходы. Отмеченная клетка — выбор должен быть сделан, пустая — не сделан. Срабатывает первый исход, у которого совпала вся строка, и диалог идёт в его выход Output N; если ни один не подошёл — в Default.\n\nНеблокирующая: выполняется сразу, диалог идёт дальше.",
+  "title": {
+    "en": "Choice Matrix",
+    "ru": "Матрица выборов"
+  },
+  "description": {
+    "en": "Picks an outcome by the choices made earlier. Columns (C0, C1…) are the choices of the Conditions list, rows (O0, O1…) are outcomes. A checked cell means the choice must have been made, an empty one that it must not. The first outcome whose whole row matches wins and the dialogue goes to its Output N; if none matches, to Default.\n\nNon-blocking: runs at once, the dialogue goes on.",
+    "ru": "Выбирает исход по сделанным ранее выборам. Столбцы (У0, У1…) — выборы из списка «Условия», строки (И0, И1…) — исходы. Отмеченная клетка — выбор должен быть сделан, пустая — не сделан. Срабатывает первый исход, у которого совпала вся строка, и диалог идёт в его «Выход N»; если ни один не подошёл — в «Иначе».\n\nНеблокирующая: выполняется сразу, диалог идёт дальше."
+  },
   "menu": "Flow",
   "order": 3,
   "color": "#4fb37a",
@@ -11,7 +17,10 @@
       "id": "in",
       "direction": "input",
       "type": "flow",
-      "label": "Input"
+      "label": {
+        "en": "Input",
+        "ru": "Вход"
+      }
     },
     {
       "id": "outcome",
@@ -19,21 +28,30 @@
       "type": "flow",
       "repeat": {
         "count": "outcomes",
-        "label": "Output {i}"
+        "label": {
+          "en": "Output {i}",
+          "ru": "Выход {i}"
+        }
       }
     },
     {
       "id": "default",
       "direction": "output",
       "type": "flow",
-      "label": "Default"
+      "label": {
+        "en": "Default",
+        "ru": "Иначе"
+      }
     }
   ],
   "fields": [
     {
       "id": "choices",
       "type": "list",
-      "label": "Conditions",
+      "label": {
+        "en": "Conditions",
+        "ru": "Условия"
+      },
       "maxItems": 30,
       "item": {
         "type": "record",
@@ -42,7 +60,10 @@
             "id": "choice",
             "type": "nodeRef",
             "schema": "dialogue.choice",
-            "label": "Choice",
+            "label": {
+              "en": "Choice",
+              "ru": "Выбор"
+            },
             "required": true
           }
         ]
@@ -52,7 +73,10 @@
     {
       "id": "outcomes",
       "type": "int",
-      "label": "Outcomes",
+      "label": {
+        "en": "Outcomes",
+        "ru": "Исходы"
+      },
       "min": 0,
       "max": 30
     },
@@ -62,9 +86,18 @@
       "cell": "bool",
       "rows": "outcomes",
       "columns": "choices",
-      "rowLabel": "O{i}",
-      "columnLabel": "C{i}",
-      "label": "Matrix"
+      "rowLabel": {
+        "en": "O{i}",
+        "ru": "И{i}"
+      },
+      "columnLabel": {
+        "en": "C{i}",
+        "ru": "У{i}"
+      },
+      "label": {
+        "en": "Matrix",
+        "ru": "Матрица"
+      }
     }
   ]
 }

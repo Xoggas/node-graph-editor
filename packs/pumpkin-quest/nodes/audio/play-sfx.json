@@ -1,7 +1,13 @@
 {
   "id": "dialogue.play-sfx",
-  "title": "Play Sfx",
-  "description": "Проигрывает звуковой эффект.\n\nНеблокирующая: выполняется сразу, диалог идёт дальше.",
+  "title": {
+    "en": "Play Sfx",
+    "ru": "Проиграть звук"
+  },
+  "description": {
+    "en": "Plays a sound effect.\n\nNon-blocking: runs at once, the dialogue goes on.",
+    "ru": "Проигрывает звуковой эффект.\n\nНеблокирующая: выполняется сразу, диалог идёт дальше."
+  },
   "menu": "Audio",
   "order": 2,
   "color": "#d9a441",
@@ -11,13 +17,19 @@
       "id": "in",
       "direction": "input",
       "type": "flow",
-      "label": "Input"
+      "label": {
+        "en": "Input",
+        "ru": "Вход"
+      }
     },
     {
       "id": "out",
       "direction": "output",
       "type": "flow",
-      "label": "Output"
+      "label": {
+        "en": "Output",
+        "ru": "Выход"
+      }
     }
   ],
   "fields": [
@@ -25,7 +37,10 @@
       "id": "sfx",
       "type": "resource",
       "resourceType": "sfx",
-      "label": "Sfx",
+      "label": {
+        "en": "Sfx",
+        "ru": "Звук"
+      },
       "previewHeight": 0,
       "required": true
     }

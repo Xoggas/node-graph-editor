@@ -1,7 +1,13 @@
 {
   "id": "dialogue.set-background",
-  "title": "Set Background",
-  "description": "Меняет фон сцены на выбранный.\n\nНеблокирующая: выполняется сразу, диалог идёт дальше.",
+  "title": {
+    "en": "Set Background",
+    "ru": "Сменить фон"
+  },
+  "description": {
+    "en": "Changes the scene background to the chosen one.\n\nNon-blocking: runs at once, the dialogue goes on.",
+    "ru": "Меняет фон сцены на выбранный.\n\nНеблокирующая: выполняется сразу, диалог идёт дальше."
+  },
   "menu": "Scene",
   "order": 1,
   "color": "#9a7bd6",
@@ -11,13 +17,19 @@
       "id": "in",
       "direction": "input",
       "type": "flow",
-      "label": "Input"
+      "label": {
+        "en": "Input",
+        "ru": "Вход"
+      }
     },
     {
       "id": "out",
       "direction": "output",
       "type": "flow",
-      "label": "Output"
+      "label": {
+        "en": "Output",
+        "ru": "Выход"
+      }
     }
   ],
   "fields": [
@@ -25,7 +37,10 @@
       "id": "background",
       "type": "resource",
       "resourceType": "background",
-      "label": "Background",
+      "label": {
+        "en": "Background",
+        "ru": "Фон"
+      },
       "previewHeight": 140,
       "required": true
     }

@@ -1,5 +1,6 @@
 import { parseLibraries, parseResourceTypes, type ResourceLibrary } from "./resources";
 import { t } from "../i18n";
+import { localize, pickText, readText, type TextSource } from "./packText";
 import { newId, type PortCapacity, type PortDirection } from "./types";
 
 // ---------------------------------------------------------------------------------------------
@@ -262,15 +263,23 @@ export function parseSchemaPack(files: PackFile[], packDir: string | null = null
   const pack: SchemaPack = {
     id: reader.id(root, "id"),
     version: reader.int(root, "version", 1),
-    name: reader.string(root, "name", "") || reader.id(root, "id"),
+    name: reader.text(root, "name", "") || reader.id(root, "id"),
     languages: reader.stringArray(root, "languages", []),
-    menus: reader.stringArray(root, "menus", []),
+    menus: [],
     portTypes: new Map(),
     nodes: new Map(),
     resources: { types: new Map(), items: new Map(), roots: [] },
     exportEntry: null,
     warnings: [],
   };
+  localize(pack, "name", readText(root.name));
+  // Menus may be translated: { "en": "Flow", "ru": "Поток" }. Node types name a menu by any of its texts.
+  const menuSources = Array.isArray(root.menus) ? root.menus.map(readText).filter((menu): menu is TextSource => menu !== undefined) : [];
+  if (root.menus !== undefined && !Array.isArray(root.menus)) reader.error("menus", t("expected an array"));
+  menuSources.forEach((source, index) => {
+    pack.menus.push(pickText(source));
+    Object.defineProperty(pack.menus, index, { get: () => pickText(source), enumerable: true, configurable: true });
+  });
   const exportSettings = reader.optionalObject(root, "export");
   pack.exportEntry = exportSettings ? reader.optionalString(exportSettings, "entry") ?? null : null;
   const resourceTypes = parseResourceTypes(root.resourceTypes, pack.warnings);
@@ -279,9 +288,9 @@ export function parseSchemaPack(files: PackFile[], packDir: string | null = null
   for (const [id, raw] of Object.entries(portTypes)) {
     const type = reader.object(raw, `portTypes.${id}`);
     const capacity = reader.optionalObject(type, "capacity") ?? {};
-    pack.portTypes.set(id, {
+    const portType: PortTypeSchema = {
       id,
-      label: reader.string(type, "label", id),
+      label: reader.text(type, "label", id),
       color: reader.color(type, "color"),
       extends: reader.stringArray(type, "extends", []),
       capacity: {
@@ -292,7 +301,9 @@ export function parseSchemaPack(files: PackFile[], packDir: string | null = null
         input: reader.stringArray(type, "required", []).includes("input"),
         output: reader.stringArray(type, "required", []).includes("output"),
       },
-    });
+    };
+    localize(portType, "label", readText(type.label));
+    pack.portTypes.set(id, portType);
   }
   for (const type of pack.portTypes.values()) {
     for (const parent of type.extends) {
@@ -340,6 +351,10 @@ export function parseSchemaPack(files: PackFile[], packDir: string | null = null
         pack.warnings.push((error as Error).message);
       }
     });
+  }
+  for (const schema of pack.nodes.values()) {
+    const source = menuSources.find((menu) => typeof menu !== "string" && Object.values(menu).includes(schema.menu));
+    if (source && !Object.getOwnPropertyDescriptor(schema, "menu")?.get) localize(schema, "menu", source);
   }
   if (pack.exportEntry && !pack.nodes.has(pack.exportEntry)) {
     pack.warnings.push(t("pack.json → export.entry: node schema '{id}' does not exist.", { id: pack.exportEntry }));
@@ -406,7 +421,7 @@ export function parseNodeSchema(json: unknown, location: string, pack: Pick<Sche
     try {
       patternRegex = new RegExp(pattern, "u");
     } catch {
-      reader.error("naming.pattern", "is not a valid regular expression");
+      reader.error("naming.pattern", t("is not a valid regular expression"));
     }
   }
 
@@ -428,19 +443,20 @@ export function parseNodeSchema(json: unknown, location: string, pack: Pick<Sche
     const port = reader.object(raw, path);
     const type = reader.string(port, "type", "");
     if (!pack.portTypes.has(type)) {
-      reader.error(`${path}.type`, `unknown port type '${type}'`);
+      reader.error(`${path}.type`, t("unknown port type '{type}'", { type }));
     }
     const result: PortSchema = {
       id: reader.id(port, "id", path),
       direction: reader.enum(port, "direction", DIRECTIONS, path),
       type,
-      label: reader.optionalString(port, "label"),
+      label: reader.optionalText(port, "label", path),
       capacity: reader.optionalEnum(port, "capacity", CAPACITIES, path),
       optional: reader.bool(port, "optional", false) || undefined,
     };
+    localize(result, "label", readText(port.label));
     const repeat = reader.optionalObject(port, "repeat", path);
     if (repeat) {
-      const label = reader.optionalString(repeat, "label");
+      const label = reader.optionalText(repeat, "label", `${path}.repeat`);
       const list = reader.optionalString(repeat, "list");
       const count = reader.optionalString(repeat, "count");
       if (list) {
@@ -448,14 +464,16 @@ export function parseNodeSchema(json: unknown, location: string, pack: Pick<Sche
           reader.error(`${path}.repeat.list`, t("must name a list field, got '{value}'", { value: list }));
         }
         result.repeat = { list, label };
+        localize(result.repeat, "label", readText(repeat.label));
       } else if (count) {
         const countField = fieldById.get(count);
         if (countField?.type !== "int") {
           reader.error(`${path}.repeat.count`, t("must name an int field, got '{value}'", { value: count }));
         }
         result.repeat = { count, label };
+        localize(result.repeat, "label", readText(repeat.label));
       } else {
-        reader.error(`${path}.repeat`, "needs 'list' or 'count'");
+        reader.error(`${path}.repeat`, t("needs 'list' or 'count'"));
       }
     }
     return result;
@@ -465,11 +483,11 @@ export function parseNodeSchema(json: unknown, location: string, pack: Pick<Sche
   const schema: NodeSchema = {
     id,
     version: reader.int(root, "version", 1),
-    title: reader.string(root, "title", id),
-    menu: reader.string(root, "menu", ""),
+    title: reader.text(root, "title", id),
+    menu: reader.text(root, "menu", ""),
     order: reader.optionalNumber(root, "order") ?? null,
     color: reader.color(root, "color"),
-    description: reader.optionalString(root, "description"),
+    description: reader.optionalText(root, "description"),
     naming: {
       editable: reader.bool(naming, "editable", true),
       unique: reader.bool(naming, "unique", false),
@@ -484,6 +502,9 @@ export function parseNodeSchema(json: unknown, location: string, pack: Pick<Sche
     fields,
     view: reader.optionalString(root, "view"),
   };
+  localize(schema, "title", readText(root.title));
+  localize(schema, "description", readText(root.description));
+  localize(schema, "menu", readText(root.menu) ?? undefined);
   if (reader.errors.length > 0) {
     throw new SchemaError(reader.errors.join("\n"));
   }
@@ -493,6 +514,17 @@ export function parseNodeSchema(json: unknown, location: string, pack: Pick<Sche
 function parseField(reader: Reader, raw: unknown, path: string, requireId = true): FieldSchema {
   const field = parseFieldType(reader, raw, path, requireId);
   const source: Record<string, unknown> = isRecord(raw) ? raw : {};
+  localize(field, "label", readText(source.label));
+  if (field.type === "string") localize(field, "placeholder", readText(source.placeholder));
+  if (field.type === "list") {
+    if (source.itemLabel !== undefined) localize(field, "itemLabel", readText(source.itemLabel));
+    // The editor's own default, in the interface language.
+    else Object.defineProperty(field, "itemLabel", { get: () => t("Item {n}"), enumerable: true, configurable: true });
+  }
+  if (field.type === "matrix") {
+    localize(field, "rowLabel", readText(source.rowLabel));
+    localize(field, "columnLabel", readText(source.columnLabel));
+  }
   if (reader.bool(source, "required", false)) {
     field.required = true;
   }
@@ -507,7 +539,7 @@ function parseFieldType(reader: Reader, raw: unknown, path: string, requireId: b
   const field = reader.object(raw, path);
   const id = requireId ? reader.id(field, "id", path) : reader.string(field, "id", "item");
   const type = reader.string(field, "type", "", path);
-  const label = reader.string(field, "label", humanize(id));
+  const label = reader.text(field, "label", humanize(id));
   if (!FIELD_TYPES.has(type)) {
     return { id, label, type: "unsupported", declaredType: type || "(missing)" };
   }
@@ -528,7 +560,7 @@ function parseFieldType(reader: Reader, raw: unknown, path: string, requireId: b
         type,
         default: reader.string(field, "default", ""),
         multiline: reader.bool(field, "multiline", false),
-        placeholder: reader.optionalString(field, "placeholder"),
+        placeholder: reader.optionalText(field, "placeholder", path),
       };
     case "bool":
       return { id, label, type, default: reader.bool(field, "default", false) };
@@ -539,7 +571,9 @@ function parseFieldType(reader: Reader, raw: unknown, path: string, requireId: b
         }
         const entry = reader.object(option, `${path}.options[${index}]`);
         const value = reader.string(entry, "value", "", `${path}.options[${index}]`);
-        return { value, label: reader.string(entry, "label", value) };
+        const result = { value, label: reader.text(entry, "label", value) };
+        localize(result, "label", readText(entry.label));
+        return result;
       });
       if (options.length === 0) {
         reader.error(`${path}.options`, t("must not be empty"));
@@ -547,7 +581,7 @@ function parseFieldType(reader: Reader, raw: unknown, path: string, requireId: b
       const fallback = options[0]?.value ?? "";
       const value = reader.string(field, "default", fallback);
       if (options.length > 0 && !options.some((option) => option.value === value)) {
-        reader.error(`${path}.default`, `'${value}' is not one of the options`);
+        reader.error(`${path}.default`, t("'{value}' is not one of the options", { value }));
       }
       return { id, label, type, options, default: value, display: reader.enum(field, "display", ["dropdown", "segmented"], path, "dropdown") };
     }
@@ -555,17 +589,17 @@ function parseFieldType(reader: Reader, raw: unknown, path: string, requireId: b
       const fields = reader.array(field, "fields", path).map((entry, index) => parseField(reader, entry, `${path}.fields[${index}]`));
       checkUniqueIds(reader, fields, `${path}.fields`);
       if (fields.some((entry) => entry.id === "id")) {
-        reader.error(`${path}.fields`, "'id' is reserved for the element GUID");
+        reader.error(`${path}.fields`, t("'id' is reserved for the element GUID"));
       }
       return { id, label, type, fields };
     }
     case "list": {
       const item = parseField(reader, reader.object(field, "item", path), `${path}.item`, false);
       if (item.type === "list" || item.type === "matrix") {
-        reader.error(`${path}.item`, `a list of '${item.type}' is not supported`);
+        reader.error(`${path}.item`, t("a list of '{type}' is not supported", { type: item.type }));
       }
       if (item.type === "record" && item.fields.some((child) => child.type === "list" || child.type === "matrix")) {
-        reader.error(`${path}.item`, "records inside lists cannot contain lists or matrices");
+        reader.error(`${path}.item`, t("records inside lists cannot contain lists or matrices"));
       }
       return {
         id,
@@ -574,7 +608,7 @@ function parseFieldType(reader: Reader, raw: unknown, path: string, requireId: b
         item,
         minItems: Math.max(0, reader.int(field, "minItems", 0, path)),
         maxItems: reader.optionalNumber(field, "maxItems", path),
-        itemLabel: reader.string(field, "itemLabel", "Item {n}"),
+        itemLabel: reader.text(field, "itemLabel", "Item {n}"),
       };
     }
     case "itemRef":
@@ -613,8 +647,8 @@ function parseFieldType(reader: Reader, raw: unknown, path: string, requireId: b
         type,
         rows: reader.string(field, "rows", "", path),
         columns: reader.string(field, "columns", "", path),
-        rowLabel: reader.string(field, "rowLabel", "{n}"),
-        columnLabel: reader.string(field, "columnLabel", "{n}"),
+        rowLabel: reader.text(field, "rowLabel", "{n}"),
+        columnLabel: reader.text(field, "columnLabel", "{n}"),
       };
   }
   throw new SchemaError(t("{path}: unreachable field type '{type}'.", { path, type }));
@@ -873,7 +907,7 @@ function checkUniqueIds(reader: Reader, entries: { id: string }[], path: string)
   const seen = new Set<string>();
   for (const entry of entries) {
     if (seen.has(entry.id)) {
-      reader.error(path, `duplicate id '${entry.id}'`);
+      reader.error(path, t("duplicate id '{id}'", { id: entry.id }));
     }
     seen.add(entry.id);
   }
@@ -938,6 +972,22 @@ class Reader {
       return fallback;
     }
     return value;
+  }
+
+  /** A display text: a string, or one per interface language (see `TextSource`); the current one now. */
+  text(parent: Record<string, unknown>, key: string, fallback: string, path = ""): string {
+    const value = parent[key];
+    if (value === undefined) return fallback;
+    const source = readText(value);
+    if (source === undefined) {
+      this.error(join(path, key), t("expected a text: a string or { \"en\": …, \"ru\": … }"));
+      return fallback;
+    }
+    return pickText(source);
+  }
+
+  optionalText(parent: Record<string, unknown>, key: string, path = ""): string | undefined {
+    return parent[key] === undefined ? undefined : this.text(parent, key, "", path);
   }
 
   optionalString(parent: Record<string, unknown>, key: string): string | undefined {

@@ -1,7 +1,13 @@
 {
   "id": "dialogue.end",
-  "title": "End",
-  "description": "Завершает диалог. Ending задаёт, что будет дальше: выход в главное меню или перезапуск.\n\nНеблокирующая: выполняется сразу, диалог идёт дальше.",
+  "title": {
+    "en": "End",
+    "ru": "Конец"
+  },
+  "description": {
+    "en": "Ends the dialogue. Ending sets what comes next: back to the main menu or a restart.\n\nNon-blocking: runs at once, the dialogue goes on.",
+    "ru": "Завершает диалог. «Концовка» задаёт, что будет дальше: выход в главное меню или перезапуск.\n\nНеблокирующая: выполняется сразу, диалог идёт дальше."
+  },
   "menu": "Flow",
   "order": 4,
   "color": "#4fb37a",
@@ -14,22 +20,34 @@
       "id": "in",
       "direction": "input",
       "type": "flow",
-      "label": "Input"
+      "label": {
+        "en": "Input",
+        "ru": "Вход"
+      }
     }
   ],
   "fields": [
     {
       "id": "endingType",
       "type": "enum",
-      "label": "Ending",
+      "label": {
+        "en": "Ending",
+        "ru": "Концовка"
+      },
       "options": [
         {
           "value": "GoToMainMenu",
-          "label": "Go to main menu"
+          "label": {
+            "en": "Go to main menu",
+            "ru": "В главное меню"
+          }
         },
         {
           "value": "Restart",
-          "label": "Restart"
+          "label": {
+            "en": "Restart",
+            "ru": "Перезапуск"
+          }
         }
       ]
     }

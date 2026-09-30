@@ -1,7 +1,13 @@
 {
   "id": "condition.and",
-  "title": "And",
-  "description": "Истинно, если истинны все подключённые условия.\n\nНе часть потока диалога: только вычисляет значение для If и логических нод.",
+  "title": {
+    "en": "And",
+    "ru": "И"
+  },
+  "description": {
+    "en": "True if all connected conditions are true.\n\nNot part of the dialogue flow: only computes a value for If and logic nodes.",
+    "ru": "Истинно, если истинны все подключённые условия.\n\nНе часть потока диалога: только вычисляет значение для «Если» и логических нод."
+  },
   "menu": "Logic",
   "order": 1,
   "color": "#a07f93",
@@ -14,13 +20,19 @@
       "direction": "input",
       "type": "bool",
       "capacity": "multiple",
-      "label": "Conditions"
+      "label": {
+        "en": "Conditions",
+        "ru": "Условия"
+      }
     },
     {
       "id": "result",
       "direction": "output",
       "type": "bool",
-      "label": "Result"
+      "label": {
+        "en": "Result",
+        "ru": "Результат"
+      }
     }
   ]
 }

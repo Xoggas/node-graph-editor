@@ -216,6 +216,7 @@ export const ru: Record<string, Translation> = {
   // --- Canvas ---
   "Schema not found. The node data is kept as-is.": "Схема не найдена. Данные ноды сохранены как есть.",
   "No items": "Нет элементов",
+  "Item {n}": "Элемент {n}",
   "Empty: add rows and columns": "Пусто: добавьте строки и столбцы",
   "{name} is not selected": "{name}: не выбрано",
   "Loading…": "Загрузка…",
@@ -424,6 +425,15 @@ export const ru: Record<string, Translation> = {
   "expected a color like '#5a96dc'": "ожидается цвет вида «#5a96dc»",
   "expected one of: {options}": "ожидается одно из: {options}",
   "pack.json → resourceTypes: expected an object.": "pack.json → resourceTypes: ожидается объект.",
+  "'id' is reserved for the element GUID": "«id» зарезервирован для GUID элемента",
+  "'{value}' is not one of the options": "«{value}» — нет среди вариантов",
+  "a list of '{type}' is not supported": "список из «{type}» не поддерживается",
+  "duplicate id '{id}'": "повторяющийся id «{id}»",
+  'expected a text: a string or { "en": …, "ru": … }': 'ожидается текст: строка или { "en": …, "ru": … }',
+  "is not a valid regular expression": "неверное регулярное выражение",
+  "needs 'list' or 'count'": "нужен «list» или «count»",
+  "records inside lists cannot contain lists or matrices": "записи внутри списков не могут содержать списки и матрицы",
+  "unknown port type '{type}'": "неизвестный тип порта «{type}»",
   '{file}: expected one resource ({ "id", "type", ... }) or a library ({ "items": [...] }).':
     '{file}: ожидается один ресурс ({ "id", "type", ... }) или библиотека ({ "items": [...] }).',
   "{location}: an item needs a string 'id' and 'type'.": "{location}: у элемента должны быть строки «id» и «type».",

@@ -1,7 +1,13 @@
 {
   "id": "condition.not",
-  "title": "Not",
-  "description": "Обращает условие: истинно, когда входное условие ложно.\n\nНе часть потока диалога: только вычисляет значение для If и логических нод.",
+  "title": {
+    "en": "Not",
+    "ru": "Не"
+  },
+  "description": {
+    "en": "Inverts the condition: true when the input condition is false.\n\nNot part of the dialogue flow: only computes a value for If and logic nodes.",
+    "ru": "Обращает условие: истинно, когда входное условие ложно.\n\nНе часть потока диалога: только вычисляет значение для «Если» и логических нод."
+  },
   "menu": "Logic",
   "order": 3,
   "color": "#a07f93",
@@ -13,13 +19,19 @@
       "id": "condition",
       "direction": "input",
       "type": "bool",
-      "label": "Condition"
+      "label": {
+        "en": "Condition",
+        "ru": "Условие"
+      }
     },
     {
       "id": "result",
       "direction": "output",
       "type": "bool",
-      "label": "Result"
+      "label": {
+        "en": "Result",
+        "ru": "Результат"
+      }
     }
   ]
 }

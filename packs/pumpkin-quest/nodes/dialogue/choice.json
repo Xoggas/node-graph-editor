@@ -1,7 +1,13 @@
 {
   "id": "dialogue.choice",
-  "title": "Choice",
-  "description": "Вариант ответа игрока: кнопка с текстом Text. Выход ведёт в ветку, которая выполнится, если игрок выберет этот вариант. Сделанный выбор проверяется нодами Choice Was Made и Choices Were Made. Имя ноды — ключ локализации текста.\n\nБлокирующая: диалог ждёт, пока игрок не выберет вариант.",
+  "title": {
+    "en": "Choice",
+    "ru": "Выбор"
+  },
+  "description": {
+    "en": "An answer of the player: a button with the Text. The output leads to the branch that runs when the player picks it. A made choice is checked with Choice Was Made and Choices Were Made. The node name is the localization key of the text.\n\nBlocking: the dialogue waits until the player picks an answer.",
+    "ru": "Вариант ответа игрока: кнопка с «Текстом». Выход ведёт в ветку, которая выполнится, если игрок выберет этот вариант. Сделанный выбор проверяется нодами «Выбор сделан» и «Выборы сделаны». Имя ноды — ключ локализации текста.\n\nБлокирующая: диалог ждёт, пока игрок не выберет вариант."
+  },
   "menu": "Dialogue",
   "order": 2,
   "color": "#5b8fd9",
@@ -17,13 +23,19 @@
       "id": "in",
       "direction": "input",
       "type": "flow",
-      "label": "Input"
+      "label": {
+        "en": "Input",
+        "ru": "Вход"
+      }
     },
     {
       "id": "out",
       "direction": "output",
       "type": "flow",
-      "label": "Output"
+      "label": {
+        "en": "Output",
+        "ru": "Выход"
+      }
     }
   ],
   "fields": [
@@ -32,7 +44,10 @@
       "type": "localizedText",
       "keyFrom": "name",
       "multiline": true,
-      "label": "Text"
+      "label": {
+        "en": "Text",
+        "ru": "Текст"
+      }
     }
   ]
 }

@@ -1,7 +1,13 @@
 {
   "id": "condition.choice-was-made",
-  "title": "Choice Was Made",
-  "description": "Истинно, если игрок выбрал вариант Choice.\n\nНе часть потока диалога: только вычисляет значение для If и логических нод.",
+  "title": {
+    "en": "Choice Was Made",
+    "ru": "Выбор сделан"
+  },
+  "description": {
+    "en": "True if the player picked the Choice.\n\nNot part of the dialogue flow: only computes a value for If and logic nodes.",
+    "ru": "Истинно, если игрок выбрал вариант «Выбор».\n\nНе часть потока диалога: только вычисляет значение для «Если» и логических нод."
+  },
   "menu": "Conditions",
   "order": 1,
   "color": "#c46f9f",
@@ -13,7 +19,10 @@
       "id": "result",
       "direction": "output",
       "type": "bool",
-      "label": "Result"
+      "label": {
+        "en": "Result",
+        "ru": "Результат"
+      }
     }
   ],
   "fields": [
@@ -21,7 +30,10 @@
       "id": "choice",
       "type": "nodeRef",
       "schema": "dialogue.choice",
-      "label": "Choice",
+      "label": {
+        "en": "Choice",
+        "ru": "Выбор"
+      },
       "required": true
     }
   ]

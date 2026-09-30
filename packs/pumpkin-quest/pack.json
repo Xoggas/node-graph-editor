@@ -7,18 +7,45 @@
     "en"
   ],
   "menus": [
-    "Flow",
-    "Dialogue",
-    "Scene",
-    "Audio",
-    "Diary",
-    "Progress",
-    "Conditions",
-    "Logic"
+    {
+      "en": "Flow",
+      "ru": "Поток"
+    },
+    {
+      "en": "Dialogue",
+      "ru": "Диалог"
+    },
+    {
+      "en": "Scene",
+      "ru": "Сцена"
+    },
+    {
+      "en": "Audio",
+      "ru": "Звук"
+    },
+    {
+      "en": "Diary",
+      "ru": "Дневник"
+    },
+    {
+      "en": "Progress",
+      "ru": "Прогресс"
+    },
+    {
+      "en": "Conditions",
+      "ru": "Условия"
+    },
+    {
+      "en": "Logic",
+      "ru": "Логика"
+    }
   ],
   "portTypes": {
     "flow": {
-      "label": "Flow",
+      "label": {
+        "en": "Flow",
+        "ru": "Поток"
+      },
       "color": "#b8bcc5",
       "capacity": {
         "input": "multiple",
@@ -30,7 +57,10 @@
       ]
     },
     "bool": {
-      "label": "Condition",
+      "label": {
+        "en": "Condition",
+        "ru": "Условие"
+      },
       "color": "#c46f9f",
       "capacity": {
         "input": "single",
@@ -46,27 +76,45 @@
   },
   "resourceTypes": {
     "character": {
-      "label": "Characters",
+      "label": {
+        "en": "Characters",
+        "ru": "Персонажи"
+      },
       "variants": {
         "emotions": {
-          "label": "Emotion",
+          "label": {
+            "en": "Emotion",
+            "ru": "Эмоция"
+          },
           "default": "Idle"
         }
       }
     },
     "background": {
-      "label": "Backgrounds"
+      "label": {
+        "en": "Backgrounds",
+        "ru": "Фоны"
+      }
     },
     "music": {
-      "label": "Music",
+      "label": {
+        "en": "Music",
+        "ru": "Музыка"
+      },
       "media": "audio"
     },
     "sfx": {
-      "label": "Sfx",
+      "label": {
+        "en": "Sfx",
+        "ru": "Звуки"
+      },
       "media": "audio"
     },
     "diaryEntry": {
-      "label": "Diary"
+      "label": {
+        "en": "Diary",
+        "ru": "Дневник"
+      }
     }
   },
   "export": {

@@ -70,6 +70,16 @@ export function buildPorts(node: NodeModel, registry: SchemaRegistry): Port[] {
   }));
 }
 
+/** Re-reads port names from the schema, e.g. after the interface language changed. */
+export function relabelPorts(node: NodeModel, registry: SchemaRegistry): void {
+  if (!node.schema) return;
+  const labels = new Map(derivePorts(node.schema, node.data, registry.portTypes).map((port) => [port.key, port.label]));
+  for (const port of node.ports) {
+    const label = labels.get(port.key);
+    if (label !== undefined) port.displayName = label;
+  }
+}
+
 export function createNode(registry: SchemaRegistry, schemaId: string, id: string = newId(), data?: NodeData): NodeModel {
   const schema = registry.getSchema(schemaId);
   if (!schema) {

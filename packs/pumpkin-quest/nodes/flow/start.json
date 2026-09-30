@@ -1,7 +1,13 @@
 {
   "id": "dialogue.start",
-  "title": "Start",
-  "description": "Точка входа: с неё начинается выполнение диалога. В графе может быть только одна.\n\nНеблокирующая: выполняется сразу, диалог идёт дальше.",
+  "title": {
+    "en": "Start",
+    "ru": "Старт"
+  },
+  "description": {
+    "en": "Entry point: the dialogue starts here. A graph can have only one.\n\nNon-blocking: runs at once, the dialogue goes on.",
+    "ru": "Точка входа: с неё начинается диалог. В графе может быть только одна.\n\nНеблокирующая: выполняется сразу, диалог идёт дальше."
+  },
   "menu": "Flow",
   "order": 1,
   "color": "#4fb37a",
@@ -15,7 +21,10 @@
       "id": "out",
       "direction": "output",
       "type": "flow",
-      "label": "Output"
+      "label": {
+        "en": "Output",
+        "ru": "Выход"
+      }
     }
   ]
 }

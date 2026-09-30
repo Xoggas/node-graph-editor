@@ -11,7 +11,8 @@ import { exportRuntimeGraph } from "../graph/export";
 import { GraphJsonSerializer } from "../graph/serializer";
 import { type Problem, validateGraph } from "../graph/validate";
 import type { NoteContent, Vec2 } from "../graph/types";
-import { t } from "../i18n";
+import { onUiLanguageChange, t } from "../i18n";
+import { relabelPorts } from "../graph/node";
 import { bundledPack } from "./bundledPack";
 import { createFileSystem, type GraphFileSystem, type OpenedFile } from "./files";
 
@@ -150,6 +151,12 @@ export class Editor {
       autoExport: readStored(AUTO_EXPORT_KEY) !== "false",
     };
     this.attach(this.currentGraph);
+    // Pack texts follow the interface language (see `localize`); a few are copied and need a refresh.
+    onUiLanguageChange(() => {
+      for (const node of this.graph.nodes) relabelPorts(node, this.registry);
+      this.update({ descriptors: this.registry.descriptors() });
+      this.scheduleValidation();
+    });
   }
 
   get graph(): GraphModel {

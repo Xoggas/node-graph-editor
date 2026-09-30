@@ -1,7 +1,13 @@
 {
   "id": "condition.relationship-points",
-  "title": "Relationship Point Comparer",
-  "description": "Сравнивает очки отношений с персонажем Character с Target value выбранным оператором.\n\nНе часть потока диалога: только вычисляет значение для If и логических нод.",
+  "title": {
+    "en": "Relationship Point Comparer",
+    "ru": "Сравнение отношений"
+  },
+  "description": {
+    "en": "Compares the relationship points with the Character with the Target value using the chosen operator.\n\nNot part of the dialogue flow: only computes a value for If and logic nodes.",
+    "ru": "Сравнивает очки отношений с «Персонажем» со «Значением» выбранным оператором.\n\nНе часть потока диалога: только вычисляет значение для «Если» и логических нод."
+  },
   "menu": "Conditions",
   "order": 4,
   "color": "#c46f9f",
@@ -13,7 +19,10 @@
       "id": "result",
       "direction": "output",
       "type": "bool",
-      "label": "Result"
+      "label": {
+        "en": "Result",
+        "ru": "Результат"
+      }
     }
   ],
   "fields": [
@@ -21,7 +30,10 @@
       "id": "character",
       "type": "resource",
       "resourceType": "character",
-      "label": "Character",
+      "label": {
+        "en": "Character",
+        "ru": "Персонаж"
+      },
       "previewHeight": 200,
       "required": true
     },
@@ -29,7 +41,10 @@
       "id": "comparison",
       "type": "enum",
       "display": "segmented",
-      "label": "Comparison",
+      "label": {
+        "en": "Comparison",
+        "ru": "Сравнение"
+      },
       "options": [
         {
           "value": "Equal",
@@ -60,7 +75,10 @@
     {
       "id": "targetValue",
       "type": "int",
-      "label": "Target value"
+      "label": {
+        "en": "Target value",
+        "ru": "Значение"
+      }
     }
   ]
 }

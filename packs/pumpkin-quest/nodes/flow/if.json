@@ -1,7 +1,13 @@
 {
   "id": "dialogue.if",
-  "title": "If",
-  "description": "Ветвление: проверяет условие на входе Condition и продолжает по выходу True или False. Если False ни к чему не подключён, при ложном условии ничего не происходит — например, выбор за If просто не показывается. Условия собираются из нод Conditions и Logic.\n\nНеблокирующая: выполняется сразу, диалог идёт дальше.",
+  "title": {
+    "en": "If",
+    "ru": "Если"
+  },
+  "description": {
+    "en": "Branch: checks the Condition input and goes on through True or False. If False is not connected, nothing happens when the condition is false — e.g. a choice behind the If is simply not shown. Conditions are built from Conditions and Logic nodes.\n\nNon-blocking: runs at once, the dialogue goes on.",
+    "ru": "Ветвление: проверяет вход «Условие» и продолжает через «Истина» или «Ложь». Если «Ложь» ни к чему не подключён, при ложном условии ничего не происходит — например, выбор за «Если» просто не показывается. Условия собираются из нод «Условия» и «Логика».\n\nНеблокирующая: выполняется сразу, диалог идёт дальше."
+  },
   "menu": "Flow",
   "order": 2,
   "color": "#4fb37a",
@@ -11,25 +17,37 @@
       "id": "in",
       "direction": "input",
       "type": "flow",
-      "label": "Input"
+      "label": {
+        "en": "Input",
+        "ru": "Вход"
+      }
     },
     {
       "id": "condition",
       "direction": "input",
       "type": "bool",
-      "label": "Condition"
+      "label": {
+        "en": "Condition",
+        "ru": "Условие"
+      }
     },
     {
       "id": "true",
       "direction": "output",
       "type": "flow",
-      "label": "True"
+      "label": {
+        "en": "True",
+        "ru": "Истина"
+      }
     },
     {
       "id": "false",
       "direction": "output",
       "type": "flow",
-      "label": "False",
+      "label": {
+        "en": "False",
+        "ru": "Ложь"
+      },
       "optional": true
     }
   ]

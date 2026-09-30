@@ -1,3 +1,4 @@
+import { localize, pickText, readText } from "./packText";
 import { isRecord } from "./schema";
 import { t } from "../i18n";
 
@@ -59,14 +60,17 @@ export function parseResourceTypes(value: unknown, warnings: string[]): Map<stri
     if (isRecord(entry.variants)) {
       for (const [collection, rawCollection] of Object.entries(entry.variants)) {
         const spec = isRecord(rawCollection) ? rawCollection : {};
-        variants.set(collection, {
-          label: typeof spec.label === "string" ? spec.label : collection,
-          default: typeof spec.default === "string" ? spec.default : null,
-        });
+        const label = readText(spec.label);
+        const variant: VariantCollectionSchema = { label: label ? pickText(label) : collection, default: typeof spec.default === "string" ? spec.default : null };
+        localize(variant, "label", label);
+        variants.set(collection, variant);
       }
     }
     const media = entry.media === "audio" || entry.media === "data" ? entry.media : "image";
-    types.set(id, { id, label: typeof entry.label === "string" ? entry.label : id, media, variants });
+    const label = readText(entry.label);
+    const type: ResourceTypeSchema = { id, label: label ? pickText(label) : id, media, variants };
+    localize(type, "label", label);
+    types.set(id, type);
   }
   return types;
 }

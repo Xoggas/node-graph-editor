@@ -1,7 +1,13 @@
 {
   "id": "condition.variable",
-  "title": "Variable Comparer",
-  "description": "Сравнивает переменную Name с Target value выбранным оператором.\n\nНе часть потока диалога: только вычисляет значение для If и логических нод.",
+  "title": {
+    "en": "Variable Comparer",
+    "ru": "Сравнение переменной"
+  },
+  "description": {
+    "en": "Compares the variable Name with the Target value using the chosen operator.\n\nNot part of the dialogue flow: only computes a value for If and logic nodes.",
+    "ru": "Сравнивает переменную «Переменная» со «Значением» выбранным оператором.\n\nНе часть потока диалога: только вычисляет значение для «Если» и логических нод."
+  },
   "menu": "Conditions",
   "order": 3,
   "color": "#c46f9f",
@@ -13,14 +19,20 @@
       "id": "result",
       "direction": "output",
       "type": "bool",
-      "label": "Result"
+      "label": {
+        "en": "Result",
+        "ru": "Результат"
+      }
     }
   ],
   "fields": [
     {
       "id": "variable",
       "type": "string",
-      "label": "Name",
+      "label": {
+        "en": "Name",
+        "ru": "Переменная"
+      },
       "required": true,
       "symbol": {
         "kind": "variable",
@@ -31,7 +43,10 @@
       "id": "comparison",
       "type": "enum",
       "display": "segmented",
-      "label": "Comparison",
+      "label": {
+        "en": "Comparison",
+        "ru": "Сравнение"
+      },
       "options": [
         {
           "value": "Equal",
@@ -62,7 +77,10 @@
     {
       "id": "targetValue",
       "type": "int",
-      "label": "Target value"
+      "label": {
+        "en": "Target value",
+        "ru": "Значение"
+      }
     }
   ]
 }

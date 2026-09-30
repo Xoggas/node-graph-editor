@@ -1,7 +1,13 @@
 {
   "id": "dialogue.add-relationship-points",
-  "title": "Add Relationship Points",
-  "description": "Меняет очки отношений с персонажем Character на Points to add (отрицательное значение уменьшает). Проверяются нодой Relationship Point Comparer.\n\nНеблокирующая: выполняется сразу, диалог идёт дальше.",
+  "title": {
+    "en": "Add Relationship Points",
+    "ru": "Изменить отношения"
+  },
+  "description": {
+    "en": "Changes the relationship points with the Character by Points to add (a negative value decreases them). They are checked with Relationship Point Comparer.\n\nNon-blocking: runs at once, the dialogue goes on.",
+    "ru": "Меняет очки отношений с «Персонажем» на «Очки» (отрицательное значение уменьшает). Проверяются нодой «Сравнение отношений».\n\nНеблокирующая: выполняется сразу, диалог идёт дальше."
+  },
   "menu": "Progress",
   "order": 2,
   "color": "#a3b54a",
@@ -11,13 +17,19 @@
       "id": "in",
       "direction": "input",
       "type": "flow",
-      "label": "Input"
+      "label": {
+        "en": "Input",
+        "ru": "Вход"
+      }
     },
     {
       "id": "out",
       "direction": "output",
       "type": "flow",
-      "label": "Output"
+      "label": {
+        "en": "Output",
+        "ru": "Выход"
+      }
     }
   ],
   "fields": [
@@ -25,14 +37,20 @@
       "id": "character",
       "type": "resource",
       "resourceType": "character",
-      "label": "Character",
+      "label": {
+        "en": "Character",
+        "ru": "Персонаж"
+      },
       "previewHeight": 200,
       "required": true
     },
     {
       "id": "pointsToAdd",
       "type": "int",
-      "label": "Points to add"
+      "label": {
+        "en": "Points to add",
+        "ru": "Очки"
+      }
     }
   ]
 }

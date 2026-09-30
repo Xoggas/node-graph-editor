@@ -1,7 +1,13 @@
 {
   "id": "dialogue.hide-ui",
-  "title": "Hide UI",
-  "description": "Скрывает интерфейс диалога, чтобы было видно сцену.\n\nБлокирующая: диалог ждёт, пока игрок не продолжит.",
+  "title": {
+    "en": "Hide UI",
+    "ru": "Скрыть интерфейс"
+  },
+  "description": {
+    "en": "Hides the dialogue interface so the scene can be seen.\n\nBlocking: the dialogue waits until the player goes on.",
+    "ru": "Скрывает интерфейс диалога, чтобы было видно сцену.\n\nБлокирующая: диалог ждёт, пока игрок не продолжит."
+  },
   "menu": "Scene",
   "order": 2,
   "color": "#9a7bd6",
@@ -11,13 +17,19 @@
       "id": "in",
       "direction": "input",
       "type": "flow",
-      "label": "Input"
+      "label": {
+        "en": "Input",
+        "ru": "Вход"
+      }
     },
     {
       "id": "out",
       "direction": "output",
       "type": "flow",
-      "label": "Output"
+      "label": {
+        "en": "Output",
+        "ru": "Выход"
+      }
     }
   ]
 }

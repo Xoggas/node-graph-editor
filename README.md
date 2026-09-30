@@ -46,8 +46,11 @@ info in the status bar; all of them are remembered.
 
 The interface is in English or Russian (picked from the system language at first, then as set).
 Code writes English texts through `t()` (`src/i18n`); `src/i18n/ru.ts` maps them to Russian, with
-plural forms as functions, and a test fails when a text has no translation. Pack content (node types,
-fields, ports, menus) comes from the pack as written.
+plural forms as functions, and a test fails when a text has no translation. Pack content is translated
+by the pack itself: any display text in `pack.json` and the node files (names, titles, descriptions,
+menus, field, option and port labels, resource type and variant labels, item/row/column labels) may be
+a string or one per language, `{ "en": "Line", "ru": "Реплика" }`, and follows the interface language
+(missing languages fall back to English). A node type names its menu by any of the menu's texts.
 
 Keyboard shortcuts use physical keys, so they work with any layout (e.g. Russian).
 All shortcuts are defined in `src/app/shortcuts.ts`, which also feeds the F1 overlay.
@@ -102,7 +105,7 @@ packs/pumpkin-quest/
 // nodes/dialogue/line.json — one schema per file (an array of schemas also works)
 {
   "id": "dialogue.line",
-  "title": "Line",
+  "title": { "en": "Line", "ru": "Реплика" },     // any display text: a string, or one per interface language
   "description": "What the node does; shown by the ? in its header",
   "menu": "Dialogue",
   "order": 1,                                     // position in its palette menu; without it: after, in path order

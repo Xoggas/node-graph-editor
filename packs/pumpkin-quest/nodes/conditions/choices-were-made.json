@@ -1,7 +1,13 @@
 {
   "id": "condition.choices-were-made",
-  "title": "Choices Were Made",
-  "description": "Истинно, если каждый выбор из списка в нужном состоянии: с отметкой Was made — сделан, без неё — не сделан.\n\nНе часть потока диалога: только вычисляет значение для If и логических нод.",
+  "title": {
+    "en": "Choices Were Made",
+    "ru": "Выборы сделаны"
+  },
+  "description": {
+    "en": "True if every choice of the list is in the wanted state: with Was made checked — made, without — not made.\n\nNot part of the dialogue flow: only computes a value for If and logic nodes.",
+    "ru": "Истинно, если каждый выбор из списка в нужном состоянии: с отметкой «Сделан» — сделан, без неё — не сделан.\n\nНе часть потока диалога: только вычисляет значение для «Если» и логических нод."
+  },
   "menu": "Conditions",
   "order": 2,
   "color": "#c46f9f",
@@ -10,14 +16,20 @@
       "id": "result",
       "direction": "output",
       "type": "bool",
-      "label": "Result"
+      "label": {
+        "en": "Result",
+        "ru": "Результат"
+      }
     }
   ],
   "fields": [
     {
       "id": "choices",
       "type": "list",
-      "label": "Choices",
+      "label": {
+        "en": "Choices",
+        "ru": "Выборы"
+      },
       "maxItems": 15,
       "item": {
         "type": "record",
@@ -26,14 +38,20 @@
             "id": "choice",
             "type": "nodeRef",
             "schema": "dialogue.choice",
-            "label": "Choice",
+            "label": {
+              "en": "Choice",
+              "ru": "Выбор"
+            },
             "required": true
           },
           {
             "id": "made",
             "type": "bool",
             "default": true,
-            "label": "Was made"
+            "label": {
+              "en": "Was made",
+              "ru": "Сделан"
+            }
           }
         ]
       },
