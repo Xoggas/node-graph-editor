@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <!-- Source of the app icons: render to a 1024 px PNG, then `npx tauri icon <png>`. -->
+  <rect x="24" y="24" width="976" height="976" rx="220" fill="#1d1f24"/>
+  <g fill="none" stroke="#e6e8ec" stroke-width="44" stroke-linecap="round">
+    <path d="M380 512 C 520 512, 500 300, 640 300"/>
+    <path d="M380 512 C 520 512, 500 724, 640 724"/>
+  </g>
+  <rect x="200" y="422" width="180" height="180" rx="44" fill="#e6e8ec"/>
+  <rect x="640" y="210" width="180" height="180" rx="44" fill="#5b8fd9"/>
+  <rect x="640" y="634" width="180" height="180" rx="44" fill="#5b8fd9"/>
+</svg>
