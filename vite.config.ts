@@ -21,6 +21,7 @@ export default defineConfig(() => ({
   define: {
     __BUNDLED_PACK_DIR__: JSON.stringify(bundledPackDir.replace(/\\/g, "/")),
   },
+  test: { setupFiles: ["src/test-setup.ts"] },
   // Desktop app loads assets locally; one Pixi-sized bundle is fine.
   build: { chunkSizeWarningLimit: 1500 },
 

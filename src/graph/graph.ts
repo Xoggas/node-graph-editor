@@ -1,4 +1,5 @@
 import { buildPorts, createNode, type NodeModel } from "./node";
+import { t } from "../i18n";
 import type { SchemaRegistry } from "./registry";
 import { isRecord, type NodeData } from "./schema";
 import {
@@ -76,7 +77,7 @@ export class GraphModel {
     readonly id: string = newId(),
   ) {
     if (!isValidId(id)) {
-      throw new RegistryError("A graph id is required.");
+      throw new RegistryError(t("A graph id is required."));
     }
   }
 
@@ -240,14 +241,14 @@ export class GraphModel {
   addNode(nodeOrSchema: NodeModel | string, position?: Vec2): NodeModel {
     const node = typeof nodeOrSchema === "string" ? createNode(this.registry, nodeOrSchema) : nodeOrSchema;
     if (node.graph) {
-      throw new RegistryError(`Node '${node.id}' already belongs to a graph.`);
+      throw new RegistryError(t("Node '{id}' already belongs to a graph.", { id: node.id }));
     }
     if (this.nodeMap.has(node.id)) {
-      throw new RegistryError(`Node id '${node.id}' already exists in this graph.`);
+      throw new RegistryError(t("Node id '{id}' already exists in this graph.", { id: node.id }));
     }
     for (const port of node.ports) {
       if (!port.id || this.portMap.has(port.id)) {
-        throw new RegistryError(`Port id '${port.id}' is already used in this graph.`);
+        throw new RegistryError(t("Port id '{id}' is already used in this graph.", { id: port.id }));
       }
     }
 
@@ -302,10 +303,10 @@ export class GraphModel {
     const alias: NodeAlias =
       typeof nodeIdOrAlias === "string" ? { id: newId(), nodeId: nodeIdOrAlias, position: { x: 0, y: 0 } } : nodeIdOrAlias;
     if (!this.nodeMap.has(alias.nodeId)) {
-      throw new RegistryError(`Node '${alias.nodeId}' does not exist.`);
+      throw new RegistryError(t("Node '{id}' does not exist.", { id: alias.nodeId }));
     }
     if (!isValidId(alias.id) || this.aliasMap.has(alias.id) || this.nodeMap.has(alias.id)) {
-      throw new RegistryError(`Alias id '${alias.id}' is invalid or already used.`);
+      throw new RegistryError(t("Alias id '{id}' is invalid or already used.", { id: alias.id }));
     }
     if (position) {
       alias.position = { x: position.x, y: position.y };
@@ -369,7 +370,7 @@ export class GraphModel {
             ...content,
           };
     if (!isValidId(note.id) || this.noteMap.has(note.id) || this.nodeMap.has(note.id) || this.aliasMap.has(note.id)) {
-      throw new RegistryError(`Note id '${note.id}' is invalid or already used.`);
+      throw new RegistryError(t("Note id '{id}' is invalid or already used.", { id: note.id }));
     }
     this.noteMap.set(note.id, note);
     this.emit({ kind: "noteAdded", note });
@@ -478,10 +479,10 @@ export class GraphModel {
     const output = this.portMap.get(outputPortId);
     const input = this.portMap.get(inputPortId);
     if (!output || !input) {
-      return fail("MissingEndpoint", "The connection endpoint was not found.");
+      return fail("MissingEndpoint", t("The connection endpoint was not found."));
     }
     if (output.direction !== "Output" || input.direction !== "Input") {
-      return fail("WrongDirection", "Connections must go from Output to Input.");
+      return fail("WrongDirection", t("A connection must go from Output to Input."));
     }
     const types = this.registry;
     const outputKnown = types.hasPortType(output.typeId);
@@ -489,27 +490,27 @@ export class GraphModel {
     const hasPlaceholderEndpoint =
       this.nodeMap.get(output.nodeId)!.isPlaceholder || this.nodeMap.get(input.nodeId)!.isPlaceholder;
     if ((!outputKnown || !inputKnown) && !hasPlaceholderEndpoint) {
-      return fail("UnknownDataType", "One of the port data types is not registered.");
+      return fail("UnknownDataType", t("One of the port data types is not registered."));
     }
     if (outputKnown && inputKnown && !types.isAssignable(input.typeId, output.typeId)) {
-      return fail("IncompatibleTypes", `'${output.typeId}' cannot be connected to '${input.typeId}'.`);
+      return fail("IncompatibleTypes", t("'{from}' cannot be connected to '{to}'.", { from: output.typeId, to: input.typeId }));
     }
     const outputView = this.viewOf(output.nodeId, views.output);
     const inputView = this.viewOf(input.nodeId, views.input);
     const inputConnections = [...this.getPortConnections(input.id)].filter((connection) => connection.inputViewId === inputView);
     if (input.capacity === "Single" && inputConnections.length > 0) {
-      return fail("InputCapacityReached", "The input port already has a connection.");
+      return fail("InputCapacityReached", t("The input port already has a connection."));
     }
     for (const connection of inputConnections) {
       if (connection.outputPortId === output.id && connection.outputViewId === outputView) {
-        return fail("DuplicateConnection", "This connection already exists.");
+        return fail("DuplicateConnection", t("This connection already exists."));
       }
     }
     const outputTaken = [...this.getPortConnections(output.id)].some(
       (connection) => connection.outputPortId === output.id && connection.outputViewId === outputView,
     );
     if (output.capacity === "Single" && outputTaken) {
-      return fail("OutputCapacityReached", "The output port already has a connection.");
+      return fail("OutputCapacityReached", t("The output port already has a connection."));
     }
     return null;
   }
@@ -521,7 +522,7 @@ export class GraphModel {
       return failure;
     }
     if (connectionId !== undefined && (!isValidId(connectionId) || this.connectionMap.has(connectionId))) {
-      return fail("DuplicateConnection", "A connection with this id already exists.");
+      return fail("DuplicateConnection", t("A connection with this id already exists."));
     }
 
     const output = this.portMap.get(outputPortId)!;

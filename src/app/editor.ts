@@ -11,6 +11,7 @@ import { exportRuntimeGraph } from "../graph/export";
 import { GraphJsonSerializer } from "../graph/serializer";
 import { type Problem, validateGraph } from "../graph/validate";
 import type { NoteContent, Vec2 } from "../graph/types";
+import { t } from "../i18n";
 import { bundledPack } from "./bundledPack";
 import { createFileSystem, type GraphFileSystem, type OpenedFile } from "./files";
 
@@ -208,7 +209,7 @@ export class Editor {
       this.openFile(file);
     } catch (error) {
       removeStored(LAST_GRAPH_KEY);
-      this.setStatus(`Could not reopen the last graph '${path}': ${errorMessage(error)}`, "warning");
+      this.setStatus(t("Could not reopen the last graph '{path}': {error}", { path, error: errorMessage(error) }), "warning");
     }
   }
 
@@ -219,7 +220,7 @@ export class Editor {
         await this.loadPackFolder(folder);
         return;
       } catch (error) {
-        this.setStatus(`Could not load the schema pack from '${folder}': ${errorMessage(error)}`, "error");
+        this.setStatus(t("Could not load the schema pack from '{folder}': {error}", { folder, error: errorMessage(error) }), "error");
       }
     }
     this.applyPack(bundledPack.files, { kind: "bundled" });
@@ -236,7 +237,7 @@ export class Editor {
       }
       await this.loadPackFolder(folder);
     } catch (error) {
-      this.setStatus(`Could not load the schema pack: ${errorMessage(error)}`, "error");
+      this.setStatus(t("Could not load the schema pack: {error}", { error: errorMessage(error) }), "error");
     }
   }
 
@@ -251,7 +252,7 @@ export class Editor {
         this.applyPack(bundledPack.files, { kind: "bundled" });
       }
     } catch (error) {
-      this.setStatus(`Could not reload the schema pack: ${errorMessage(error)}`, "error");
+      this.setStatus(t("Could not reload the schema pack: {error}", { error: errorMessage(error) }), "error");
     }
   }
 
@@ -266,10 +267,10 @@ export class Editor {
     const packDir = source.kind === "folder" ? source.path : bundledPack.dir;
     const pack = parseSchemaPack(files, packDir);
     const localization = LocalizationStore.fromFiles(pack.languages, files, pack.warnings);
-    this.files.setResourceRoots(pack.resources.roots).catch((error) => this.setStatus(`Resource folders: ${errorMessage(error)}`, "error"));
+    this.files.setResourceRoots(pack.resources.roots).catch((error) => this.setStatus(t("Resource folders: {error}", { error: errorMessage(error) }), "error"));
     const registry = new SchemaRegistry(pack);
     const json = new GraphJsonSerializer(this.currentRegistry).serialize(this.graph);
-    const { graph, warnings } = new GraphJsonSerializer(registry).deserialize(json);
+    const { graph, warnings, packWarning } = new GraphJsonSerializer(registry).deserialize(json);
     const dirty = this.state.dirty;
 
     this.currentRegistry = registry;
@@ -292,13 +293,13 @@ export class Editor {
       displayLanguage,
       localizationDirty: false,
       descriptors: registry.descriptors(),
-      warnings: warnings.filter((warning) => !warning.startsWith("The graph was made with schema pack")),
+      warnings: warnings.filter((warning) => warning !== packWarning),
       dirty,
       statusKind: pack.warnings.length === 0 ? "info" : "warning",
       status:
         pack.warnings.length === 0
-          ? `Schema pack loaded: ${pack.name} (${pack.nodes.size} nodes).`
-          : `Schema pack loaded with ${pack.warnings.length} problem(s).`,
+          ? t("Schema pack loaded: {name} ({count} node types).", { name: pack.name, count: pack.nodes.size })
+          : t("Schema pack loaded with {count} problem(s).", { count: pack.warnings.length }),
     });
     this.notifyGraphReplaced(graph, false);
     this.notifyLocalization(null);
@@ -349,7 +350,7 @@ export class Editor {
   }
 
   private async confirmDiscardLocalization(): Promise<boolean> {
-    return !this.localizationStore.isDirty || this.files.confirm("Discard unsaved localization changes?");
+    return !this.localizationStore.isDirty || this.files.confirm(t("Discard unsaved localization changes?"));
   }
 
   /** Writes changed language files into the pack folder. */
@@ -360,7 +361,7 @@ export class Editor {
     }
     const packDir = this.packSource?.kind === "folder" ? this.packSource.path : bundledPack.dir;
     if (!packDir) {
-      throw new Error("the built-in pack cannot be written; choose the pack folder first");
+      throw new Error(t("the built-in pack cannot be written; choose the pack folder first"));
     }
     const languages = [...store.dirtyLanguages];
     for (const language of languages) {
@@ -377,7 +378,7 @@ export class Editor {
     if (!(await this.confirmDiscard())) {
       return;
     }
-    this.replaceGraph(new GraphModel(this.registry), null, "New graph.", [], false);
+    this.replaceGraph(new GraphModel(this.registry), null, t("New graph."), [], false);
   }
 
   async open(): Promise<void> {
@@ -391,13 +392,16 @@ export class Editor {
       }
       this.openFile(file);
     } catch (error) {
-      this.setStatus(`Open failed: ${errorMessage(error)}`, "error");
+      this.setStatus(t("Open failed: {error}", { error: errorMessage(error) }), "error");
     }
   }
 
   private openFile(file: OpenedFile): void {
     const { graph, warnings } = new GraphJsonSerializer(this.registry).deserialize(file.text);
-    const status = warnings.length === 0 ? `Opened: ${file.name}` : `Opened ${file.name} with ${warnings.length} warning(s).`;
+    const status =
+      warnings.length === 0
+        ? t("Opened: {file}", { file: file.name })
+        : t("Opened {file} with {count} warning(s).", { file: file.name, count: warnings.length });
     this.replaceGraph(graph, file.path, status, warnings, false);
     this.update({ fileName: file.name });
     if (file.path) writeStored(LAST_GRAPH_KEY, file.path);
@@ -408,27 +412,28 @@ export class Editor {
     try {
       savedLanguages = await this.saveLocalization();
     } catch (error) {
-      this.setStatus(`Localization was not saved: ${errorMessage(error)}`, "error");
+      this.setStatus(t("Localization was not saved: {error}", { error: errorMessage(error) }), "error");
       return;
     }
     try {
       const json = new GraphJsonSerializer(this.registry).serialize(this.graph);
       const saved = await this.files.save(json, this.filePath, chooseLocation);
       if (!saved) {
-        if (savedLanguages) this.setStatus(`Saved localization (${savedLanguages}); the graph was not saved.`, "warning");
+        if (savedLanguages) this.setStatus(t("Saved localization ({languages}); the graph was not saved.", { languages: savedLanguages }), "warning");
         return;
       }
       this.filePath = saved.path;
       if (saved.path) writeStored(LAST_GRAPH_KEY, saved.path);
-      const localizationNote = savedLanguages ? ` and localization (${savedLanguages})` : "";
-      const status = `Saved: ${saved.name}${localizationNote}`;
+      const status = savedLanguages
+        ? t("Saved: {file} and localization ({languages})", { file: saved.name, languages: savedLanguages })
+        : t("Saved: {file}", { file: saved.name });
       this.update({ dirty: false, fileName: saved.name, filePath: saved.path, status });
       // Only a graph on disk: the export goes next to it without asking.
       if (this.state.autoExport && saved.path) {
         await this.exportGraph(false, status);
       }
     } catch (error) {
-      this.setStatus(`Save failed: ${errorMessage(error)}`, "error");
+      this.setStatus(t("Save failed: {error}", { error: errorMessage(error) }), "error");
     }
   }
 
@@ -451,7 +456,7 @@ export class Editor {
       const defaultPath = this.filePath ? this.filePath.replace(/[^\\/]*$/, `${baseName}.runtime.json`) : `${baseName}.runtime.json`;
       const target = this.exportPath ?? (afterSave !== null ? defaultPath : null);
       const saved = await this.files.save(JSON.stringify(graph), target, afterSave === null && (chooseLocation || !target), {
-        title: "Export runtime graph",
+        title: t("Export runtime graph"),
         defaultPath,
       });
       if (!saved) {
@@ -464,18 +469,19 @@ export class Editor {
         await this.files.writeFile(`${directory}${LOCALIZATION_DIR}/${language}.json`, this.localizationStore.serialize(language));
       }
       const count = Object.keys(graph.nodes).length;
-      const texts = languages.length > 0 ? ` and localization (${languages.join(", ")})` : "";
       const exported =
         afterSave !== null
-          ? `${afterSave}; exported to ${saved.name}`
-          : `Exported ${count} node(s)${texts} to ${saved.name}`;
+          ? t("{saved}; exported to {file}", { saved: afterSave, file: saved.name })
+          : languages.length > 0
+            ? t("Exported {count} node(s) and localization ({languages}) to {file}", { count, languages: languages.join(", "), file: saved.name })
+            : t("Exported {count} node(s) to {file}", { count, file: saved.name });
       this.update({
         warnings,
         statusKind: warnings.length === 0 ? "info" : "warning",
-        status: warnings.length === 0 ? `${exported}.` : `${exported} with ${warnings.length} warning(s).`,
+        status: warnings.length === 0 ? `${exported}.` : t("{message} with {count} warning(s).", { message: exported, count: warnings.length }),
       });
     } catch (error) {
-      this.setStatus(`Export failed: ${errorMessage(error)}`, "error");
+      this.setStatus(t("Export failed: {error}", { error: errorMessage(error) }), "error");
     }
   }
 
@@ -484,7 +490,7 @@ export class Editor {
   addNode(schemaId: string, position: Vec2): string | null {
     const schema = this.registry.getSchema(schemaId);
     if (schema?.singleton && [...this.graph.nodes].some((node) => node.schemaId === schemaId)) {
-      this.setStatus(`Only one '${schema.title}' node is allowed per graph.`, "error");
+      this.setStatus(t("Only one '{type}' node is allowed per graph.", { type: schema.title }), "error");
       return null;
     }
     try {
@@ -495,7 +501,7 @@ export class Editor {
       }
       return node.id;
     } catch (error) {
-      this.setStatus(`Could not add node: ${errorMessage(error)}`, "error");
+      this.setStatus(t("Could not add node: {error}", { error: errorMessage(error) }), "error");
       return null;
     }
   }
@@ -510,7 +516,7 @@ export class Editor {
       removed += this.graph.removeView(id) ? 1 : 0;
     }
     if (removed > 0) {
-      this.setStatus(`Deleted ${removed} element(s).`);
+      this.setStatus(t("Deleted {count} element(s).", { count: removed }));
     }
   }
 
@@ -537,7 +543,7 @@ export class Editor {
       created.push(this.graph.addAlias(node.id, { x: position.x + LINK_OFFSET.x, y: position.y + LINK_OFFSET.y }).id);
     }
     if (created.length > 0) {
-      this.setStatus(`Created ${created.length} linked cop${created.length === 1 ? "y" : "ies"}.`);
+      this.setStatus(t("Created {count} linked copies.", { count: created.length }));
     }
     return created;
   }
@@ -547,18 +553,18 @@ export class Editor {
     const first = this.graph.getPort(firstPortId);
     const second = this.graph.getPort(secondPortId);
     if (!first || !second || first.id === second.id) {
-      this.setStatus("Connection cancelled.");
+      this.setStatus(t("Connection cancelled."));
       return;
     }
     if (first.direction === second.direction) {
-      this.setStatus("A connection must go from Output to Input.", "error");
+      this.setStatus(t("A connection must go from Output to Input."), "error");
       return;
     }
     const [output, input] = first.direction === "Output" ? [first, second] : [second, first];
     const views = first.direction === "Output" ? { output: firstViewId, input: secondViewId } : { output: secondViewId, input: firstViewId };
     const result = this.graph.connect(output.id, input.id, undefined, views);
     if (result.success) {
-      this.setStatus(`Connected ${output.displayName} → ${input.displayName}.`);
+      this.setStatus(t("Connected {from} → {to}.", { from: output.displayName, to: input.displayName }));
     } else {
       this.setStatus(result.message, "error");
     }
@@ -585,14 +591,14 @@ export class Editor {
   addListItem(nodeId: string, path: DataPath): void {
     const node = this.graph.getNode(nodeId);
     if (node?.schema && !this.updateData(nodeId, (data) => listAdd(node.schema!, data, path))) {
-      this.setStatus("The list is full.", "error");
+      this.setStatus(t("The list is full."), "error");
     }
   }
 
   removeListItem(nodeId: string, path: DataPath, index: number): void {
     const node = this.graph.getNode(nodeId);
     if (node?.schema && !this.updateData(nodeId, (data) => listRemove(node.schema!, data, path, index))) {
-      this.setStatus("This item cannot be removed.", "error");
+      this.setStatus(t("This item cannot be removed."), "error");
     }
   }
 
@@ -656,7 +662,7 @@ export class Editor {
     }
     const name = rawName.trim();
     if (name && naming.pattern && !naming.pattern.test(name)) {
-      this.setStatus(`'${name}' is not a valid name for '${node.schema!.title}'.`, "error");
+      this.setStatus(t("'{name}' is not a valid name for '{type}'.", { name, type: node.schema!.title }), "error");
       return false;
     }
     if (name && naming.unique) {
@@ -664,7 +670,7 @@ export class Editor {
         (other) => other !== node && other.schema?.naming.unique && other.name === name,
       );
       if (clash) {
-        this.setStatus(`The name '${name}' is already used by another node.`, "error");
+        this.setStatus(t("The name '{name}' is already used by another node.", { name }), "error");
         return false;
       }
     }
@@ -683,11 +689,11 @@ export class Editor {
   // --- History ------------------------------------------------------------------
 
   undo(): void {
-    this.setStatus(this.history.undo() ? "Undo." : "Nothing to undo.");
+    this.setStatus(this.history.undo() ? t("Undo.") : t("Nothing to undo."));
   }
 
   redo(): void {
-    this.setStatus(this.history.redo() ? "Redo." : "Nothing to redo.");
+    this.setStatus(this.history.redo() ? t("Redo.") : t("Nothing to redo."));
   }
 
   /** Groups every change until `endInteraction()` into one undo step (e.g. a drag). */
@@ -709,7 +715,7 @@ export class Editor {
     }
     this.clipboard = data;
     this.pasteCount = 0;
-    this.update({ canPaste: true, status: `Copied ${data.nodes.length + data.aliases.length + data.notes.length} element(s).` });
+    this.update({ canPaste: true, status: t("Copied {count} element(s).", { count: data.nodes.length + data.aliases.length + data.notes.length }) });
     return true;
   }
 
@@ -719,7 +725,7 @@ export class Editor {
       return false;
     }
     this.deleteElements(ids, []);
-    this.setStatus(`Cut ${ids.length} element(s).`);
+    this.setStatus(t("Cut {count} element(s).", { count: ids.length }));
     return true;
   }
 
@@ -747,13 +753,13 @@ export class Editor {
       this.pasteCount++;
       offset = { x: PASTE_STEP * this.pasteCount, y: PASTE_STEP * this.pasteCount };
     }
-    return this.insert(data, offset, "Pasted");
+    return this.insert(data, offset, "paste");
   }
 
   /** `mode` skips the copy-or-link question (e.g. "copy" for a duplicate that is always new nodes). */
   async duplicate(viewIds: Iterable<string>, mode?: PasteMode): Promise<string[]> {
     const data = copyViews(this.graph, viewIds);
-    return data ? this.insert(data, { x: PASTE_STEP, y: PASTE_STEP }, "Duplicated", mode) : [];
+    return data ? this.insert(data, { x: PASTE_STEP, y: PASTE_STEP }, "duplicate", mode) : [];
   }
 
   /**
@@ -771,18 +777,23 @@ export class Editor {
     return mode === "link" ? linkCopiedNodes(data, new Set(linkable.map((entry) => entry.originalId))) : data;
   }
 
-  private async insert(original: ClipboardData, offset: Vec2, verb: string, mode?: PasteMode): Promise<string[]> {
+  private async insert(original: ClipboardData, offset: Vec2, action: "paste" | "duplicate", mode?: PasteMode): Promise<string[]> {
+    const paste = action === "paste";
     // Checked before asking anything: there is no point choosing how to paste what cannot be pasted.
     const singletons = original.nodes.filter(
       (entry) => this.registry.getSchema(entry.schemaId)?.singleton && [...this.graph.nodes].some((node) => node.schemaId === entry.schemaId),
     );
     if (singletons.length > 0) {
-      this.setStatus(`${verb === "Pasted" ? "Paste" : "Duplicate"} failed: only one '${this.registry.getSchema(singletons[0].schemaId)!.title}' node is allowed.`, "error");
+      const type = this.registry.getSchema(singletons[0].schemaId)!.title;
+      this.setStatus(
+        paste ? t("Paste failed: only one '{type}' node is allowed.", { type }) : t("Duplicate failed: only one '{type}' node is allowed.", { type }),
+        "error",
+      );
       return [];
     }
     const data = await this.choosePasteMode(original, mode);
     if (!data) {
-      this.setStatus(`${verb === "Pasted" ? "Paste" : "Duplicate"} cancelled.`);
+      this.setStatus(paste ? t("Paste cancelled.") : t("Duplicate cancelled."));
       return [];
     }
     try {
@@ -803,10 +814,12 @@ export class Editor {
           }
         });
       });
-      this.setStatus(`${verb} ${viewIds.length} element(s).`);
+      const count = viewIds.length;
+      this.setStatus(paste ? t("Pasted {count} element(s).", { count }) : t("Duplicated {count} element(s).", { count }));
       return viewIds;
     } catch (error) {
-      this.setStatus(`${verb} failed: ${errorMessage(error)}`, "error");
+      const message = errorMessage(error);
+      this.setStatus(paste ? t("Paste failed: {error}", { error: message }) : t("Duplicate failed: {error}", { error: message }), "error");
       return [];
     }
   }
@@ -832,7 +845,7 @@ export class Editor {
       return input && output && this.registry.isAssignable(input.type, output.type);
     });
     if (!schema) {
-      this.setStatus("The schema pack has no node with a connectable input and output.", "error");
+      this.setStatus(t("The schema pack has no node with a connectable input and output."), "error");
       return;
     }
     if (!(await this.confirmDiscard())) {
@@ -875,7 +888,7 @@ export class Editor {
   // --- Internals ---------------------------------------------------------------
 
   private async confirmDiscard(): Promise<boolean> {
-    return !this.state.dirty || this.files.confirm("Discard unsaved changes?");
+    return !this.state.dirty || this.files.confirm(t("Discard unsaved changes?"));
   }
 
   private replaceGraph(graph: GraphModel, filePath: string | null, status: string, warnings: string[], frameAll: boolean): void {

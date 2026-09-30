@@ -1,4 +1,5 @@
 import { isRecord } from "./schema";
+import { t } from "../i18n";
 
 export interface VariantCollectionSchema {
   label: string;
@@ -49,7 +50,7 @@ export function parseResourceTypes(value: unknown, warnings: string[]): Map<stri
     return types;
   }
   if (!isRecord(value)) {
-    warnings.push("pack.json → resourceTypes: expected an object.");
+    warnings.push(t("pack.json → resourceTypes: expected an object."));
     return types;
   }
   for (const [id, raw] of Object.entries(value)) {
@@ -90,12 +91,12 @@ export function parseLibraries(
     try {
       json = JSON.parse(file.text);
     } catch (error) {
-      warnings.push(`${file.path}: invalid JSON (${(error as Error).message}).`);
+      warnings.push(t("{file}: invalid JSON ({error}).", { file: file.path, error: (error as Error).message }));
       continue;
     }
     const single = isRecord(json) && !Array.isArray(json.items) && typeof json.id === "string";
     if (!isRecord(json) || (!single && !Array.isArray(json.items))) {
-      warnings.push(`${file.path}: expected one resource ({ "id", "type", ... }) or a library ({ "items": [...] }).`);
+      warnings.push(t("{file}: expected one resource ({ \"id\", \"type\", ... }) or a library ({ \"items\": [...] }).", { file: file.path }));
       continue;
     }
     const fileDir = dirname(file.path);
@@ -112,15 +113,15 @@ export function parseLibraries(
     entries.forEach((raw, index) => {
       const location = single ? file.path : `${file.path} → items[${index}]`;
       if (!isRecord(raw) || typeof raw.id !== "string" || !raw.id || typeof raw.type !== "string") {
-        warnings.push(`${location}: an item needs a string 'id' and 'type'.`);
+        warnings.push(t("{location}: an item needs a string 'id' and 'type'.", { location }));
         return;
       }
       if (!types.has(raw.type)) {
-        warnings.push(`${location}: unknown resource type '${raw.type}'.`);
+        warnings.push(t("{location}: unknown resource type '{type}'.", { location, type: raw.type }));
         return;
       }
       if (library.items.has(raw.id)) {
-        warnings.push(`${location}: duplicate resource id '${raw.id}'.`);
+        warnings.push(t("{location}: duplicate resource id '{id}'.", { location, id: raw.id }));
         return;
       }
       const variants = new Map<string, ResourceVariant[]>();

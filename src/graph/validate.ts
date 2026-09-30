@@ -1,4 +1,5 @@
 import type { GraphModel } from "./graph";
+import { t } from "../i18n";
 import { localizationKey } from "./localization";
 import type { NodeModel } from "./node";
 import { type FieldSchema, isRecord } from "./schema";
@@ -36,15 +37,15 @@ export function validateGraph(graph: GraphModel, sources: ValidationSources): Pr
   const entries = entrySchema ? [...graph.nodes].filter((node) => node.schemaId === entrySchema) : [];
   if (entrySchema) {
     const title = pack?.nodes.get(entrySchema)?.title ?? entrySchema;
-    if (entries.length === 0) problems.push({ severity: "error", message: `There is no '${title}' node: the dialogue has nowhere to start.` });
+    if (entries.length === 0) problems.push({ severity: "error", message: t("There is no '{type}' node: the dialogue has nowhere to start.", { type: title }) });
     if (entries.length > 1) {
       for (const entry of entries.slice(1)) {
-        problems.push({ severity: "error", message: `There are ${entries.length} '${title}' nodes; only the first one is used.`, nodeId: entry.id, viewId: entry.id });
+        problems.push({ severity: "error", message: t("There are {count} '{type}' nodes; only the first one is used.", { count: entries.length, type: title }), nodeId: entry.id, viewId: entry.id });
       }
     }
   }
   if (graph.unresolvedConnections.length > 0) {
-    problems.push({ severity: "error", message: `${graph.unresolvedConnections.length} connection(s) from the file could not be restored.` });
+    problems.push({ severity: "error", message: t("{count} connection(s) from the file could not be restored.", { count: graph.unresolvedConnections.length }) });
   }
 
   const reached = reachableViews(graph, entries.map((node) => node.id));
@@ -55,12 +56,12 @@ export function validateGraph(graph: GraphModel, sources: ValidationSources): Pr
     if (nodes.some((node) => node.schema?.blocking)) continue;
     const names = nodes.slice(0, 4).map((node, index) => nodeLabel(node, loop[index] !== node.id));
     const route = `${names.join(" → ")}${nodes.length > 4 ? " → …" : ""}`;
-    problems.push({ severity: "error", message: `Endless loop: ${route} — nothing in it waits for the player.`, nodeId: nodes[0].id, viewId: loop[0] });
+    problems.push({ severity: "error", message: t("Endless loop: {route} — nothing in it waits for the player.", { route }), nodeId: nodes[0].id, viewId: loop[0] });
   }
 
   for (const node of graph.nodes) {
     if (!node.schema) {
-      problems.push({ severity: "error", message: `${nodeLabel(node)}: unknown node type '${node.schemaId}'.`, nodeId: node.id, viewId: node.id });
+      problems.push({ severity: "error", message: t("{node}: unknown node type '{type}'.", { node: nodeLabel(node), type: node.schemaId }), nodeId: node.id, viewId: node.id });
       continue;
     }
 
@@ -82,12 +83,14 @@ export function validateGraph(graph: GraphModel, sources: ValidationSources): Pr
         }
         if (required && !connected) {
           const message =
-            port.direction === "Output" ? `output '${port.displayName}' is not connected: the dialogue stops here.` : `input '${port.displayName}' is not connected.`;
-          problems.push({ severity: "warning", message: `${where}: ${message}`, nodeId: node.id, viewId });
+            port.direction === "Output"
+              ? t("{node}: output '{port}' is not connected: the dialogue stops here.", { node: where, port: port.displayName })
+              : t("{node}: input '{port}' is not connected.", { node: where, port: port.displayName });
+          problems.push({ severity: "warning", message, nodeId: node.id, viewId });
         }
       }
       if (entries.length > 0 && flowInput && flowInputConnected && !reached.has(viewId)) {
-        problems.push({ severity: "warning", message: `${where}: cannot be reached from the start.`, nodeId: node.id, viewId });
+        problems.push({ severity: "warning", message: t("{node}: cannot be reached from the start.", { node: where }), nodeId: node.id, viewId });
       }
     }
 
@@ -98,13 +101,13 @@ export function validateGraph(graph: GraphModel, sources: ValidationSources): Pr
     for (const field of node.schema.fields) {
       visitLocalized(node, field, node.data[field.id], [field.id], (key, label) => {
         if (!key) {
-          problems.push({ severity: "error", message: `${nodeLabel(node)} → ${label}: no localization key (name the node).`, nodeId: node.id, viewId: node.id });
+          problems.push({ severity: "error", message: t("{node} → {field}: no localization key (name the node).", { node: nodeLabel(node), field: label }), nodeId: node.id, viewId: node.id });
           return;
         }
         const missing = sources.languages.filter((language) => !sources.text(language, key)?.trim());
         if (missing.length > 0) {
           const languages = missing.map((language) => language.toUpperCase()).join(", ");
-          problems.push({ severity: "warning", message: `${nodeLabel(node)} → ${label}: no ${languages} text (key '${key}').`, nodeId: node.id, viewId: node.id });
+          problems.push({ severity: "warning", message: t("{node} → {field}: no {languages} text (key '{key}').", { node: nodeLabel(node), field: label, languages, key }), nodeId: node.id, viewId: node.id });
         }
       });
     }
@@ -115,7 +118,12 @@ export function validateGraph(graph: GraphModel, sources: ValidationSources): Pr
       if (!symbol.writes.has(read.name)) {
         problems.push({
           severity: "warning",
-          message: `${nodeLabel(read.node)} → ${read.field.label}: ${kind} '${read.name}' is never set by any node.`,
+          message: t("{node} → {field}: {kind} '{name}' is never set by any node.", {
+            node: nodeLabel(read.node),
+            field: read.field.label,
+            kind,
+            name: read.name,
+          }),
           nodeId: read.node.id,
           viewId: read.node.id,
         });
@@ -129,8 +137,8 @@ export function validateGraph(graph: GraphModel, sources: ValidationSources): Pr
 /** "'1.26' (Line)", "'1.26' (Line, copy)", or the type alone for unnamed nodes. */
 function nodeLabel(node: NodeModel, copy = false): string {
   const title = node.schema?.title ?? node.schemaId;
-  const suffix = copy ? `${title}, copy` : title;
-  return node.displayName !== title ? `'${node.displayName}' (${suffix})` : copy ? `${title} (copy)` : title;
+  const suffix = copy ? t("{type}, copy", { type: title }) : title;
+  return node.displayName !== title ? `'${node.displayName}' (${suffix})` : copy ? t("{type} (copy)", { type: title }) : title;
 }
 
 function isConnected(graph: GraphModel, port: Port, viewId: string): boolean {
@@ -214,12 +222,12 @@ type Symbols = Map<string, { writes: Set<string>; reads: { name: string; node: N
 
 function checkData(graph: GraphModel, node: NodeModel, problems: Problem[], symbols: Symbols): void {
   const report = (severity: ProblemSeverity, label: string, message: string) =>
-    problems.push({ severity, message: `${nodeLabel(node)} → ${label}: ${message}`, nodeId: node.id, viewId: node.id });
+    problems.push({ severity, message: t("{node} → {field}: {message}", { node: nodeLabel(node), field: label, message }), nodeId: node.id, viewId: node.id });
 
   const visit = (field: FieldSchema, value: unknown, label: string): void => {
     const empty = value === null || value === undefined || value === "" || (Array.isArray(value) && value.length === 0);
     if (field.required && empty) {
-      report("warning", label, "not set.");
+      report("warning", label, t("not set."));
     }
     if (field.symbol && typeof value === "string" && value.trim()) {
       const symbol = symbols.get(field.symbol.kind) ?? { writes: new Set<string>(), reads: [] };
@@ -229,18 +237,18 @@ function checkData(graph: GraphModel, node: NodeModel, problems: Problem[], symb
     }
     switch (field.type) {
       case "nodeRef":
-        if (typeof value === "string" && value && !graph.getNode(value)) report("error", label, "the referenced node was deleted.");
+        if (typeof value === "string" && value && !graph.getNode(value)) report("error", label, t("the referenced node was deleted."));
         break;
       case "itemRef":
-        if (typeof value === "string" && value && !graph.findItem(value)) report("error", label, "the referenced element was deleted.");
+        if (typeof value === "string" && value && !graph.findItem(value)) report("error", label, t("the referenced element was deleted."));
         break;
       case "resource":
-        if (typeof value === "string" && value && !graph.registry.pack?.resources.items.has(value)) report("error", label, "the resource is not in the library.");
+        if (typeof value === "string" && value && !graph.registry.pack?.resources.items.has(value)) report("error", label, t("the resource is not in the library."));
         break;
       case "list":
         if (Array.isArray(value)) {
           if (field.minItems !== undefined && value.length < field.minItems && !(field.required && value.length === 0)) {
-            report("warning", label, `needs at least ${field.minItems} item(s).`);
+            report("warning", label, t("needs at least {count} item(s).", { count: field.minItems }));
           }
           value.forEach((item, index) => visit(field.item, item, `${label} ${index + 1}`));
         }

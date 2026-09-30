@@ -1,6 +1,7 @@
 import { type ReactNode, useEffect, useMemo, useState } from "react";
 import type { PackInfo } from "../app/editor";
 import type { NodeDescriptor } from "../graph/registry";
+import { t } from "../i18n";
 
 interface NodePaletteProps {
   descriptors: readonly NodeDescriptor[];
@@ -110,15 +111,15 @@ export function NodePalette({
       <div className="palette-pack">
         {languageSelect}
         <div className="palette-pack-name" title={pack?.source}>
-          {pack ? pack.name : "No schema pack"}
+          {pack ? pack.name : t("No schema pack")}
           {pack && <span className="palette-pack-version">v{pack.version}</span>}
         </div>
         <div className="palette-pack-actions">
-          <button onClick={onChoosePack} title="Choose a schema pack folder (with pack.json)">
-            Pack…
+          <button onClick={onChoosePack} title={t("Choose a schema pack folder (with pack.json)")}>
+            {t("Pack…")}
           </button>
-          <button onClick={onReloadPack} title="Reload the schema pack from disk">
-            Reload
+          <button onClick={onReloadPack} title={t("Reload the schema pack from disk")}>
+            {t("Reload")}
           </button>
           {packWarnings.length > 0 && (
             <span className="palette-pack-warnings" title={packWarnings.join("\n\n")}>
@@ -130,16 +131,16 @@ export function NodePalette({
       <div className="palette-extras">
         <div
           className={`palette-item palette-note${drag?.entry.kind === "note" ? " dragging" : ""}`}
-          title={"A comment on the canvas, not part of the dialogue\nDrag onto the canvas, or click to add at the view center"}
+          title={`${t("A comment on the canvas, not part of the dialogue")}\n${t("Drag onto the canvas, or click to add at the view center")}`}
           onPointerDown={(event) => startDrag({ kind: "note" }, event)}
         >
           <span className="palette-note-icon" aria-hidden="true" />
-          <div className="palette-item-title">Sticky note</div>
+          <div className="palette-item-title">{t("Sticky note")}</div>
         </div>
       </div>
       <input
         className="palette-filter"
-        placeholder="Filter…"
+        placeholder={t("Filter…")}
         value={filter}
         onChange={(event) => setFilter(event.target.value)}
       />
@@ -152,7 +153,7 @@ export function NodePalette({
                 key={descriptor.schemaId}
                 className={`palette-item${dragging({ kind: "node", descriptor }) ? " dragging" : ""}`}
                 style={descriptor.color !== null ? { borderLeftColor: toCss(descriptor.color) } : undefined}
-                title={`${descriptor.schemaId}\nDrag onto the canvas, or click to add at the view center`}
+                title={`${descriptor.schemaId}\n${t("Drag onto the canvas, or click to add at the view center")}`}
                 onPointerDown={(event) => startDrag({ kind: "node", descriptor }, event)}
               >
                 <div className="palette-item-title">{descriptor.title}</div>
@@ -161,12 +162,12 @@ export function NodePalette({
           </section>
         ))}
         {groups.length === 0 && (
-          <div className="palette-empty">{descriptors.length === 0 ? "The schema pack has no nodes." : "No matching nodes."}</div>
+          <div className="palette-empty">{descriptors.length === 0 ? t("The schema pack has no nodes.") : t("No matching nodes.")}</div>
         )}
       </div>
       {drag?.moved && (
         <div className="palette-ghost" style={{ left: drag.x, top: drag.y }}>
-          {drag.entry.kind === "note" ? "Sticky note" : drag.entry.descriptor.title}
+          {drag.entry.kind === "note" ? t("Sticky note") : drag.entry.descriptor.title}
         </div>
       )}
     </aside>

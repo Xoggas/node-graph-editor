@@ -1,4 +1,5 @@
 import { parseLibraries, parseResourceTypes, type ResourceLibrary } from "./resources";
+import { t } from "../i18n";
 import { newId, type PortCapacity, type PortDirection } from "./types";
 
 // ---------------------------------------------------------------------------------------------
@@ -253,7 +254,7 @@ const ID_PATTERN = /^[A-Za-z_][A-Za-z0-9_.-]*$/;
 export function parseSchemaPack(files: PackFile[], packDir: string | null = null): SchemaPack {
   const manifestFile = files.find((file) => file.path === "pack.json");
   if (!manifestFile) {
-    throw new SchemaError("pack.json is missing in the pack folder.");
+    throw new SchemaError(t("pack.json is missing in the pack folder."));
   }
   const manifest = parseJson(manifestFile);
   const reader = new Reader("pack.json");
@@ -296,7 +297,7 @@ export function parseSchemaPack(files: PackFile[], packDir: string | null = null
   for (const type of pack.portTypes.values()) {
     for (const parent of type.extends) {
       if (!pack.portTypes.has(parent)) {
-        throw new SchemaError(`pack.json: port type '${type.id}' extends unknown type '${parent}'.`);
+        throw new SchemaError(t("pack.json: port type '{type}' extends unknown type '{parent}'.", { type: type.id, parent }));
       }
     }
   }
@@ -331,7 +332,7 @@ export function parseSchemaPack(files: PackFile[], packDir: string | null = null
       try {
         const schema = parseNodeSchema(entry, location, pack);
         if (pack.nodes.has(schema.id)) {
-          pack.warnings.push(`${location}: node schema '${schema.id}' is defined twice; the second definition is ignored.`);
+          pack.warnings.push(t("{location}: node schema '{id}' is defined twice; the second definition is ignored.", { location, id: schema.id }));
           return;
         }
         pack.nodes.set(schema.id, schema);
@@ -341,34 +342,41 @@ export function parseSchemaPack(files: PackFile[], packDir: string | null = null
     });
   }
   if (pack.exportEntry && !pack.nodes.has(pack.exportEntry)) {
-    pack.warnings.push(`pack.json → export.entry: node schema '${pack.exportEntry}' does not exist.`);
+    pack.warnings.push(t("pack.json → export.entry: node schema '{id}' does not exist.", { id: pack.exportEntry }));
   }
   for (const schema of pack.nodes.values()) {
     for (const field of collectFields(schema.fields, "resource") as ResourceField[]) {
       if (!resourceTypes.has(field.resourceType)) {
-        pack.warnings.push(`${schema.id} → ${field.id}: unknown resource type '${field.resourceType}'.`);
+        pack.warnings.push(t("{schema} → {field}: unknown resource type '{type}'.", { schema: schema.id, field: field.id, type: field.resourceType }));
       }
     }
     for (const field of collectFields(schema.fields, "resourceVariant") as ResourceVariantField[]) {
       const source = schema.fields.find((candidate) => candidate.id === field.source);
       if (source?.type !== "resource") {
-        pack.warnings.push(`${schema.id} → ${field.id}: 'source' must name a resource field of the same node.`);
+        pack.warnings.push(t("{schema} → {field}: 'source' must name a resource field of the same node.", { schema: schema.id, field: field.id }));
       } else if (!resourceTypes.get(source.resourceType)?.variants.has(field.collection)) {
-        pack.warnings.push(`${schema.id} → ${field.id}: resource type '${source.resourceType}' has no variants '${field.collection}'.`);
+        pack.warnings.push(
+          t("{schema} → {field}: resource type '{type}' has no variants '{collection}'.", {
+            schema: schema.id,
+            field: field.id,
+            type: source.resourceType,
+            collection: field.collection,
+          }),
+        );
       }
     }
     for (const ref of collectFields(schema.fields, "nodeRef") as NodeRefField[]) {
       if (!pack.nodes.has(ref.schema)) {
-        pack.warnings.push(`${schema.id} → ${ref.id}: referenced schema '${ref.schema}' does not exist.`);
+        pack.warnings.push(t("{schema} → {field}: referenced schema '{ref}' does not exist.", { schema: schema.id, field: ref.id, ref: ref.schema }));
       }
     }
     for (const ref of collectFields(schema.fields, "itemRef") as ItemRefField[]) {
       const target = pack.nodes.get(ref.schema);
       const list = target?.fields.find((field) => field.id === ref.list);
       if (!target) {
-        pack.warnings.push(`${schema.id} → ${ref.id}: referenced schema '${ref.schema}' does not exist.`);
+        pack.warnings.push(t("{schema} → {field}: referenced schema '{ref}' does not exist.", { schema: schema.id, field: ref.id, ref: ref.schema }));
       } else if (list?.type !== "list" || list.item.type !== "record") {
-        pack.warnings.push(`${schema.id} → ${ref.id}: '${ref.schema}.${ref.list}' must be a list of records.`);
+        pack.warnings.push(t("{schema} → {field}: '{list}' must be a list of records.", { schema: schema.id, field: ref.id, list: `${ref.schema}.${ref.list}` }));
       }
     }
   }
@@ -410,7 +418,7 @@ export function parseNodeSchema(json: unknown, location: string, pack: Pick<Sche
     for (const dimension of ["rows", "columns"] as const) {
       const source = fieldById.get(field[dimension])?.type;
       if (source !== "int" && source !== "list") {
-        reader.error(`fields[${index}].${dimension}`, `must name an int or list field, got '${field[dimension]}'`);
+        reader.error(`fields[${index}].${dimension}`, t("must name an int or list field, got '{value}'", { value: field[dimension] }));
       }
     }
   });
@@ -437,13 +445,13 @@ export function parseNodeSchema(json: unknown, location: string, pack: Pick<Sche
       const count = reader.optionalString(repeat, "count");
       if (list) {
         if (fieldById.get(list)?.type !== "list") {
-          reader.error(`${path}.repeat.list`, `must name a list field, got '${list}'`);
+          reader.error(`${path}.repeat.list`, t("must name a list field, got '{value}'", { value: list }));
         }
         result.repeat = { list, label };
       } else if (count) {
         const countField = fieldById.get(count);
         if (countField?.type !== "int") {
-          reader.error(`${path}.repeat.count`, `must name an int field, got '${count}'`);
+          reader.error(`${path}.repeat.count`, t("must name an int field, got '{value}'", { value: count }));
         }
         result.repeat = { count, label };
       } else {
@@ -534,7 +542,7 @@ function parseFieldType(reader: Reader, raw: unknown, path: string, requireId: b
         return { value, label: reader.string(entry, "label", value) };
       });
       if (options.length === 0) {
-        reader.error(`${path}.options`, "must not be empty");
+        reader.error(`${path}.options`, t("must not be empty"));
       }
       const fallback = options[0]?.value ?? "";
       const value = reader.string(field, "default", fallback);
@@ -609,7 +617,7 @@ function parseFieldType(reader: Reader, raw: unknown, path: string, requireId: b
         columnLabel: reader.string(field, "columnLabel", "{n}"),
       };
   }
-  throw new SchemaError(`${path}: unreachable field type '${type}'.`);
+  throw new SchemaError(t("{path}: unreachable field type '{type}'.", { path, type }));
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -717,7 +725,7 @@ function sameMatrix(a: Record<string, unknown>, b: MatrixValue): boolean {
 export function normalizeValue(field: FieldSchema, value: unknown, path: string, warn: (message: string) => void): unknown {
   const fallback = (reason: string) => {
     if (value !== undefined) {
-      warn(`${path}: ${reason}; the default value is used.`);
+      warn(t("{path}: {reason}; the default value is used.", { path, reason }));
     }
     return defaultValue(field);
   };
@@ -725,22 +733,22 @@ export function normalizeValue(field: FieldSchema, value: unknown, path: string,
     case "int":
     case "float": {
       if (typeof value !== "number" || !Number.isFinite(value)) {
-        return fallback("expected a number");
+        return fallback(t("expected a number"));
       }
       const number = field.type === "int" ? Math.round(value) : value;
       return clampNumber(field, number);
     }
     case "string":
-      return typeof value === "string" ? value : fallback("expected a string");
+      return typeof value === "string" ? value : fallback(t("expected a string"));
     case "bool":
-      return typeof value === "boolean" ? value : fallback("expected true or false");
+      return typeof value === "boolean" ? value : fallback(t("expected true or false"));
     case "enum":
       return typeof value === "string" && field.options.some((option) => option.value === value)
         ? value
-        : fallback(`'${String(value)}' is not an option`);
+        : fallback(t("'{value}' is not an option", { value: String(value) }));
     case "record": {
       if (!isRecord(value)) {
-        return fallback("expected an object");
+        return fallback(t("expected an object"));
       }
       const record: Record<string, unknown> = { ...value, id: isStableId(value.id) ? value.id : newId() };
       for (const child of field.fields) {
@@ -750,7 +758,7 @@ export function normalizeValue(field: FieldSchema, value: unknown, path: string,
     }
     case "list": {
       if (!Array.isArray(value)) {
-        return fallback("expected an array");
+        return fallback(t("expected an array"));
       }
       const items = value.map((item, index) => normalizeValue(field.item, item, `${path}[${index}]`, warn));
       while (items.length < field.minItems) {
@@ -763,9 +771,9 @@ export function normalizeValue(field: FieldSchema, value: unknown, path: string,
     case "resource":
     case "resourceVariant":
     case "localizedText":
-      return value === null || typeof value === "string" ? value ?? null : fallback("expected an id");
+      return value === null || typeof value === "string" ? value ?? null : fallback(t("expected an id"));
     case "matrix":
-      return isRecord(value) ? value : fallback("expected an object");
+      return isRecord(value) ? value : fallback(t("expected an object"));
     case "unsupported":
       return value ?? null;
   }
@@ -857,7 +865,7 @@ function parseJson(file: PackFile): unknown {
   try {
     return JSON.parse(file.text);
   } catch (error) {
-    throw new SchemaError(`${file.path}: invalid JSON (${(error as Error).message}).`);
+    throw new SchemaError(t("{file}: invalid JSON ({error}).", { file: file.path, error: (error as Error).message }));
   }
 }
 
@@ -887,7 +895,7 @@ class Reader {
     const value = path === undefined ? valueOrParent : (valueOrParent as Record<string, unknown>)[keyOrPath];
     const at = path === undefined ? keyOrPath : join(path, keyOrPath);
     if (!isRecord(value)) {
-      this.error(at, "expected an object");
+      this.error(at, t("expected an object"));
       return {};
     }
     return value;
@@ -897,7 +905,7 @@ class Reader {
     const value = parent[key];
     if (value === undefined) return undefined;
     if (!isRecord(value)) {
-      this.error(join(path, key), "expected an object");
+      this.error(join(path, key), t("expected an object"));
       return undefined;
     }
     return value;
@@ -907,7 +915,7 @@ class Reader {
     const value = parent[key];
     if (value === undefined) return [];
     if (!Array.isArray(value)) {
-      this.error(join(path, key), "expected an array");
+      this.error(join(path, key), t("expected an array"));
       return [];
     }
     return value;
@@ -916,7 +924,7 @@ class Reader {
   id(parent: Record<string, unknown>, key: string, path = ""): string {
     const value = parent[key];
     if (typeof value !== "string" || !ID_PATTERN.test(value)) {
-      this.error(join(path, key), "expected an id (letters, digits, '.', '-', '_')");
+      this.error(join(path, key), t("expected an id (letters, digits, '.', '-', '_')"));
       return typeof value === "string" ? value : "";
     }
     return value;
@@ -926,7 +934,7 @@ class Reader {
     const value = parent[key];
     if (value === undefined) return fallback;
     if (typeof value !== "string") {
-      this.error(join(path, key), "expected a string");
+      this.error(join(path, key), t("expected a string"));
       return fallback;
     }
     return value;
@@ -941,7 +949,7 @@ class Reader {
     const value = parent[key];
     if (value === undefined) return fallback;
     if (!Array.isArray(value) || value.some((item) => typeof item !== "string")) {
-      this.error(key, "expected an array of strings");
+      this.error(key, t("expected an array of strings"));
       return fallback;
     }
     return value as string[];
@@ -951,7 +959,7 @@ class Reader {
     const value = parent[key];
     if (value === undefined) return fallback;
     if (typeof value !== "number" || !Number.isFinite(value)) {
-      this.error(join(path, key), "expected a number");
+      this.error(join(path, key), t("expected a number"));
       return fallback;
     }
     return value;
@@ -964,7 +972,7 @@ class Reader {
   int(parent: Record<string, unknown>, key: string, fallback: number, path = ""): number {
     const value = this.number(parent, key, fallback, path);
     if (!Number.isInteger(value)) {
-      this.error(join(path, key), "expected an integer");
+      this.error(join(path, key), t("expected an integer"));
       return Math.round(value);
     }
     return value;
@@ -974,7 +982,7 @@ class Reader {
     const value = parent[key];
     if (value === undefined) return fallback;
     if (typeof value !== "boolean") {
-      this.error(key, "expected true or false");
+      this.error(key, t("expected true or false"));
       return fallback;
     }
     return value;
@@ -984,7 +992,7 @@ class Reader {
     const value = parent[key];
     if (value === undefined) return null;
     if (typeof value !== "string" || !/^#[0-9a-f]{6}$/i.test(value)) {
-      this.error(key, "expected a color like '#5a96dc'");
+      this.error(key, t("expected a color like '#5a96dc'"));
       return null;
     }
     return parseInt(value.slice(1), 16);
@@ -997,7 +1005,7 @@ class Reader {
       : (options as Record<string, T>);
     if (value === undefined && fallback !== undefined) return fallback;
     if (typeof value === "string" && value in map) return map[value];
-    this.error(join(path, key), `expected one of: ${Object.keys(map).join(", ")}`);
+    this.error(join(path, key), t("expected one of: {options}", { options: Object.keys(map).join(", ") }));
     return fallback ?? (Object.values(map)[0] as T);
   }
 

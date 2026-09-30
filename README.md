@@ -41,6 +41,11 @@ Requires Node.js and a Rust toolchain ([Tauri prerequisites](https://tauri.app/s
 | Add node | Drag from the palette, or click an item to add it at the view center |
 | Sticky note | N (at the pointer), the palette item above the nodes, or the canvas context menu. Double-click or F2 edits the text (Ctrl+Enter or a click outside finishes), the folded corner resizes, the context menu sets the color |
 
+The interface is in English or Russian (picked from the system language, switchable, remembered).
+Code writes English texts through `t()` (`src/i18n`); `src/i18n/ru.ts` maps them to Russian, with
+plural forms as functions, and a test fails when a text has no translation. Pack content (node types,
+fields, ports, menus) comes from the pack as written.
+
 Keyboard shortcuts use physical keys, so they work with any layout (e.g. Russian).
 All shortcuts are defined in `src/app/shortcuts.ts`, which also feeds the F1 overlay.
 

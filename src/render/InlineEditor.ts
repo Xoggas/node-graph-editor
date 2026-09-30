@@ -1,4 +1,5 @@
 import type { Rect } from "./geometry";
+import { t } from "../i18n";
 
 export interface TextEditRequest {
   /** Position in host (canvas) pixels. */
@@ -115,7 +116,7 @@ export class InlineEditor {
     const search = request.searchable ? document.createElement("input") : null;
     if (search) {
       search.className = "ng-inline-search";
-      search.placeholder = "Search…";
+      search.placeholder = t("Search…");
       search.spellcheck = false;
       popup.appendChild(search);
     }
@@ -124,7 +125,7 @@ export class InlineEditor {
     popup.appendChild(list);
     const empty = document.createElement("div");
     empty.className = "ng-inline-empty";
-    empty.textContent = request.emptyText ?? "Nothing found.";
+    empty.textContent = request.emptyText ?? t("Nothing found.");
 
     let visible: { value: string; label: string }[] = [];
     let buttons: HTMLButtonElement[] = [];

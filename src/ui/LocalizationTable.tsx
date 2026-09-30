@@ -1,6 +1,7 @@
 import { useEffect, useReducer, useRef, useState } from "react";
 import type { Editor } from "../app/editor";
 import { localizationUsage } from "../graph/localization";
+import { t } from "../i18n";
 
 interface LocalizationTableProps {
   editor: Editor;
@@ -74,9 +75,9 @@ export function LocalizationTable({ editor, languages, focusRequest, onShowUses 
   return (
     <div className="resource-browser localization-table">
       <div className="resource-header">
-        <h2>Localization</h2>
+        <h2>{t("Localization")}</h2>
         <span className="resource-count">
-          {rows.length === keys.length ? keys.length : `${rows.length} of ${keys.length}`} keys
+          {rows.length === keys.length ? t("{count} key(s)", { count: keys.length }) : t("{shown} of {count} key(s)", { shown: rows.length, count: keys.length })}
         </span>
         <div className="localization-show" role="radiogroup">
           {(Object.keys(SHOW_LABELS) as Show[]).map((option) => (
@@ -87,7 +88,7 @@ export function LocalizationTable({ editor, languages, focusRequest, onShowUses 
               className={show === option ? "active" : ""}
               onClick={() => setShow(option)}
             >
-              {SHOW_LABELS[option]}
+              {t(SHOW_LABELS[option])}
               <span className="tab-count">{counts[option]}</span>
             </button>
           ))}
@@ -96,7 +97,7 @@ export function LocalizationTable({ editor, languages, focusRequest, onShowUses 
           ref={inputRef}
           className="resource-filter"
           value={query}
-          placeholder="Filter by key or text…"
+          placeholder={t("Filter by key or text…")}
           spellCheck={false}
           onChange={(event) => setQuery(event.target.value)}
           onKeyDown={(event) => {
@@ -108,9 +109,9 @@ export function LocalizationTable({ editor, languages, focusRequest, onShowUses 
         />
       </div>
       {languages.length === 0 ? (
-        <div className="resource-empty">The schema pack has no languages.</div>
+        <div className="resource-empty">{t("The schema pack has no languages.")}</div>
       ) : rows.length === 0 ? (
-        <div className="resource-empty">{keys.length === 0 ? "There are no texts yet." : "Nothing matches."}</div>
+        <div className="resource-empty">{keys.length === 0 ? t("There are no texts yet.") : t("Nothing matches.")}</div>
       ) : (
         <div
           ref={listRef}
@@ -123,12 +124,12 @@ export function LocalizationTable({ editor, languages, focusRequest, onShowUses 
           <table>
             <thead>
               <tr>
-                <th className="localization-col-key">Key</th>
+                <th className="localization-col-key">{t("Key")}</th>
                 <th>
                   <div className="localization-column">
                     <LanguagePicker languages={languages} value={left} onChange={(language) => choose(language === right ? [right, left] : [language, right])} />
                     {languages.length > 1 && (
-                      <button className="localization-swap" title="Swap the languages" onClick={() => choose([right, left])}>
+                      <button className="localization-swap" title={t("Swap the languages")} onClick={() => choose([right, left])}>
                         ⇄
                       </button>
                     )}
@@ -139,7 +140,7 @@ export function LocalizationTable({ editor, languages, focusRequest, onShowUses 
                     <LanguagePicker languages={languages} value={right} onChange={(language) => choose(language === left ? [right, left] : [left, language])} />
                   </th>
                 )}
-                <th className="resource-col-uses">Used</th>
+                <th className="resource-col-uses">{t("Used")}</th>
               </tr>
             </thead>
             <tbody>
@@ -161,12 +162,12 @@ export function LocalizationTable({ editor, languages, focusRequest, onShowUses 
                     ))}
                     <td className="resource-col-uses">
                       {uses.length > 0 ? (
-                        <button className="resource-uses" onClick={() => onShowUses(uses)} title="Select these nodes on the graph">
-                          {uses.length} {uses.length === 1 ? "node" : "nodes"}
+                        <button className="resource-uses" onClick={() => onShowUses(uses)} title={t("Select these nodes on the graph")}>
+                          {t("{count} node(s)", { count: uses.length })}
                         </button>
                       ) : (
-                        <span className="resource-none" title="No node of the graph uses this key">
-                          unused
+                        <span className="resource-none" title={t("No node of the graph uses this key")}>
+                          {t("unused")}
                         </span>
                       )}
                     </td>
@@ -183,7 +184,7 @@ export function LocalizationTable({ editor, languages, focusRequest, onShowUses 
 
 function LanguagePicker({ languages, value, onChange }: { languages: readonly string[]; value: string; onChange: (language: string) => void }) {
   return (
-    <select className="localization-language" value={value} onChange={(event) => onChange(event.target.value)} title="Language of this column">
+    <select className="localization-language" value={value} onChange={(event) => onChange(event.target.value)} title={t("Language of this column")}>
       {languages.map((language) => (
         <option key={language} value={language}>
           {language.toUpperCase()}
@@ -245,8 +246,8 @@ function TextCell({ value, language, onCommit }: { value: string | undefined; la
   }
   const empty = !value?.trim();
   return (
-    <button className={`localization-text${empty ? " missing" : ""}`} onClick={() => setEditing(true)} title="Click to edit">
-      {empty ? "missing" : value}
+    <button className={`localization-text${empty ? " missing" : ""}`} onClick={() => setEditing(true)} title={t("Click to edit")}>
+      {empty ? t("missing") : value}
     </button>
   );
 }

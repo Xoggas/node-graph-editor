@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { onUiLanguageChange, setUiLanguage, t, UI_LANGUAGES, type UiLanguage, uiLanguage } from "./i18n";
 import { Editor, type Notice, type PasteMode, type PasteModeQuestion } from "./app/editor";
 import { NOTE_DEFAULT_SIZE } from "./graph/types";
 import { physicalKey } from "./app/keys";
@@ -43,6 +44,8 @@ if (import.meta.env.DEV) {
 
 export default function App() {
   const snapshot = useSyncExternalStore(editor.subscribe, editor.getSnapshot);
+  // Re-render everything in the new interface language.
+  const language = useSyncExternalStore(onUiLanguageChange, uiLanguage);
   const rendererRef = useRef<GraphRenderer | null>(null);
   const [stats, setStats] = useState<RendererStats | null>(null);
   const [helpOpen, setHelpOpen] = useState(false);
@@ -172,7 +175,7 @@ export default function App() {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
 
-  const documentName = snapshot.fileName ?? "Untitled";
+  const documentName = snapshot.fileName ?? t("Untitled");
 
   // Status messages are transient: shown for a few seconds after each change.
   const [statusVisible, setStatusVisible] = useState(false);
@@ -205,8 +208,8 @@ export default function App() {
 
   // Shown in the palette header and in the resource lists (their texts follow it too).
   const languageSelect = snapshot.languages.length > 0 && (
-    <label className="language-select" title="Language of the texts shown">
-      Language
+    <label className="language-select" title={t("Language of the texts shown")}>
+      {t("Language")}
       <select value={snapshot.displayLanguage ?? ""} onChange={(event) => editor.setDisplayLanguage(event.target.value)}>
         {snapshot.languages.map((language) => (
           <option key={language} value={language}>
@@ -220,30 +223,39 @@ export default function App() {
   return (
     <div className="app">
       <header className="toolbar">
-        <button onClick={() => void editor.newGraph()} title="Ctrl+N">New</button>
-        <button onClick={() => void editor.open()} title="Ctrl+O">Open</button>
-        <button onClick={() => void editor.save()} title="Ctrl+S">Save</button>
-        <button onClick={() => void editor.save(true)} title="Ctrl+Shift+S">Save As</button>
+        <button onClick={() => void editor.newGraph()} title="Ctrl+N">{t("New")}</button>
+        <button onClick={() => void editor.open()} title="Ctrl+O">{t("Open")}</button>
+        <button onClick={() => void editor.save()} title="Ctrl+S">{t("Save")}</button>
+        <button onClick={() => void editor.save(true)} title="Ctrl+Shift+S">{t("Save As")}</button>
         <span className="toolbar-separator" />
         <button
           onClick={(event) => void editor.exportGraph(event.shiftKey)}
-          title="Export the engine version of the graph (Ctrl+E; Shift+click or Ctrl+Shift+E to choose the file)"
+          title={t("Export the engine version of the graph (Ctrl+E; Shift+click or Ctrl+Shift+E to choose the file)")}
         >
-          Export
+          {t("Export")}
         </button>
-        <label className="toolbar-check" title="Every save also exports the graph (next to it the first time, then to the last export path)">
+        <label className="toolbar-check" title={t("Every save also exports the graph (next to it the first time, then to the last export path)")}>
           <input type="checkbox" checked={snapshot.autoExport} onChange={(event) => editor.setAutoExport(event.target.checked)} />
-          Export on save
+          {t("Export on save")}
         </label>
         <span className="toolbar-separator" />
         <button onClick={() => editor.undo()} disabled={!snapshot.canUndo} title="Ctrl+Z">
-          Undo
+          {t("Undo")}
         </button>
         <button onClick={() => editor.redo()} disabled={!snapshot.canRedo} title="Ctrl+Y">
-          Redo
+          {t("Redo")}
         </button>
         <span className="toolbar-spacer" />
-        <button onClick={() => setHelpOpen(true)} title="Keyboard shortcuts (F1)">
+        <label className="toolbar-language" title={t("Interface language")}>
+          <select value={language} onChange={(event) => setUiLanguage(event.target.value as UiLanguage)}>
+            {UI_LANGUAGES.map((option) => (
+              <option key={option.id} value={option.id}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <button onClick={() => setHelpOpen(true)} title={t("Keyboard shortcuts (F1)")}>
           ?
         </button>
       </header>
@@ -268,7 +280,7 @@ export default function App() {
           {toasts.length > 0 && (
             <div className="toasts" role="status" aria-live="polite">
               {toasts.map((toast) => (
-                <div key={toast.id} className={`toast toast-${toast.kind}`} onClick={() => dismissToast(toast.id)} title="Click to dismiss">
+                <div key={toast.id} className={`toast toast-${toast.kind}`} onClick={() => dismissToast(toast.id)} title={t("Click to dismiss")}>
                   <span className="toast-icon">{toast.kind === "error" ? "✕" : "⚠"}</span>
                   <span className="toast-message">{toast.message}</span>
                 </div>
@@ -313,7 +325,7 @@ export default function App() {
       {(resourceTypes.length > 0 || hasLocalization) && (
         <nav className="tabs" role="tablist">
           <button role="tab" aria-selected={activeTab === GRAPH_TAB} className={`tab${activeTab === GRAPH_TAB ? " active" : ""}`} onClick={() => setTab(GRAPH_TAB)}>
-            Graph
+            {t("Graph")}
           </button>
           {hasLocalization && (
             <button
@@ -321,9 +333,9 @@ export default function App() {
               aria-selected={activeTab === LOCALIZATION_TAB}
               className={`tab${activeTab === LOCALIZATION_TAB ? " active" : ""}`}
               onClick={() => setTab(LOCALIZATION_TAB)}
-              title="Localization tables of the pack"
+              title={t("Localization tables of the pack")}
             >
-              Localization
+              {t("Localization")}
             </button>
           )}
           {resourceTypes.length > 0 && <span className="tabs-separator" />}
@@ -334,7 +346,7 @@ export default function App() {
               aria-selected={activeTab === type.id}
               className={`tab${activeTab === type.id ? " active" : ""}`}
               onClick={() => setTab(type.id)}
-              title={`Resource library: ${type.label}`}
+              title={t("Resource library: {type}", { type: type.label })}
             >
               {type.label}
               <span className="tab-count">{[...library!.items.values()].filter((item) => item.type === type.id).length}</span>
@@ -348,18 +360,20 @@ export default function App() {
           className="status-document"
           title={
             unsaved
-              ? [snapshot.dirty && "The graph has unsaved changes.", snapshot.localizationDirty && "Localization texts have unsaved changes."]
+              ? [snapshot.dirty && t("The graph has unsaved changes."), snapshot.localizationDirty && t("Localization texts have unsaved changes.")]
                   .filter(Boolean)
                   .join("\n")
-              : "All changes saved"
+              : t("All changes saved")
           }
         >
-          <span className="status-document-label">Graph:</span>
+          <span className="status-document-label">{t("Graph:")}</span>
           <span className="status-document-name">{documentName}</span>
-          {unsaved && <span className="status-document-dirty">● unsaved{snapshot.localizationDirty && !snapshot.dirty ? " texts" : ""}</span>}
+          {unsaved && (
+            <span className="status-document-dirty">{snapshot.localizationDirty && !snapshot.dirty ? t("● unsaved texts") : t("● unsaved")}</span>
+          )}
         </span>
         <span className="status-path" title={snapshot.filePath ?? undefined}>
-          <bdi>{snapshot.filePath ?? (snapshot.fileName ? `${snapshot.fileName} (not on disk)` : "Not saved yet")}</bdi>
+          <bdi>{snapshot.filePath ?? (snapshot.fileName ? t("{name} (not on disk)", { name: snapshot.fileName }) : t("Not saved yet"))}</bdi>
         </span>
         <span className={`status-message${statusVisible && snapshot.statusKind === "info" ? " visible" : ""}`}>
           {snapshot.statusKind === "info" && snapshot.status}
@@ -371,19 +385,19 @@ export default function App() {
             <button
               className={`status-problems${errors > 0 ? " errors" : warnings > 0 ? " warnings" : ""}`}
               onClick={() => setProblemsOpen((open) => !open)}
-              title="Graph checks: what would break or look wrong in the game"
+              title={t("Graph checks: what would break or look wrong in the game")}
             >
-              {errors + warnings === 0 ? "✓ No problems" : `${errors > 0 ? "✕" : "⚠"} ${summary(errors, warnings)}`}
+              {errors + warnings === 0 ? t("✓ No problems") : `${errors > 0 ? "✕" : "⚠"} ${summary(errors, warnings)}`}
             </button>
           );
         })()}
         <span className="status-stat">
-          {snapshot.nodeCount} nodes · {snapshot.connectionCount} connections
-          {snapshot.selectionCount > 0 && ` · ${snapshot.selectionCount} selected`}
+          {t("{nodes} nodes · {connections} connections", { nodes: snapshot.nodeCount, connections: snapshot.connectionCount })}
+          {snapshot.selectionCount > 0 && ` · ${t("{count} selected", { count: snapshot.selectionCount })}`}
         </span>
         {stats && (
-          <span className="status-stat" title="CPU time of the last rendered frames; visible elements after culling">
-            {stats.frameMs.toFixed(1)} ms/frame · {stats.visibleNodes}/{snapshot.nodeCount} visible
+          <span className="status-stat" title={t("CPU time of the last rendered frames; visible elements after culling")}>
+            {t("{ms} ms/frame · {visible}/{total} visible", { ms: stats.frameMs.toFixed(1), visible: stats.visibleNodes, total: snapshot.nodeCount })}
           </span>
         )}
       </footer>

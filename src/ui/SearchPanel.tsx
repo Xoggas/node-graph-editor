@@ -3,6 +3,7 @@ import type { Editor } from "../app/editor";
 import type { GraphChange } from "../graph/graph";
 import { type SearchMatch, searchNodes } from "../graph/search";
 import type { GraphRenderer } from "../render/GraphRenderer";
+import { t } from "../i18n";
 
 interface SearchPanelProps {
   editor: Editor;
@@ -80,15 +81,17 @@ export function SearchPanel({ editor, renderer, focusRequest, onClose }: SearchP
         <input
           ref={inputRef}
           value={query}
-          placeholder="Find nodes: name, type, text…"
+          placeholder={t("Find nodes: name, type, text…")}
           spellCheck={false}
           onChange={(event) => {
             setQuery(event.target.value);
             setActive(0);
           }}
         />
-        <span className="search-count">{query.trim() ? `${results.length === 0 ? "No" : results.length} result${results.length === 1 ? "" : "s"}` : ""}</span>
-        <button className="search-close" onClick={onClose} title="Close (Esc)" aria-label="Close">
+        <span className="search-count">
+          {query.trim() ? (results.length === 0 ? t("No results") : t("{count} result(s)", { count: results.length })) : ""}
+        </span>
+        <button className="search-close" onClick={onClose} title={t("Close (Esc)")} aria-label={t("Close")}>
           ×
         </button>
       </div>
@@ -141,7 +144,7 @@ function Snippet({ match }: { match: SearchMatch }) {
   const to = Math.min(text.length, match.start + match.length + SNIPPET_AFTER);
   return (
     <div className="search-result-snippet">
-      <span className="search-result-where">{match.where}:</span> {from > 0 && "…"}
+      <span className="search-result-where">{match.where === "Name" ? t("Name") : match.where}:</span> {from > 0 && "…"}
       {text.slice(from, match.start)}
       <mark>{text.slice(match.start, match.start + match.length)}</mark>
       {text.slice(match.start + match.length, to)}

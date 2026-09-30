@@ -1,4 +1,5 @@
 import type { Problem } from "../graph/validate";
+import { t } from "../i18n";
 
 interface ProblemsPanelProps {
   problems: readonly Problem[];
@@ -16,14 +17,14 @@ export function ProblemsPanel({ problems, loadWarnings, onShow, onClose }: Probl
     <aside className="problems-panel" onKeyDown={(event) => event.key === "Escape" && onClose()}>
       <div className="problems-header">
         <span>
-          Problems <span className="problems-count">{summary(errors, rows.length - errors)}</span>
+          {t("Problems")} <span className="problems-count">{summary(errors, rows.length - errors)}</span>
         </span>
-        <button className="problems-close" onClick={onClose} title="Close" aria-label="Close">
+        <button className="problems-close" onClick={onClose} title={t("Close")} aria-label={t("Close")}>
           ×
         </button>
       </div>
       {rows.length === 0 ? (
-        <div className="problems-empty">✓ No problems found.</div>
+        <div className="problems-empty">{t("✓ No problems found.")}</div>
       ) : (
         <div className="problems-list">
           {rows.map((problem, index) => (
@@ -31,7 +32,7 @@ export function ProblemsPanel({ problems, loadWarnings, onShow, onClose }: Probl
               key={index}
               className={`problems-row ${problem.severity}${problem.viewId ?? problem.nodeId ? " linked" : ""}`}
               onClick={() => onShow(problem)}
-              title={problem.viewId ?? problem.nodeId ? "Show the node" : undefined}
+              title={problem.viewId ?? problem.nodeId ? t("Show the node") : undefined}
             >
               <span className="problems-icon">{problem.severity === "error" ? "✕" : "⚠"}</span>
               <span>{problem.message}</span>
@@ -44,6 +45,6 @@ export function ProblemsPanel({ problems, loadWarnings, onShow, onClose }: Probl
 }
 
 export function summary(errors: number, warnings: number): string {
-  const parts = [errors > 0 && `${errors} error${errors === 1 ? "" : "s"}`, warnings > 0 && `${warnings} warning${warnings === 1 ? "" : "s"}`];
-  return parts.filter(Boolean).join(", ") || "none";
+  const parts = [errors > 0 && t("{count} error(s)", { count: errors }), warnings > 0 && t("{count} warning(s)", { count: warnings })];
+  return parts.filter(Boolean).join(", ") || t("none");
 }

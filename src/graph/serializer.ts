@@ -1,4 +1,5 @@
 import { GraphModel } from "./graph";
+import { t } from "../i18n";
 import { createNode, createPlaceholder, type NodeModel, portId } from "./node";
 import type { SchemaRegistry } from "./registry";
 import { isRecord, normalizeData } from "./schema";
@@ -12,6 +13,8 @@ export class GraphSerializationError extends Error {}
 export interface GraphLoadResult {
   graph: GraphModel;
   warnings: string[];
+  /** The warning about a graph made with another pack (also in `warnings`), which a pack reload drops. */
+  packWarning?: string;
 }
 
 interface NodeDto {
@@ -106,33 +109,35 @@ export class GraphJsonSerializer {
 
   deserialize(json: string): GraphLoadResult {
     if (!json.trim()) {
-      throw new GraphSerializationError("The graph JSON is empty.");
+      throw new GraphSerializationError(t("The graph JSON is empty."));
     }
     let document: Partial<GraphDocumentDto>;
     try {
       document = JSON.parse(json);
     } catch (error) {
-      throw new GraphSerializationError(`The graph JSON could not be parsed: ${(error as Error).message}`);
+      throw new GraphSerializationError(t("The graph JSON could not be parsed: {error}", { error: (error as Error).message }));
     }
     if (!isRecord(document)) {
-      throw new GraphSerializationError("The graph JSON produced an empty document.");
+      throw new GraphSerializationError(t("The graph JSON produced an empty document."));
     }
     if (document.format !== GRAPH_FORMAT) {
-      throw new GraphSerializationError(`Unsupported graph format '${String(document.format)}'.`);
+      throw new GraphSerializationError(t("Unsupported graph format '{format}'.", { format: String(document.format) }));
     }
     if (document.version !== GRAPH_FORMAT_VERSION) {
       throw new GraphSerializationError(
-        `Unsupported graph format version '${String(document.version)}' (expected ${GRAPH_FORMAT_VERSION}).`,
+        t("Unsupported graph format version '{version}' (expected {expected}).", { version: String(document.version), expected: GRAPH_FORMAT_VERSION }),
       );
     }
 
     const warnings: string[] = [];
     const pack = this.registry.pack;
     const documentPack = isRecord(document.pack) ? document.pack : null;
+    let packWarning: string | undefined;
     if (documentPack && (!pack || pack.id !== documentPack.id)) {
-      warnings.push(
-        `The graph was made with schema pack '${String(documentPack.id)}', but ${pack ? `'${pack.id}'` : "no pack"} is loaded.`,
-      );
+      packWarning = pack
+        ? t("The graph was made with schema pack '{made}', but '{loaded}' is loaded.", { made: String(documentPack.id), loaded: pack.id })
+        : t("The graph was made with schema pack '{made}', but no pack is loaded.", { made: String(documentPack.id) });
+      warnings.push(packWarning);
     }
 
     const graph = new GraphModel(this.registry, requireId(document.graphId, "graphId"));
@@ -143,11 +148,11 @@ export class GraphJsonSerializer {
       const nodeIds = new Set<string>();
       for (const nodeDto of nodeDtos) {
         if (!isRecord(nodeDto)) {
-          throw new GraphSerializationError("The nodes array contains a non-object entry.");
+          throw new GraphSerializationError(t("The nodes array contains a non-object entry."));
         }
         const nodeId = requireId(nodeDto.id, "node.id");
         if (nodeIds.has(nodeId)) {
-          throw new GraphSerializationError(`Duplicate node id '${nodeId}'.`);
+          throw new GraphSerializationError(t("Duplicate node id '{id}'.", { id: nodeId }));
         }
         nodeIds.add(nodeId);
         const schemaId = typeof nodeDto.schema === "string" ? nodeDto.schema : "";
@@ -158,16 +163,23 @@ export class GraphJsonSerializer {
 
         const schema = this.registry.getSchema(schemaId);
         if (schema) {
-          const data = normalizeData(schema, rawData, (message) => warnings.push(`Node '${label}': ${message}`));
+          const data = normalizeData(schema, rawData, (message) => warnings.push(t("Node '{node}': {message}", { node: label, message })));
           node = createNode(this.registry, schemaId, nodeId, data);
           node.name = name;
           const version = typeof nodeDto.schemaVersion === "number" ? nodeDto.schemaVersion : null;
           if (version !== null && version !== schema.version) {
-            warnings.push(`Node '${label}' was saved with version ${version} of '${schemaId}', the pack has version ${schema.version}.`);
+            warnings.push(
+              t("Node '{node}' was saved with version {version} of '{type}', the pack has version {current}.", {
+                node: label,
+                version,
+                type: schemaId,
+                current: schema.version,
+              }),
+            );
           }
         } else {
           node = createPlaceholder(nodeId, schemaId, rawData, name, placeholderPorts(nodeId, connectionDtos));
-          warnings.push(`Unknown node schema '${schemaId}' — node '${label}' was loaded as a placeholder.`);
+          warnings.push(t("Unknown node schema '{type}' — node '{node}' was loaded as a placeholder.", { type: schemaId, node: label }));
         }
         node.loadedSchemaVersion = typeof nodeDto.schemaVersion === "number" ? nodeDto.schemaVersion : null;
         graph.addNode(node, toPoint(nodeDto.position));
@@ -176,11 +188,11 @@ export class GraphJsonSerializer {
       for (const aliasDto of asArray<unknown>(document.aliases, "aliases")) {
         const dto: Record<string, unknown> = isRecord(aliasDto) ? aliasDto : {};
         if (!isValidId(dto.id) || !isValidId(dto.node) || !graph.getNode(dto.node)) {
-          warnings.push("A linked copy of a missing node was dropped.");
+          warnings.push(t("A linked copy of a missing node was dropped."));
           continue;
         }
         if (graph.getAlias(dto.id) || graph.getNode(dto.id)) {
-          throw new GraphSerializationError(`Duplicate id '${dto.id}'.`);
+          throw new GraphSerializationError(t("Duplicate id '{id}'.", { id: dto.id }));
         }
         graph.addAlias({ id: dto.id, nodeId: dto.node, position: { x: 0, y: 0 } }, toPoint(dto.position));
       }
@@ -188,11 +200,11 @@ export class GraphJsonSerializer {
       for (const noteDto of asArray<unknown>(document.notes, "notes")) {
         const dto: Record<string, unknown> = isRecord(noteDto) ? noteDto : {};
         if (!isValidId(dto.id)) {
-          warnings.push("A note with an invalid id was dropped.");
+          warnings.push(t("A note with an invalid id was dropped."));
           continue;
         }
         if (graph.getNote(dto.id) || graph.getAlias(dto.id) || graph.getNode(dto.id)) {
-          throw new GraphSerializationError(`Duplicate id '${dto.id}'.`);
+          throw new GraphSerializationError(t("Duplicate id '{id}'.", { id: dto.id }));
         }
         const size: Record<string, unknown> = isRecord(dto.size) ? dto.size : {};
         const dimension = (value: unknown, fallback: number, min: number) =>
@@ -213,24 +225,24 @@ export class GraphJsonSerializer {
       for (const dto of connectionDtos) {
         if (!dto.id) {
           graph.addUnresolvedConnection({ ...dto, reason: "Invalid connection id." });
-          warnings.push("A connection with an invalid id was kept as unresolved.");
+          warnings.push(t("A connection with an invalid id was kept as unresolved."));
           continue;
         }
         if (connectionIds.has(dto.id)) {
-          throw new GraphSerializationError(`Duplicate connection id '${dto.id}'.`);
+          throw new GraphSerializationError(t("Duplicate connection id '{id}'.", { id: dto.id }));
         }
         connectionIds.add(dto.id);
         const problem = this.connectFromDto(graph, dto);
         if (problem) {
           graph.addUnresolvedConnection({ ...dto, reason: problem });
-          warnings.push(`A connection was kept as unresolved: ${problem}`);
+          warnings.push(t("A connection was kept as unresolved: {problem}", { problem }));
         }
       }
 
       for (const raw of asArray<unknown>(document.unresolvedConnections, "unresolvedConnections")) {
         const dto = normalizeConnection(raw);
         if (dto.id && connectionIds.has(dto.id)) {
-          throw new GraphSerializationError(`Duplicate connection id '${dto.id}'.`);
+          throw new GraphSerializationError(t("Duplicate connection id '{id}'.", { id: dto.id }));
         }
         if (dto.id) {
           connectionIds.add(dto.id);
@@ -246,23 +258,23 @@ export class GraphJsonSerializer {
       });
     });
 
-    return { graph, warnings };
+    return { graph, warnings, packWarning };
   }
 
   private connectFromDto(graph: GraphModel, dto: UnresolvedConnection): string | null {
     if (!dto.from || !graph.getNode(dto.from.node)) {
-      return "Output node is missing.";
+      return t("Output node is missing.");
     }
     if (!dto.to || !graph.getNode(dto.to.node)) {
-      return "Input node is missing.";
+      return t("Input node is missing.");
     }
     const output = graph.getPort(portId(dto.from.node, dto.from.port));
     if (!output) {
-      return `Output port '${dto.from.port}' does not exist.`;
+      return t("Output port '{port}' does not exist.", { port: dto.from.port });
     }
     const input = graph.getPort(portId(dto.to.node, dto.to.port));
     if (!input) {
-      return `Input port '${dto.to.port}' does not exist.`;
+      return t("Input port '{port}' does not exist.", { port: dto.to.port });
     }
     const result = graph.connect(output.id, input.id, dto.id!, { output: dto.from.view, input: dto.to.view });
     return result.success ? null : result.message;
@@ -300,7 +312,7 @@ function portRef(node: string, port: string, view: string): PortRef {
 
 function requireId(value: unknown, field: string): string {
   if (!isValidId(value)) {
-    throw new GraphSerializationError(`Field '${field}' contains an invalid GUID.`);
+    throw new GraphSerializationError(t("Field '{field}' contains an invalid GUID.", { field }));
   }
   return value;
 }
@@ -319,7 +331,7 @@ function asArray<T>(value: unknown, field: string): T[] {
     return [];
   }
   if (!Array.isArray(value)) {
-    throw new GraphSerializationError(`Field '${field}' must be an array.`);
+    throw new GraphSerializationError(t("Field '{field}' must be an array.", { field }));
   }
   return value as T[];
 }

@@ -1,4 +1,5 @@
 import type { DataPath } from "./dataOps";
+import { t } from "../i18n";
 import { formatLabel, isRecord, type LocalizedTextField, type NodeData, type NodeSchema } from "./schema";
 
 export interface LocalizationChange {
@@ -37,18 +38,18 @@ export class LocalizationStore {
       const language = match[1];
       const table = store.tables.get(language);
       if (!table) {
-        warnings.push(`${file.path}: language '${language}' is not listed in pack.json.`);
+        warnings.push(t("{file}: language '{language}' is not listed in pack.json.", { file: file.path, language }));
         continue;
       }
       let json: unknown;
       try {
         json = JSON.parse(file.text);
       } catch (error) {
-        warnings.push(`${file.path}: invalid JSON (${(error as Error).message}).`);
+        warnings.push(t("{file}: invalid JSON ({error}).", { file: file.path, error: (error as Error).message }));
         continue;
       }
       if (!isRecord(json)) {
-        warnings.push(`${file.path}: expected { "key": "text" }.`);
+        warnings.push(t("{file}: expected { \"key\": \"text\" }.", { file: file.path }));
         continue;
       }
       for (const [key, text] of Object.entries(json)) {

@@ -17,6 +17,7 @@ import { getIn, itemRefCandidates, itemRefLabel, nodeRefCandidates } from "../gr
 import { type Control, formatNumber, INFO_KEY, type NodeHit, NodeView, type PortHighlight } from "./NodeView";
 import { NOTE_LINE_HEIGHT, NOTE_TEXT_SIZE, type NoteHit, NoteView } from "./NoteView";
 import { installFonts } from "./text";
+import { onUiLanguageChange, t } from "../i18n";
 import { theme, typeColor } from "./theme";
 
 /**
@@ -108,6 +109,7 @@ export class GraphRenderer {
   private unsubscribeGraph: () => void = () => {};
   private unsubscribeEditor: () => void = () => {};
   private unsubscribeLocalization: () => void = () => {};
+  private unsubscribeUiLanguage: () => void = () => {};
   private readonly nodeViews = new Map<string, NodeView>();
   private readonly viewsByContainer = new Map<Container, NodeView>();
   private readonly edgeViews = new Map<string, EdgeView>();
@@ -224,6 +226,7 @@ export class GraphRenderer {
     this.setGraph(this.editor.graph, { frameAll: false });
     this.unsubscribeEditor = this.editor.onGraphReplaced((graph, options) => this.setGraph(graph, options));
     this.unsubscribeLocalization = this.editor.onLocalizationChanged((change) => this.refreshTexts(change?.key ?? null));
+    this.unsubscribeUiLanguage = onUiLanguageChange(() => this.refreshInterfaceTexts());
   }
 
   destroy(): void {
@@ -235,6 +238,7 @@ export class GraphRenderer {
     this.unsubscribeGraph();
     this.unsubscribeEditor();
     this.unsubscribeLocalization();
+    this.unsubscribeUiLanguage();
     this.resizeObserver?.disconnect();
     window.removeEventListener("keydown", this.onKeyDown);
     window.removeEventListener("keyup", this.onKeyUp);
@@ -353,7 +357,7 @@ export class GraphRenderer {
     }
     const view = this.selection.size === 1 ? this.nodeViews.get(viewId) : undefined;
     if (!view || !this.canRename(viewId)) {
-      this.editor.setStatus(view ? "This node has no editable name." : "Select one node to rename.");
+      this.editor.setStatus(view ? t("This node has no editable name.") : t("Select one node to rename."));
       return false;
     }
     this.openRenameEditor(view);
@@ -442,12 +446,14 @@ export class GraphRenderer {
     const node = current ? this.graph.viewNode(current) : undefined;
     const views = node ? this.graph.viewIdsOf(node.id) : [];
     if (!current || views.length < 2) {
-      this.editor.setStatus("Select a node with linked copies.");
+      this.editor.setStatus(t("Select a node with linked copies."));
       return false;
     }
     const next = views[(views.indexOf(current) + 1) % views.length];
     this.focusView(next);
-    this.editor.setStatus(next === node!.id ? "Original node." : `Linked copy ${views.indexOf(next)} of ${views.length - 1}.`);
+    this.editor.setStatus(
+      next === node!.id ? t("Original node.") : t("Linked copy {index} of {count}.", { index: views.indexOf(next), count: views.length - 1 }),
+    );
     return true;
   }
 
@@ -1203,7 +1209,7 @@ export class GraphRenderer {
       this.setEdgeSelection(new Set());
       this.interaction = { kind: "connect", pointerId: event.pointerId, from: hit.hit.port, fromView: hit.view, cursor: world, target: null };
       this.invalidateAllNodes();
-      this.editor.setStatus(`Connecting from ${hit.hit.port.displayName}...`);
+      this.editor.setStatus(t("Connecting from {port}...", { port: hit.hit.port.displayName }));
     } else if (hit?.kind === "note") {
       const noteId = hit.view.id;
       if (hit.hit === "resize" && !toggle && !additive) {
@@ -1411,7 +1417,7 @@ export class GraphRenderer {
             // Let the editor report why the connection is not allowed.
             this.editor.connectPorts(interaction.from.id, hit.hit.port.id, interaction.fromView.viewId, hit.view.viewId);
           } else {
-            this.editor.setStatus("Connection cancelled.");
+            this.editor.setStatus(t("Connection cancelled."));
           }
         }
         this.invalidateAllNodes();
@@ -1657,6 +1663,21 @@ export class GraphRenderer {
     this.requestFrame();
   }
 
+  /** After an interface language switch: every node and note redraws its own labels. */
+  private refreshInterfaceTexts(): void {
+    this.inlineEditor.close(true);
+    for (const view of this.nodeViews.values()) {
+      if (view.container.visible) {
+        view.rebuild();
+        this.markNodeEdgesDirty(view.node.id);
+      } else {
+        view.staleLayout = true;
+      }
+    }
+    for (const view of this.noteViews.values()) view.redraw();
+    this.requestFrame();
+  }
+
   /** Nodes showing item references re-read labels after the referenced node changes. */
   private refreshReferences(changedNodeId: string): void {
     for (const view of this.nodeViews.values()) {
@@ -1690,23 +1711,23 @@ export class GraphRenderer {
       this.inlineEditor.pick({
         rect,
         fontSize: Math.max(11, fontSize),
-        options: [{ value: "", label: "None" }, ...options],
+        options: [{ value: "", label: t("None") }, ...options],
         current: typeof value === "string" ? value : "",
         searchable: true,
-        emptyText: field.type === "itemRef" ? "No matching elements." : "No matching nodes.",
+        emptyText: field.type === "itemRef" ? t("No matching elements.") : t("No matching nodes."),
         onPick: (picked) => this.editor.setValue(nodeId, path, picked || null),
       });
     } else if (field.type === "localizedText") {
       const key = localizationKey(view.node, field, path, value);
       if (!key) {
-        this.editor.setStatus("Name the node first: its name is the localization key.", "error");
+        this.editor.setStatus(t("Name the node first: its name is the localization key."), "error");
         this.openRenameEditor(view);
         return;
       }
       // Edited in place, in the language chosen in the toolbar.
       const language = this.editor.getSnapshot().displayLanguage;
       if (!language) {
-        this.editor.setStatus("The schema pack has no languages.", "error");
+        this.editor.setStatus(t("The schema pack has no languages."), "error");
         return;
       }
       const current = this.editor.localization.get(language, key) ?? "";
@@ -1716,7 +1737,7 @@ export class GraphRenderer {
         value: current,
         multiline: field.multiline,
         language,
-        placeholder: `${language.toUpperCase()} text`,
+        placeholder: t("{language} text", { language: language.toUpperCase() }),
         onCommit: (text) => {
           if (text !== current) this.editor.setTexts(key, { [language]: text });
         },
@@ -1727,10 +1748,10 @@ export class GraphRenderer {
       this.inlineEditor.pick({
         rect,
         fontSize: Math.max(11, fontSize),
-        options: [{ value: "", label: "None" }, ...items.map((item) => ({ value: item.id, label: item.name }))],
+        options: [{ value: "", label: t("None") }, ...items.map((item) => ({ value: item.id, label: item.name }))],
         current: typeof value === "string" ? value : "",
         searchable: items.length > 8,
-        emptyText: `No ${library?.types.get(field.resourceType)?.label ?? "resources"} found.`,
+        emptyText: t("No {type} found.", { type: library?.types.get(field.resourceType)?.label ?? t("resources") }),
         onPick: (picked) => this.editor.setValue(nodeId, path, picked || null),
       });
     } else if (field.type === "resourceVariant") {
@@ -1743,7 +1764,7 @@ export class GraphRenderer {
         options: variants.map((variant) => ({ value: variant.id, label: variant.label })),
         current: typeof value === "string" ? value : null,
         searchable: variants.length > 8,
-        emptyText: "This resource has no variants.",
+        emptyText: t("This resource has no variants."),
         onPick: (picked) => this.editor.setValue(nodeId, path, picked),
       });
     } else if (field.type === "int" || field.type === "float") {
@@ -1756,7 +1777,7 @@ export class GraphRenderer {
         onCommit: (text) => {
           const parsed = Number(text.trim().replace(",", "."));
           if (text.trim() === "" || !Number.isFinite(parsed)) {
-            this.editor.setStatus(`'${text}' is not a number.`, "error");
+            this.editor.setStatus(t("'{text}' is not a number.", { text }), "error");
             return;
           }
           const number = clampNumber(field, field.type === "int" ? Math.round(parsed) : parsed);
@@ -1795,7 +1816,7 @@ export class GraphRenderer {
       multiline: true,
       variant: "note",
       value: view.note.text,
-      placeholder: "Write a note…",
+      placeholder: t("Write a note…"),
       onCommit: (text) => this.editor.updateNote(noteId, { text }),
       onClose: () => {
         view.editing = false;

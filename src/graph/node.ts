@@ -1,4 +1,5 @@
 import type { GraphModel } from "./graph";
+import { t } from "../i18n";
 import type { SchemaRegistry } from "./registry";
 import { createData, derivePorts, type NodeData, type NodeSchema } from "./schema";
 import { isValidId, newId, type Port, type PortDirection, RegistryError, type Vec2 } from "./types";
@@ -20,7 +21,7 @@ export class NodeModel {
     public name: string = "",
   ) {
     if (!isValidId(id)) {
-      throw new RegistryError("A node id must be a non-empty GUID.");
+      throw new RegistryError(t("A node id must be a non-empty GUID."));
     }
   }
 
@@ -72,7 +73,7 @@ export function buildPorts(node: NodeModel, registry: SchemaRegistry): Port[] {
 export function createNode(registry: SchemaRegistry, schemaId: string, id: string = newId(), data?: NodeData): NodeModel {
   const schema = registry.getSchema(schemaId);
   if (!schema) {
-    throw new RegistryError(`Unknown node schema '${schemaId}'.`);
+    throw new RegistryError(t("Unknown node schema '{type}'.", { type: schemaId }));
   }
   const node = new NodeModel(id, schemaId, schema, data ?? createData(schema));
   node.ports = buildPorts(node, registry);

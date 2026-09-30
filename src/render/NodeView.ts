@@ -17,6 +17,7 @@ import {
 import type { NodeAlias, Port, Vec2 } from "../graph/types";
 import type { Rect } from "./geometry";
 import { fitText, makeText, measureText } from "./text";
+import { t } from "../i18n";
 import { theme } from "./theme";
 
 const HEADER_HEIGHT = 32;
@@ -291,7 +292,7 @@ export class NodeView {
     // Fields
     const rowCenters = new Map<string, number>();
     if (node.isPlaceholder) {
-      const note = this.detail.addChild(makeText("Schema not found. The node data is kept as-is.", SMALL_SIZE, theme.textMuted));
+      const note = this.detail.addChild(makeText(t("Schema not found. The node data is kept as-is."), SMALL_SIZE, theme.textMuted));
       note.position.set(BODY_PADDING, y + BODY_PADDING);
       y += BODY_PADDING * 2 + FIELD_HEIGHT;
     } else if (fields.length > 0) {
@@ -474,7 +475,7 @@ export class NodeView {
   /** "↗ link" on a linked copy; "↗ N" on a node that has N linked copies. */
   private badgeLabel(): string | null {
     if (this.alias) {
-      return "↗ link";
+      return t("↗ link");
     }
     const count = this.context.aliasCount();
     return count > 0 ? `↗ ${count}` : null;
@@ -612,7 +613,7 @@ export class NodeView {
 
     let cursor = y + FIELD_HEIGHT + ITEM_GAP;
     if (list.length === 0) {
-      const empty = this.detail.addChild(makeText("No items", SMALL_SIZE, theme.textMuted));
+      const empty = this.detail.addChild(makeText(t("No items"), SMALL_SIZE, theme.textMuted));
       empty.position.set(x + ITEM_INDENT, Math.round(cursor + (FIELD_HEIGHT - empty.height) / 2));
       return cursor + FIELD_HEIGHT - y;
     }
@@ -659,7 +660,7 @@ export class NodeView {
     label.position.set(x, Math.round(y + (FIELD_HEIGHT - label.height) / 2));
     let cursor = y + FIELD_HEIGHT;
     if (rows.length === 0 || columns.length === 0) {
-      const empty = this.detail.addChild(makeText("Empty: add rows and columns", SMALL_SIZE, theme.textMuted));
+      const empty = this.detail.addChild(makeText(t("Empty: add rows and columns"), SMALL_SIZE, theme.textMuted));
       empty.position.set(x, Math.round(cursor + (FIELD_HEIGHT - empty.height) / 2));
       return cursor + FIELD_HEIGHT - y;
     }
@@ -701,7 +702,7 @@ export class NodeView {
       return height;
     };
     if (!item) {
-      return note(`${resource.label} is not selected`);
+      return note(t("{name} is not selected", { name: resource.label }));
     }
     const variantId = variant ? this.node.data[variant.id] : null;
     const variantImage = variant ? item.variants.get(variant.collection)?.find((entry) => entry.id === variantId)?.image : null;
@@ -709,14 +710,14 @@ export class NodeView {
     const height = resource.previewHeight;
     this.previewRects.push({ x, y, width, height });
     if (!path) {
-      return note("No image", theme.textMuted, height);
+      return note(t("No image"), theme.textMuted, height);
     }
     const texture = this.context.image(path, this);
     if (texture === "loading") {
-      return note("Loading…", theme.textMuted, height);
+      return note(t("Loading…"), theme.textMuted, height);
     }
     if (texture === "error") {
-      return note("⚠ Image not found", theme.textWarning, height);
+      return note(t("⚠ Image not found"), theme.textWarning, height);
     }
     const sprite = this.detail.addChild(new Sprite(texture));
     const scale = Math.min((width - 8) / texture.width, (height - 8) / texture.height);
@@ -788,7 +789,7 @@ export class NodeView {
       case "reference": {
         const label = typeof value === "string" ? this.context.referenceLabel(field, value) : null;
         const missing = typeof value === "string" && label === null;
-        const content = missing ? `⚠ missing ${field.type === "nodeRef" ? "node" : "element"}` : label ?? "None";
+        const content = missing ? (field.type === "nodeRef" ? t("⚠ missing node") : t("⚠ missing element")) : (label ?? t("None"));
         const color = missing ? theme.textWarning : label ? theme.textPrimary : theme.textMuted;
         const text = makeText(fitText(content, inner - 12, VALUE_SIZE), VALUE_SIZE, color);
         text.position.set(box.x + 8, centerY(text));
@@ -798,13 +799,13 @@ export class NodeView {
         const localized = this.context.localizedText(field as LocalizedTextField, control.path, value);
         if (!localized.key) {
           this.hasUnnamedTexts = true;
-          const text = makeText(fitText("Name the node to write text", inner, SMALL_SIZE), SMALL_SIZE, theme.textMuted);
+          const text = makeText(fitText(t("Name the node to write text"), inner, SMALL_SIZE), SMALL_SIZE, theme.textMuted);
           text.position.set(box.x + 8, centerY(text));
           return [text];
         }
         this.localizedKeys.add(localized.key);
         if (!localized.text) {
-          const empty = makeText(`No ${localized.language ?? ""} text`.replace("  ", " "), SMALL_SIZE, theme.textMuted);
+          const empty = makeText(t("No {language} text", { language: localized.language ?? "" }).replace("  ", " "), SMALL_SIZE, theme.textMuted);
           empty.position.set(box.x + 8, Math.round(box.y + 5));
           return [empty];
         }
@@ -819,7 +820,7 @@ export class NodeView {
       case "resource": {
         const item = typeof value === "string" ? this.context.resources()?.items.get(value) : undefined;
         const missing = typeof value === "string" && !item;
-        const content = missing ? "⚠ missing resource" : item?.name ?? "None";
+        const content = missing ? t("⚠ missing resource") : (item?.name ?? t("None"));
         const color = missing ? theme.textWarning : item ? theme.textPrimary : theme.textMuted;
         const text = makeText(fitText(content, inner - 12, VALUE_SIZE), VALUE_SIZE, color);
         text.position.set(box.x + 8, centerY(text));

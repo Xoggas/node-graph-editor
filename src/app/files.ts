@@ -1,4 +1,5 @@
 import { invoke, isTauri } from "@tauri-apps/api/core";
+import { t } from "../i18n";
 import { ask, open, save } from "@tauri-apps/plugin-dialog";
 import type { PackFile } from "../graph/schema";
 
@@ -38,7 +39,8 @@ export interface GraphFileSystem {
   writeFile(path: string, contents: string): Promise<void>;
 }
 
-const FILTERS = [{ name: "JSON graph", extensions: ["json"] }];
+/** Read when a dialog opens, so the filter name follows the interface language. */
+const filters = () => [{ name: t("JSON graph"), extensions: ["json"] }];
 
 export function fileName(path: string): string {
   return path.split(/[\\/]/).pop() || path;
@@ -46,7 +48,7 @@ export function fileName(path: string): string {
 
 class TauriFileSystem implements GraphFileSystem {
   async open(): Promise<OpenedFile | null> {
-    const path = await open({ title: "Open node graph", multiple: false, directory: false, filters: FILTERS });
+    const path = await open({ title: t("Open node graph"), multiple: false, directory: false, filters: filters() });
     if (typeof path !== "string") {
       return null;
     }
@@ -62,9 +64,9 @@ class TauriFileSystem implements GraphFileSystem {
     let path = currentPath;
     if (!path || chooseLocation) {
       path = await save({
-        title: options.title ?? "Save node graph",
+        title: options.title ?? t("Save node graph"),
         defaultPath: currentPath ?? options.defaultPath ?? "graph.json",
-        filters: FILTERS,
+        filters: filters(),
       });
     }
     if (!path) {
@@ -75,11 +77,11 @@ class TauriFileSystem implements GraphFileSystem {
   }
 
   confirm(message: string): Promise<boolean> {
-    return ask(message, { title: "Node Graph Editor", kind: "warning" });
+    return ask(message, { title: t("Node Graph Editor"), kind: "warning" });
   }
 
   async pickPackFolder(): Promise<string | null> {
-    const path = await open({ title: "Choose a schema pack folder (with pack.json)", directory: true, multiple: false });
+    const path = await open({ title: t("Choose a schema pack folder (with pack.json)"), directory: true, multiple: false });
     return typeof path === "string" ? path : null;
   }
 
@@ -137,7 +139,7 @@ class BrowserFileSystem implements GraphFileSystem {
   }
 
   async readFile(path: string): Promise<OpenedFile> {
-    throw new Error(`reading '${path}' needs the desktop app`);
+    throw new Error(t("reading '{path}' needs the desktop app", { path }));
   }
 
   async confirm(message: string): Promise<boolean> {
@@ -145,17 +147,17 @@ class BrowserFileSystem implements GraphFileSystem {
   }
 
   async pickPackFolder(): Promise<string | null> {
-    throw new Error("choosing a pack folder needs the desktop app; the built-in pack is used");
+    throw new Error(t("choosing a pack folder needs the desktop app; the built-in pack is used"));
   }
 
   async readPackFolder(path: string): Promise<PackFile[]> {
-    throw new Error(`Reading pack folders is only available in the desktop app ('${path}').`);
+    throw new Error(t("Reading pack folders is only available in the desktop app ('{path}').", { path }));
   }
 
   async setResourceRoots(): Promise<void> {}
 
   async writePackFile(): Promise<void> {
-    throw new Error("saving pack files (localization) needs the desktop app");
+    throw new Error(t("saving pack files (localization) needs the desktop app"));
   }
 
   async writeFile(path: string, contents: string): Promise<void> {
@@ -166,7 +168,7 @@ class BrowserFileSystem implements GraphFileSystem {
   async readResource(path: string): Promise<Blob> {
     const response = await fetch(`/@fs/${path.replace(/^\//, "")}`);
     if (!response.ok) {
-      throw new Error(`Could not load '${path}' (${response.status}).`);
+      throw new Error(t("Could not load '{path}' ({status}).", { path, status: response.status }));
     }
     return response.blob();
   }

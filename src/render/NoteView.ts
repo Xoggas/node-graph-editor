@@ -2,6 +2,7 @@ import { Container, Graphics } from "pixi.js";
 import type { StickyNote } from "../graph/types";
 import type { Rect } from "./geometry";
 import { fitText, makeText, measureText } from "./text";
+import { t } from "../i18n";
 import { noteColor, theme } from "./theme";
 
 const RADIUS = 6;
@@ -14,7 +15,6 @@ const PADDING_TOP = BAND_HEIGHT + 8;
 const PADDING_BOTTOM = 10;
 export const NOTE_TEXT_SIZE = 14;
 export const NOTE_LINE_HEIGHT = 19;
-const PLACEHOLDER = "Double-click to write a note";
 
 export type NoteHit = "resize" | "body";
 
@@ -101,7 +101,7 @@ export class NoteView {
     const width = w - PADDING_X * 2;
     const maxLines = Math.max(1, Math.floor((h - PADDING_TOP - PADDING_BOTTOM) / NOTE_LINE_HEIGHT));
     const empty = this.note.text.trim() === "";
-    const lines = empty ? [fitText(PLACEHOLDER, width, NOTE_TEXT_SIZE)] : wrap(this.note.text, width, maxLines);
+    const lines = empty ? [fitText(t("Double-click to write a note"), width, NOTE_TEXT_SIZE)] : wrap(this.note.text, width, maxLines);
     lines.forEach((line, index) => {
       const text = this.texts.addChild(makeText(line, NOTE_TEXT_SIZE, theme.noteText));
       text.alpha = empty ? 0.5 : 1;

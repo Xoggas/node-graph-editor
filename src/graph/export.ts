@@ -1,4 +1,5 @@
 import type { GraphModel } from "./graph";
+import { t } from "../i18n";
 import { localizationKey } from "./localization";
 import type { NodeModel } from "./node";
 import { type FieldSchema, isRecord, type NodeData } from "./schema";
@@ -63,7 +64,7 @@ export function exportRuntimeGraph(graph: GraphModel): RuntimeExport {
   for (const node of graph.nodes) {
     const label = node.name || node.schema?.title || node.schemaId;
     if (!node.schema) {
-      warnings.push(`'${label}' has no schema ('${node.schemaId}') and is exported as-is.`);
+      warnings.push(t("'{node}' has no schema ('{type}') and is exported as-is.", { node: label, type: node.schemaId }));
     } else if (Object.keys(node.schema.meta).length > 0) {
       types[node.schemaId] = node.schema.meta;
     }
@@ -83,14 +84,14 @@ export function exportRuntimeGraph(graph: GraphModel): RuntimeExport {
   if (entrySchema) {
     const entries = [...graph.nodes].filter((node) => node.schemaId === entrySchema);
     if (entries.length === 0) {
-      warnings.push(`There is no '${pack.nodes.get(entrySchema)?.title ?? entrySchema}' node to start from.`);
+      warnings.push(t("There is no '{type}' node to start from.", { type: pack.nodes.get(entrySchema)?.title ?? entrySchema }));
     } else {
       result.entry = entries[0].id;
-      if (entries.length > 1) warnings.push(`There are ${entries.length} start nodes; the first one is used.`);
+      if (entries.length > 1) warnings.push(t("There are {count} start nodes; the first one is used.", { count: entries.length }));
     }
   }
   if (graph.unresolvedConnections.length > 0) {
-    warnings.push(`${graph.unresolvedConnections.length} unresolved connection(s) are not exported.`);
+    warnings.push(t("{count} unresolved connection(s) are not exported.", { count: graph.unresolvedConnections.length }));
   }
   return { graph: result, warnings };
 }
@@ -125,18 +126,18 @@ function exportData(graph: GraphModel, node: NodeModel, warnings: string[]): Nod
     switch (field.type) {
       case "localizedText": {
         const key = localizationKey(node, field, path, value);
-        if (!key) warnings.push(`'${label}' → ${field.label}: no localization key (the node has no name).`);
+        if (!key) warnings.push(t("'{node}' → {field}: no localization key (the node has no name).", { node: label, field: field.label }));
         return key;
       }
       case "nodeRef":
-        if (typeof value === "string" && !graph.getNode(value)) warnings.push(`'${label}' → ${field.label}: the referenced node was deleted.`);
+        if (typeof value === "string" && !graph.getNode(value)) warnings.push(t("'{node}' → {field}: the referenced node was deleted.", { node: label, field: field.label }));
         return value;
       case "itemRef":
-        if (typeof value === "string" && !graph.findItem(value)) warnings.push(`'${label}' → ${field.label}: the referenced element was deleted.`);
+        if (typeof value === "string" && !graph.findItem(value)) warnings.push(t("'{node}' → {field}: the referenced element was deleted.", { node: label, field: field.label }));
         return value;
       case "resource":
         if (typeof value === "string" && !graph.registry.pack?.resources.items.has(value)) {
-          warnings.push(`'${label}' → ${field.label}: resource '${value}' is not in the library.`);
+          warnings.push(t("'{node}' → {field}: resource '{id}' is not in the library.", { node: label, field: field.label, id: value }));
         }
         return value;
       case "list":

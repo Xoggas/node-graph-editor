@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import type { PasteMode, PasteModeQuestion } from "../app/editor";
+import { t } from "../i18n";
 
 interface PasteModeDialogProps {
   question: PasteModeQuestion;
@@ -46,17 +47,19 @@ export function PasteModeDialog({ question, onAnswer }: PasteModeDialogProps) {
     return () => window.removeEventListener("keydown", onKeyDown, true);
   }, [onAnswer]);
 
-  const nodes = question.count === 1 ? "1 node" : `${question.count} nodes`;
   return (
     <div className="dialog-backdrop" onPointerDown={() => onAnswer(null)}>
       <div className="dialog" role="dialog" aria-modal="true" aria-labelledby="paste-mode-title" onPointerDown={(event) => event.stopPropagation()}>
-        <h2 id="paste-mode-title">Copy or link?</h2>
+        <h2 id="paste-mode-title">{t("Copy or link?")}</h2>
         <p>
-          {nodes} ({question.types.join(", ")}) {question.count === 1 ? "has a unique name" : "have unique names"} — a name is the
-          key of the node's texts.{" "}
           {question.count === 1
-            ? "Paste it as a new node, or as a linked copy of the original?"
-            : "Paste them as new nodes, or as linked copies of the originals?"}
+            ? t("1 node ({types}) has a unique name — a name is the key of the node's texts. Paste it as a new node, or as a linked copy of the original?", {
+                types: question.types.join(", "),
+              })
+            : t("{count} nodes ({types}) have unique names — a name is the key of the node's texts. Paste them as new nodes, or as linked copies of the originals?", {
+                count: question.count,
+                types: question.types.join(", "),
+              })}
         </p>
         <div className="dialog-actions">
           {CHOICES.map((choice) => (
@@ -67,17 +70,17 @@ export function PasteModeDialog({ question, onAnswer }: PasteModeDialogProps) {
                 onClick={() => onAnswer(choice.mode)}
                 aria-describedby={`paste-hint-${choice.mode}`}
               >
-                {choice.label}
+                {t(choice.label)}
                 <kbd>{choice.key}</kbd>
               </button>
               <div id={`paste-hint-${choice.mode}`} role="tooltip" className="dialog-hint">
-                {choice.hint}
+                {t(choice.hint)}
               </div>
             </div>
           ))}
           <span className="dialog-actions-spacer" />
           <button className="dialog-button" onClick={() => onAnswer(null)}>
-            Cancel
+            {t("Cancel")}
             <kbd>Esc</kbd>
           </button>
         </div>

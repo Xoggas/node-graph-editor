@@ -3,6 +3,7 @@ import type { Editor } from "../app/editor";
 import { fileName } from "../app/files";
 import { type ResourceItem, type ResourceLibrary, type ResourceTypeSchema, resourcesOfType } from "../graph/resources";
 import { resourceUsage } from "../graph/resourceUsage";
+import { t } from "../i18n";
 
 interface ResourceBrowserProps {
   editor: Editor;
@@ -56,13 +57,13 @@ export function ResourceBrowser({ editor, library, type, language, languageSelec
       <div className="resource-header">
         <h2>{type.label}</h2>
         <span className="resource-count">
-          {needle ? `${shown.length} of ${items.length}` : items.length} {items.length === 1 ? "item" : "items"}
+          {needle ? t("{shown} of {count} item(s)", { shown: shown.length, count: items.length }) : t("{count} item(s)", { count: items.length })}
         </span>
         <input
           ref={inputRef}
           className="resource-filter"
           value={query}
-          placeholder="Filter by name, id, property or text…"
+          placeholder={t("Filter by name, id, property or text…")}
           spellCheck={false}
           onChange={(event) => setQuery(event.target.value)}
           onKeyDown={(event) => {
@@ -75,22 +76,22 @@ export function ResourceBrowser({ editor, library, type, language, languageSelec
         {languageSelect}
       </div>
       {items.length === 0 ? (
-        <div className="resource-empty">The library has no {type.label.toLowerCase()}.</div>
+        <div className="resource-empty">{t("The library has no {type}.", { type: type.label.toLowerCase() })}</div>
       ) : shown.length === 0 ? (
-        <div className="resource-empty">Nothing matches “{query.trim()}”.</div>
+        <div className="resource-empty">{t("Nothing matches “{query}”.", { query: query.trim() })}</div>
       ) : (
         <div className="resource-list">
           <table>
             <thead>
               <tr>
                 {preview && <th className="resource-col-preview" />}
-                <th className="resource-col-name">Name</th>
+                <th className="resource-col-name">{t("Name")}</th>
                 {collections.map(([id, collection]) => (
                   <th key={id}>{collection.label}</th>
                 ))}
-                {hasFiles && <th>File</th>}
-                {hasProperties && <th>Properties</th>}
-                <th className="resource-col-uses">Used</th>
+                {hasFiles && <th>{t("File")}</th>}
+                {hasProperties && <th>{t("Properties")}</th>}
+                <th className="resource-col-uses">{t("Used")}</th>
               </tr>
             </thead>
             <tbody>
@@ -109,7 +110,7 @@ export function ResourceBrowser({ editor, library, type, language, languageSelec
                         <button
                           className={`resource-play${audio.playing === item.id ? " playing" : ""}`}
                           disabled={!item.file}
-                          title={item.file ? (audio.playing === item.id ? "Stop" : "Play") : "No file"}
+                          title={item.file ? (audio.playing === item.id ? t("Stop") : t("Play")) : t("No file")}
                           onClick={() => item.file && audio.toggle(item.id, item.file)}
                         >
                           <svg viewBox="0 0 12 12" width="12" height="12" aria-hidden="true">
@@ -127,10 +128,10 @@ export function ResourceBrowser({ editor, library, type, language, languageSelec
                       <div className="resource-name">{item.name}</div>
                       <button
                         className="resource-id"
-                        title="Copy the id"
+                        title={t("Copy the id")}
                         onClick={() => {
                           void navigator.clipboard?.writeText(item.id);
-                          editor.setStatus(`Copied the id of '${item.name}'.`);
+                          editor.setStatus(t("Copied the id of '{name}'.", { name: item.name }));
                         }}
                       >
                         {item.id}
@@ -143,7 +144,7 @@ export function ResourceBrowser({ editor, library, type, language, languageSelec
                             <span
                               key={variant.id}
                               className={`resource-variant${variant.id === collection.default ? " default" : ""}${variant.image ? "" : " no-image"}`}
-                              title={variant.id === collection.default ? `${variant.label} (default)` : variant.label}
+                              title={variant.id === collection.default ? t("{name} (default)", { name: variant.label }) : variant.label}
                             >
                               {variant.image && <Thumbnail editor={editor} library={library} path={variant.image} size="small" />}
                               {variant.label}
@@ -177,12 +178,12 @@ export function ResourceBrowser({ editor, library, type, language, languageSelec
                     )}
                     <td className="resource-col-uses">
                       {uses.length > 0 ? (
-                        <button className="resource-uses" onClick={() => onShowUses(uses)} title="Select these nodes on the graph">
-                          {uses.length} {uses.length === 1 ? "node" : "nodes"}
+                        <button className="resource-uses" onClick={() => onShowUses(uses)} title={t("Select these nodes on the graph")}>
+                          {t("{count} node(s)", { count: uses.length })}
                         </button>
                       ) : (
-                        <span className="resource-none" title="No node of the graph uses it">
-                          unused
+                        <span className="resource-none" title={t("No node of the graph uses it")}>
+                          {t("unused")}
                         </span>
                       )}
                     </td>
@@ -212,7 +213,7 @@ function Thumbnail({ editor, library, path, size }: { editor: Editor; library: R
   }, [editor, library, path]);
 
   const className = `resource-thumbnail ${size}`;
-  if (!path) return <span className={`${className} missing`} title="No image" />;
+  if (!path) return <span className={`${className} missing`} title={t("No image")} />;
   if (state?.path !== path) return <span className={`${className} loading`} />;
   if (!state.url) return <span className={`${className} missing`} title={state.error ?? undefined}>!</span>;
   return <img className={className} src={state.url} alt="" draggable={false} />;
@@ -282,7 +283,7 @@ function useAudio(editor: Editor) {
         })
         .catch((error: unknown) => {
           if (current.current === sound) stop();
-          editor.setStatus(`Could not play '${fileName(path)}': ${String(error)}`, "error");
+          editor.setStatus(t("Could not play '{file}': {error}", { file: fileName(path), error: String(error) }), "error");
         });
     };
     return { stop, toggle };
