@@ -951,48 +951,53 @@ body,
 }
 
 .dialog {
-  width: min(460px, calc(100vw - 32px));
-  padding: 18px 20px 16px;
+  width: min(580px, calc(100vw - 32px));
+  padding: 24px 26px 22px;
   background: #2b2e35;
   border: 1px solid var(--border);
-  border-radius: 8px;
-  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+  border-radius: 10px;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.55);
 }
 
 .dialog h2 {
-  margin: 0 0 8px;
+  margin: 0 0 10px;
   color: #f5f6f8;
-  font-size: 15px;
+  font-size: 18px;
   font-weight: 600;
 }
 
 .dialog p {
-  margin: 0 0 16px;
+  margin: 0 0 22px;
   color: #c8ccd4;
-  line-height: 1.5;
+  font-size: 14px;
+  line-height: 1.6;
 }
 
 .dialog-actions {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
 }
 
 .dialog-actions-spacer {
   flex: 1;
 }
 
+/* Same size for every choice: the label on the left, its key on the right. */
 .dialog-button {
   display: flex;
   align-items: center;
-  gap: 8px;
-  min-height: 30px;
-  padding: 4px 12px;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 112px;
+  height: 36px;
+  padding: 0 10px 0 14px;
   color: #e5e7eb;
   font: inherit;
+  font-size: 14px;
   background: var(--button);
   border: 1px solid var(--button-border);
-  border-radius: 4px;
+  border-radius: 5px;
   cursor: pointer;
 }
 
@@ -1001,26 +1006,32 @@ body,
   border-color: #999da6;
 }
 
+/* A ring with a gap, so it does not read as a second border. */
 .dialog-button:focus-visible {
-  outline: 2px solid #8ab4ff;
-  outline-offset: 1px;
+  outline: none;
+  box-shadow:
+    0 0 0 2px #2b2e35,
+    0 0 0 4px #8ab4ff;
 }
 
 .dialog-button.primary {
   background: #3f6fb8;
-  border-color: #5b8ad6;
+  border-color: #3f6fb8;
 }
 
 .dialog-button.primary:hover {
   background: #4a7cc8;
+  border-color: #4a7cc8;
 }
 
 .dialog-button kbd {
+  min-width: 22px;
   padding: 0 5px;
-  color: #c8ccd4;
-  font-size: 11px;
-  line-height: 16px;
-  background: rgba(0, 0, 0, 0.22);
+  color: #d6d9de;
+  font-size: 12px;
+  line-height: 20px;
+  text-align: center;
+  background: rgba(0, 0, 0, 0.25);
   border: none;
   border-radius: 3px;
 }
@@ -1035,10 +1046,10 @@ body,
   top: calc(100% + 10px);
   left: 0;
   z-index: 1;
-  width: 300px;
-  padding: 9px 11px;
+  width: 340px;
+  padding: 10px 12px;
   color: #e5e7eb;
-  font-size: 12px;
+  font-size: 13px;
   line-height: 1.5;
   background: #1f2126;
   border: 1px solid #5b5f68;
