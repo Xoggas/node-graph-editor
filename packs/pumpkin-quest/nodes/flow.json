@@ -189,6 +189,7 @@
         "id": "next",
         "direction": "output",
         "type": "flow",
+        "capacity": "multiple",
         "label": "Next"
       }
     ],
@@ -251,11 +252,6 @@
         "keyFrom": "name",
         "multiline": true,
         "label": "Text"
-      },
-      {
-        "id": "isExtraChoice",
-        "type": "bool",
-        "label": "Extra choice"
       }
     ]
   },

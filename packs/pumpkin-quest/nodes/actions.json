@@ -169,7 +169,7 @@
     "title": "Change Variable",
     "description": "Прибавляет Value to add к переменной Name (отрицательное значение уменьшает). Значение проверяется нодой Variable Comparer.\n\nНеблокирующая: выполняется сразу, диалог идёт дальше.",
     "menu": "Progress",
-    "color": "#d9735b",
+    "color": "#a3b54a",
     "meta": {
       "nodeType": "NonBlocking"
     },
@@ -205,7 +205,7 @@
     "title": "Add Relationship Points",
     "description": "Меняет очки отношений с персонажем Character на Points to add (отрицательное значение уменьшает). Проверяются нодой Relationship Point Comparer.\n\nНеблокирующая: выполняется сразу, диалог идёт дальше.",
     "menu": "Progress",
-    "color": "#d9735b",
+    "color": "#a3b54a",
     "meta": {
       "nodeType": "NonBlocking"
     },

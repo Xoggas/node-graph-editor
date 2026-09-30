@@ -27,7 +27,7 @@
     },
     "bool": {
       "label": "Condition",
-      "color": "#e07a6f",
+      "color": "#c46f9f",
       "capacity": {
         "input": "single",
         "output": "multiple"
