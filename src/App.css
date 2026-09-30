@@ -457,6 +457,28 @@ kbd {
   outline: none;
 }
 
+.ng-inline-options {
+  display: flex;
+  flex-direction: column;
+}
+
+.ng-inline-search {
+  margin: 2px 2px 4px;
+  padding: 4px 6px;
+  color: #e5e7eb;
+  font: inherit;
+  background: #1b1c20;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  outline: none;
+  user-select: text;
+}
+
+.ng-inline-empty {
+  padding: 4px 8px;
+  color: var(--muted);
+}
+
 .ng-inline-list button {
   padding: 4px 8px;
   color: #e5e7eb;

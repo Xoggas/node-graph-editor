@@ -9,7 +9,7 @@ describe("pumpkin-quest pack", () => {
 
   it("parses without warnings", () => {
     expect(pack.warnings).toEqual([]);
-    expect(pack.nodes.size).toBe(20);
+    expect(pack.nodes.size).toBe(21);
   });
 
   it("instantiates every node schema", () => {
@@ -19,10 +19,11 @@ describe("pumpkin-quest pack", () => {
     }
   });
 
-  it("adds a condition input and an output per line choice", () => {
-    const graph = new GraphModel(new SchemaRegistry(pack));
-    const line = graph.addNode("dialogue.line", { x: 0, y: 0 });
-    graph.setNodeData(line.id, { ...line.data, choices: [{ id: "a" }, { id: "b" }] });
-    expect(line.ports.map((port) => port.key)).toEqual(["in", "condition:a", "condition:b", "choice:a", "choice:b", "next"]);
+  it("references Choice nodes from choice conditions and the choice matrix", () => {
+    const refs = ["condition.choice-was-made", "condition.choices-were-made", "dialogue.choice-matrix"].map((id) =>
+      JSON.stringify(pack.nodes.get(id)!.fields),
+    );
+    expect(refs.every((fields) => fields.includes('"schema":"dialogue.choice"'))).toBe(true);
+    expect(pack.nodes.get("dialogue.line")!.ports.map((port) => port.id)).toEqual(["in", "next"]);
   });
 });

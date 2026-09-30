@@ -5,26 +5,54 @@
     "menu": "Dialogue",
     "color": "#50c878",
     "singleton": true,
-    "naming": { "editable": false },
-    "meta": { "nodeType": "NonBlocking" },
-    "ports": [{ "id": "out", "direction": "output", "type": "flow", "label": "Output" }]
+    "naming": {
+      "editable": false
+    },
+    "meta": {
+      "nodeType": "NonBlocking"
+    },
+    "ports": [
+      {
+        "id": "out",
+        "direction": "output",
+        "type": "flow",
+        "label": "Output"
+      }
+    ]
   },
   {
     "id": "dialogue.end",
     "title": "End",
     "menu": "Dialogue",
     "color": "#3ca064",
-    "naming": { "editable": false },
-    "meta": { "nodeType": "NonBlocking" },
-    "ports": [{ "id": "in", "direction": "input", "type": "flow", "label": "Input" }],
+    "naming": {
+      "editable": false
+    },
+    "meta": {
+      "nodeType": "NonBlocking"
+    },
+    "ports": [
+      {
+        "id": "in",
+        "direction": "input",
+        "type": "flow",
+        "label": "Input"
+      }
+    ],
     "fields": [
       {
         "id": "endingType",
         "type": "enum",
         "label": "Ending",
         "options": [
-          { "value": "GoToMainMenu", "label": "Go to main menu" },
-          { "value": "Restart", "label": "Restart" }
+          {
+            "value": "GoToMainMenu",
+            "label": "Go to main menu"
+          },
+          {
+            "value": "Restart",
+            "label": "Restart"
+          }
         ]
       }
     ]
@@ -34,29 +62,88 @@
     "title": "Line",
     "menu": "Dialogue",
     "color": "#508cdc",
-    "naming": { "unique": true, "pattern": "^[\\p{L}0-9 ,.']+$" },
-    "meta": { "nodeType": "Blocking" },
+    "naming": {
+      "unique": true,
+      "pattern": "^[\\p{L}0-9 ,.']+$"
+    },
+    "meta": {
+      "nodeType": "Blocking"
+    },
     "ports": [
-      { "id": "in", "direction": "input", "type": "flow", "label": "Input" },
-      { "id": "condition", "direction": "input", "type": "bool", "repeat": { "list": "choices", "label": "If: choice {n}" } },
-      { "id": "choice", "direction": "output", "type": "flow", "repeat": { "list": "choices", "label": "Choice {n}" } },
-      { "id": "next", "direction": "output", "type": "flow", "label": "Next" }
+      {
+        "id": "in",
+        "direction": "input",
+        "type": "flow",
+        "label": "Input"
+      },
+      {
+        "id": "next",
+        "direction": "output",
+        "type": "flow",
+        "label": "Next"
+      }
     ],
     "fields": [
-      { "id": "speaker", "type": "resource", "resourceType": "character", "label": "Character" },
-      { "id": "emotion", "type": "resourceVariant", "source": "speaker", "collection": "emotions", "label": "Emotion" },
-      { "id": "line", "type": "localizedText", "keyFrom": "name", "multiline": true, "label": "Line" },
       {
-        "id": "choices",
-        "type": "list",
-        "label": "Choices",
-        "item": {
-          "type": "record",
-          "fields": [
-            { "id": "text", "type": "localizedText", "keyFrom": "name", "keySuffix": ".{n}", "label": "Text" },
-            { "id": "isExtraChoice", "type": "bool", "label": "Extra choice" }
-          ]
-        }
+        "id": "speaker",
+        "type": "resource",
+        "resourceType": "character",
+        "label": "Character"
+      },
+      {
+        "id": "emotion",
+        "type": "resourceVariant",
+        "source": "speaker",
+        "collection": "emotions",
+        "label": "Emotion"
+      },
+      {
+        "id": "line",
+        "type": "localizedText",
+        "keyFrom": "name",
+        "multiline": true,
+        "label": "Line"
+      }
+    ]
+  },
+  {
+    "id": "dialogue.choice",
+    "title": "Choice",
+    "menu": "Dialogue/Choice",
+    "color": "#5abeaa",
+    "naming": {
+      "unique": true,
+      "pattern": "^[\\p{L}0-9 ,.']+$"
+    },
+    "meta": {
+      "nodeType": "NonBlocking"
+    },
+    "ports": [
+      {
+        "id": "in",
+        "direction": "input",
+        "type": "flow",
+        "label": "Input"
+      },
+      {
+        "id": "out",
+        "direction": "output",
+        "type": "flow",
+        "label": "Output"
+      }
+    ],
+    "fields": [
+      {
+        "id": "text",
+        "type": "localizedText",
+        "keyFrom": "name",
+        "multiline": true,
+        "label": "Text"
+      },
+      {
+        "id": "isExtraChoice",
+        "type": "bool",
+        "label": "Extra choice"
       }
     ]
   },
@@ -65,12 +152,34 @@
     "title": "If",
     "menu": "Dialogue/Conditional",
     "color": "#64dc8c",
-    "meta": { "nodeType": "NonBlocking" },
+    "meta": {
+      "nodeType": "NonBlocking"
+    },
     "ports": [
-      { "id": "in", "direction": "input", "type": "flow", "label": "Input" },
-      { "id": "condition", "direction": "input", "type": "bool", "label": "Condition" },
-      { "id": "true", "direction": "output", "type": "flow", "label": "True" },
-      { "id": "false", "direction": "output", "type": "flow", "label": "False" }
+      {
+        "id": "in",
+        "direction": "input",
+        "type": "flow",
+        "label": "Input"
+      },
+      {
+        "id": "condition",
+        "direction": "input",
+        "type": "bool",
+        "label": "Condition"
+      },
+      {
+        "id": "true",
+        "direction": "output",
+        "type": "flow",
+        "label": "True"
+      },
+      {
+        "id": "false",
+        "direction": "output",
+        "type": "flow",
+        "label": "False"
+      }
     ]
   },
   {
@@ -78,11 +187,31 @@
     "title": "Choice Matrix",
     "menu": "Dialogue/Choice",
     "color": "#8c50be",
-    "meta": { "nodeType": "NonBlocking" },
+    "meta": {
+      "nodeType": "NonBlocking"
+    },
     "ports": [
-      { "id": "in", "direction": "input", "type": "flow", "label": "Input" },
-      { "id": "outcome", "direction": "output", "type": "flow", "repeat": { "count": "outcomes", "label": "Output {i}" } },
-      { "id": "default", "direction": "output", "type": "flow", "label": "Default" }
+      {
+        "id": "in",
+        "direction": "input",
+        "type": "flow",
+        "label": "Input"
+      },
+      {
+        "id": "outcome",
+        "direction": "output",
+        "type": "flow",
+        "repeat": {
+          "count": "outcomes",
+          "label": "Output {i}"
+        }
+      },
+      {
+        "id": "default",
+        "direction": "output",
+        "type": "flow",
+        "label": "Default"
+      }
     ],
     "fields": [
       {
@@ -90,9 +219,25 @@
         "type": "list",
         "label": "Conditions",
         "maxItems": 30,
-        "item": { "type": "itemRef", "schema": "dialogue.line", "list": "choices" }
+        "item": {
+          "type": "record",
+          "fields": [
+            {
+              "id": "choice",
+              "type": "nodeRef",
+              "schema": "dialogue.choice",
+              "label": "Choice"
+            }
+          ]
+        }
       },
-      { "id": "outcomes", "type": "int", "label": "Outcomes", "min": 0, "max": 30 },
+      {
+        "id": "outcomes",
+        "type": "int",
+        "label": "Outcomes",
+        "min": 0,
+        "max": 30
+      },
       {
         "id": "states",
         "type": "matrix",
@@ -110,10 +255,22 @@
     "title": "Hide UI",
     "menu": "Dialogue/UI",
     "color": "#dc8c32",
-    "meta": { "nodeType": "Blocking" },
+    "meta": {
+      "nodeType": "Blocking"
+    },
     "ports": [
-      { "id": "in", "direction": "input", "type": "flow", "label": "Input" },
-      { "id": "out", "direction": "output", "type": "flow", "label": "Output" }
+      {
+        "id": "in",
+        "direction": "input",
+        "type": "flow",
+        "label": "Input"
+      },
+      {
+        "id": "out",
+        "direction": "output",
+        "type": "flow",
+        "label": "Output"
+      }
     ]
   }
 ]

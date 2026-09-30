@@ -1,6 +1,6 @@
 import { buildPorts, createNode, type NodeModel } from "./node";
 import type { SchemaRegistry } from "./registry";
-import type { NodeData } from "./schema";
+import { isRecord, type NodeData } from "./schema";
 import {
   clampZoom,
   type Connection,
@@ -31,6 +31,14 @@ export type GraphChange =
 
 export type GraphListener = (change: GraphChange) => void;
 
+/** A list element found by its GUID. */
+export interface ListItemLocation {
+  node: NodeModel;
+  listFieldId: string;
+  index: number;
+  item: Record<string, unknown>;
+}
+
 const NO_CONNECTIONS: ReadonlySet<Connection> = new Set();
 
 export class GraphModel {
@@ -43,6 +51,8 @@ export class GraphModel {
   private batchDepth = 0;
   private batchChanged = false;
   private currentViewport: Viewport = { x: 0, y: 0, zoom: 1 };
+  /** Lazily built map of list element GUID → location; dropped on any node change. */
+  private itemIndex: Map<string, ListItemLocation> | null = null;
 
   constructor(
     readonly registry: SchemaRegistry,
@@ -90,6 +100,25 @@ export class GraphModel {
         this.emit({ kind: "reset" });
       }
     }
+  }
+
+  /** Finds a list element (e.g. a dialogue choice) anywhere in the graph by its GUID. */
+  findItem(itemId: string): ListItemLocation | undefined {
+    if (!this.itemIndex) {
+      this.itemIndex = new Map();
+      for (const node of this.nodeMap.values()) {
+        for (const field of node.schema?.fields ?? []) {
+          const list = node.data[field.id];
+          if (field.type !== "list" || !Array.isArray(list)) continue;
+          list.forEach((item, index) => {
+            if (isRecord(item) && typeof item.id === "string") {
+              this.itemIndex!.set(item.id, { node, listFieldId: field.id, index, item });
+            }
+          });
+        }
+      }
+    }
+    return this.itemIndex.get(itemId);
   }
 
   getNode(id: string): NodeModel | undefined {
@@ -341,6 +370,9 @@ export class GraphModel {
   }
 
   private emit(change: GraphChange): void {
+    if (change.kind === "nodeAdded" || change.kind === "nodeRemoved" || change.kind === "nodeDataChanged" || change.kind === "reset") {
+      this.itemIndex = null;
+    }
     if (this.batchDepth > 0) {
       this.batchChanged = true;
       return;

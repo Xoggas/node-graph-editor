@@ -17,6 +17,9 @@ export interface ListPickRequest {
   fontSize: number;
   options: { value: string; label: string }[];
   current: string | null;
+  /** Shows a filter field above the options. */
+  searchable?: boolean;
+  emptyText?: string;
   onPick: (value: string) => void;
 }
 
@@ -72,32 +75,68 @@ export class InlineEditor {
 
   pick(request: ListPickRequest): void {
     this.close(true);
-    const list = document.createElement("div");
-    list.className = "ng-inline-list";
-    list.tabIndex = -1;
-    place(list, { ...request.rect, height: 0 });
-    Object.assign(list.style, { top: `${request.rect.y + request.rect.height + 2}px`, height: "auto", fontSize: `${request.fontSize}px` });
-
-    let highlighted = Math.max(0, request.options.findIndex((option) => option.value === request.current));
-    const buttons = request.options.map((option, index) => {
-      const button = document.createElement("button");
-      button.type = "button";
-      button.textContent = option.label;
-      button.classList.toggle("current", option.value === request.current);
-      button.addEventListener("pointerenter", () => setHighlight(index));
-      button.addEventListener("click", () => {
-        this.close(false);
-        request.onPick(option.value);
-      });
-      list.appendChild(button);
-      return button;
+    const popup = document.createElement("div");
+    popup.className = "ng-inline-list";
+    popup.tabIndex = -1;
+    place(popup, { ...request.rect, height: 0 });
+    Object.assign(popup.style, {
+      top: `${request.rect.y + request.rect.height + 2}px`,
+      height: "auto",
+      minWidth: `${Math.max(request.rect.width, request.searchable ? 260 : 120)}px`,
+      width: "auto",
+      fontSize: `${request.fontSize}px`,
     });
+
+    const search = request.searchable ? document.createElement("input") : null;
+    if (search) {
+      search.className = "ng-inline-search";
+      search.placeholder = "Search…";
+      search.spellcheck = false;
+      popup.appendChild(search);
+    }
+    const list = document.createElement("div");
+    list.className = "ng-inline-options";
+    popup.appendChild(list);
+    const empty = document.createElement("div");
+    empty.className = "ng-inline-empty";
+    empty.textContent = request.emptyText ?? "Nothing found.";
+
+    let visible: { value: string; label: string }[] = [];
+    let buttons: HTMLButtonElement[] = [];
+    let highlighted = 0;
     const setHighlight = (index: number) => {
+      if (buttons.length === 0) return;
       highlighted = (index + buttons.length) % buttons.length;
       buttons.forEach((button, buttonIndex) => button.classList.toggle("highlighted", buttonIndex === highlighted));
-      buttons[highlighted]?.scrollIntoView({ block: "nearest" });
+      buttons[highlighted].scrollIntoView({ block: "nearest" });
     };
-    list.addEventListener("keydown", (event) => {
+    const render = () => {
+      const query = search?.value.trim().toLowerCase() ?? "";
+      // The empty choice ("None") is only offered while not searching, so Enter picks a real match.
+      visible = query
+        ? request.options.filter((option) => option.value !== "" && option.label.toLowerCase().includes(query))
+        : request.options;
+      list.replaceChildren();
+      buttons = visible.map((option, index) => {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.textContent = option.label;
+        button.classList.toggle("current", option.value === request.current);
+        button.addEventListener("pointerenter", () => setHighlight(index));
+        button.addEventListener("click", () => {
+          this.close(false);
+          request.onPick(option.value);
+        });
+        list.appendChild(button);
+        return button;
+      });
+      if (buttons.length === 0) {
+        list.appendChild(empty);
+      }
+      setHighlight(query ? 0 : Math.max(0, visible.findIndex((option) => option.value === request.current)));
+    };
+
+    const onKey = (event: KeyboardEvent) => {
       event.stopPropagation();
       if (event.key === "ArrowDown") setHighlight(highlighted + 1);
       else if (event.key === "ArrowUp") setHighlight(highlighted - 1);
@@ -105,11 +144,13 @@ export class InlineEditor {
       else if (event.key === "Escape") this.close(false);
       else return;
       event.preventDefault();
-    });
+    };
+    popup.addEventListener("keydown", onKey);
+    search?.addEventListener("input", render);
 
-    this.open(list, null);
-    setHighlight(highlighted);
-    list.focus();
+    this.open(popup, null);
+    render();
+    (search ?? popup).focus();
   }
 
   close(commit: boolean): void {

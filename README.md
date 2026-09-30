@@ -95,11 +95,16 @@ re-reads it from disk (the open graph keeps its data). The last folder is rememb
 ```
 
 - **Field types:** `int`, `float` (`min`, `max`), `string` (`multiline`, `placeholder`), `bool`,
-  `enum` (`options`, `display: "dropdown" | "segmented"`), `list` (`item`, `minItems`, `maxItems`),
-  `record` (`fields`; every record gets a GUID `id`). Fields of other types are shown as
-  "not supported yet" and their data is kept.
-- **Ports:** `repeat: { list }` creates one port per list element, keyed `<port>:<element GUID>`, so
-  reordering elements keeps connections; `repeat: { count }` creates one per number of an int field.
+  `enum` (`options`, `display: "dropdown" | "segmented"`), `list` (`item`, `minItems`, `maxItems`,
+  `itemLabel`), `record` (`fields`; every record gets a GUID `id`), `nodeRef` (`schema`: a node of that
+  schema, stored as its GUID), `itemRef` (`schema`, `list`: a list element in such a node, stored as the
+  element GUID), `matrix` (bool grid; `rows` / `columns` name an int or list field, `rowLabel`,
+  `columnLabel`; stored as `{ rowKey: { columnKey: bool } }`, keys are element GUIDs or indices).
+  Fields of other types are shown as "not supported yet" and their data is kept.
+- References to deleted nodes/elements are not cleared; they show "missing" and resolve again after undo.
+- **Ports:** `repeat: { list }` creates one port per list element, keyed `<port>:<element GUID>` and
+  drawn on the element's row, so reordering elements keeps connections; `repeat: { count }` creates one
+  per number of an int field.
   Capacity defaults come from the port type.
 - **Naming:** `editable`, `unique`, `pattern`. `singleton: true` allows one node per graph.
 - Problems in a node schema skip that node and are listed under ⚠ in the palette.

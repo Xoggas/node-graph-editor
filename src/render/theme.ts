@@ -15,6 +15,8 @@ export const theme = {
   textSecondary: 0xcfd2d8,
   textPort: 0xd6d9de,
   textMuted: 0x9ca1ab,
+  textDisabled: 0x5d616a,
+  textWarning: 0xf0b45a,
 
   widgetBackground: 0x24262b,
   widgetBorder: 0x5b5f68,
@@ -24,6 +26,8 @@ export const theme = {
   buttonBackground: 0x41444b,
   buttonHover: 0x535760,
   buttonPressed: 0x303237,
+  buttonDisabled: 0x2f3136,
+  listItemBackground: 0x2e3035,
 
   connection: 0xb8bcc5,
   connectionSelected: 0xfad860,

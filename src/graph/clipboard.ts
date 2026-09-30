@@ -1,9 +1,11 @@
 import type { GraphModel } from "./graph";
 import { createNode, createPlaceholder, type NodeModel } from "./node";
-import { type FieldSchema, isRecord, type NodeData } from "./schema";
+import { type FieldSchema, isRecord, type NodeData, type NodeSchema } from "./schema";
 import { newId, type PortDirection, type Vec2 } from "./types";
 
 interface ClipboardNode {
+  /** Id of the copied node, so references between pasted nodes follow the copies. */
+  originalId: string;
   schemaId: string;
   name: string;
   position: Vec2;
@@ -53,6 +55,7 @@ export function copyNodes(graph: GraphModel, nodeIds: Iterable<string>): Clipboa
   }
   return {
     nodes: nodes.map((node) => ({
+      originalId: node.id,
       schemaId: node.schemaId,
       name: node.name,
       position: { ...node.position },
@@ -70,19 +73,31 @@ export function copyNodes(graph: GraphModel, nodeIds: Iterable<string>): Clipboa
  */
 export function pasteNodes(graph: GraphModel, data: ClipboardData, offset: Vec2): string[] {
   const takenNames = uniqueNames(graph);
-  const created: { node: NodeModel; ids: Map<string, string> }[] = data.nodes.map((entry) => {
+  // Fresh GUIDs for every list element first, so references between pasted nodes can follow them.
+  const allIds = new Map<string, string>();
+  const prepared = data.nodes.map((entry) => {
     const ids = new Map<string, string>();
     const schema = graph.registry.getSchema(entry.schemaId);
-    let node: NodeModel;
+    const nodeData = structuredClone(entry.data);
     if (schema) {
-      const nodeData = structuredClone(entry.data);
       for (const field of schema.fields) {
         nodeData[field.id] = regenerateIds(field, nodeData[field.id], ids);
       }
-      node = createNode(graph.registry, entry.schemaId, newId(), nodeData);
+    }
+    ids.forEach((fresh, old) => allIds.set(old, fresh));
+    const nodeId = newId();
+    allIds.set(entry.originalId, nodeId);
+    return { entry, schema, nodeData, ids, nodeId };
+  });
+
+  const created: { node: NodeModel; ids: Map<string, string> }[] = prepared.map(({ entry, schema, nodeData, ids, nodeId }) => {
+    let node: NodeModel;
+    if (schema) {
+      remapReferences(schema, nodeData, ids, allIds);
+      node = createNode(graph.registry, entry.schemaId, nodeId, nodeData);
       node.name = schema.naming.unique && entry.name ? uniqueName(entry.name, takenNames) : entry.name;
     } else {
-      node = createPlaceholder(newId(), entry.schemaId, structuredClone(entry.data), entry.name, entry.placeholderPorts);
+      node = createPlaceholder(nodeId, entry.schemaId, nodeData, entry.name, entry.placeholderPorts);
     }
     const position = { x: entry.position.x + offset.x, y: entry.position.y + offset.y };
     graph.addNode(node, position);
@@ -99,6 +114,41 @@ export function pasteNodes(graph: GraphModel, data: ClipboardData, offset: Vec2)
     }
   }
   return created.map(({ node }) => node.id);
+}
+
+/**
+ * Matrix keys name elements of this node's own lists; item and node references may point into any
+ * pasted node. References to elements or nodes that were not copied keep pointing at the originals.
+ */
+function remapReferences(schema: NodeSchema, data: NodeData, ownIds: Map<string, string>, allIds: Map<string, string>): void {
+  const follow = (map: Map<string, string>, key: string) => map.get(key) ?? key;
+  const visit = (field: FieldSchema, value: unknown): unknown => {
+    if ((field.type === "itemRef" || field.type === "nodeRef") && typeof value === "string") {
+      return follow(allIds, value);
+    }
+    if (field.type === "list" && Array.isArray(value)) {
+      return value.map((item) => visit(field.item, item));
+    }
+    if (field.type === "record" && isRecord(value)) {
+      const record = { ...value };
+      for (const child of field.fields) {
+        record[child.id] = visit(child, record[child.id]);
+      }
+      return record;
+    }
+    if (field.type === "matrix" && isRecord(value)) {
+      return Object.fromEntries(
+        Object.entries(value).map(([row, cells]) => [
+          follow(ownIds, row),
+          isRecord(cells) ? Object.fromEntries(Object.entries(cells).map(([column, cell]) => [follow(ownIds, column), cell])) : cells,
+        ]),
+      );
+    }
+    return value;
+  };
+  for (const field of schema.fields) {
+    data[field.id] = visit(field, data[field.id]);
+  }
 }
 
 function regenerateIds(field: FieldSchema, value: unknown, ids: Map<string, string>): unknown {

@@ -2,7 +2,8 @@ import { type ClipboardData, copyNodes, pasteNodes } from "../graph/clipboard";
 import { type GraphChange, GraphModel } from "../graph/graph";
 import { GraphHistory } from "../graph/history";
 import { type NodeDescriptor, SchemaRegistry } from "../graph/registry";
-import { type PackFile, parseSchemaPack } from "../graph/schema";
+import { type DataPath, getIn, listAdd, listMove, listRemove, setIn } from "../graph/dataOps";
+import { type NodeData, type PackFile, parseSchemaPack, reconcileData } from "../graph/schema";
 import { GraphJsonSerializer } from "../graph/serializer";
 import type { Vec2 } from "../graph/types";
 import { bundledPack } from "./bundledPack";
@@ -277,13 +278,55 @@ export class Editor {
     this.setStatus(result.success ? `Connected ${output.displayName} → ${input.displayName}.` : result.message);
   }
 
-  /** Sets one top-level field of a node's data. */
-  setField(nodeId: string, fieldId: string, value: unknown): void {
+  /** Sets a value in a node's data; `path` is a field id followed by list indices / record field ids. */
+  setValue(nodeId: string, path: DataPath, value: unknown): void {
     const node = this.graph.getNode(nodeId);
-    if (!node || node.isPlaceholder || Object.is(node.data[fieldId], value)) {
+    if (!node || Object.is(getIn(node.data, path), value)) {
       return;
     }
-    this.graph.setNodeData(nodeId, { ...node.data, [fieldId]: value });
+    this.updateData(nodeId, (data) => setIn(data, path, value));
+  }
+
+  setField(nodeId: string, fieldId: string, value: unknown): void {
+    this.setValue(nodeId, [fieldId], value);
+  }
+
+  addListItem(nodeId: string, path: DataPath): void {
+    const node = this.graph.getNode(nodeId);
+    if (node?.schema && !this.updateData(nodeId, (data) => listAdd(node.schema!, data, path))) {
+      this.setStatus("The list is full.");
+    }
+  }
+
+  removeListItem(nodeId: string, path: DataPath, index: number): void {
+    const node = this.graph.getNode(nodeId);
+    if (node?.schema && !this.updateData(nodeId, (data) => listRemove(node.schema!, data, path, index))) {
+      this.setStatus("This item cannot be removed.");
+    }
+  }
+
+  moveListItem(nodeId: string, path: DataPath, index: number, delta: number): void {
+    this.updateData(nodeId, (data) => listMove(data, path, index, delta));
+  }
+
+  toggleMatrixCell(nodeId: string, fieldId: string, row: string, column: string): void {
+    const node = this.graph.getNode(nodeId);
+    const current = getIn(node?.data, [fieldId, row, column]) === true;
+    this.updateData(nodeId, (data) => setIn(data, [fieldId, row, column], !current));
+  }
+
+  /** Applies a data transformation, keeps dependent values (matrices) consistent and records it for undo. */
+  private updateData(nodeId: string, transform: (data: NodeData) => NodeData | null): boolean {
+    const node = this.graph.getNode(nodeId);
+    if (!node?.schema) {
+      return false;
+    }
+    const next = transform(node.data);
+    if (!next) {
+      return false;
+    }
+    this.graph.setNodeData(nodeId, reconcileData(node.schema, next));
+    return true;
   }
 
   /** Renames a node, enforcing the schema's naming rules. Returns false when the name was rejected. */

@@ -7,7 +7,8 @@ import { EdgeView, traceEdgePath } from "./EdgeView";
 import { type Bounds, computeEdgePath, hitTestEdge, rectsIntersect } from "./geometry";
 import { clampNumber } from "../graph/schema";
 import { InlineEditor } from "./InlineEditor";
-import { type FieldLayout, formatNumber, type NodeHit, NodeView, type PortHighlight } from "./NodeView";
+import { getIn, itemRefCandidates, itemRefLabel, nodeRefCandidates } from "../graph/dataOps";
+import { type Control, formatNumber, type NodeHit, NodeView, type PortHighlight } from "./NodeView";
 import { installFonts } from "./text";
 import { theme, typeColor } from "./theme";
 
@@ -39,7 +40,7 @@ type Interaction =
   | { kind: "connect"; pointerId: number; from: Port; cursor: Vec2; target: Port | null }
   | { kind: "box"; pointerId: number; start: Vec2; current: Vec2; mode: "replace" | "add" | "toggle"; initial: Set<string> }
   /** Pressing a checkbox or an enum segment; applied on release over the same target. */
-  | { kind: "press"; pointerId: number; view: NodeView; field: FieldLayout; segment: number | null };
+  | { kind: "press"; pointerId: number; view: NodeView; control: Control; segment: number | null };
 
 export interface RendererStats {
   frameMs: number;
@@ -357,26 +358,22 @@ export class GraphRenderer {
     switch (change.kind) {
       case "nodeAdded":
         this.addNodeView(change.node.id);
+        this.refreshReferences(change.node.id);
         break;
       case "nodeRemoved":
         this.removeNodeView(change.node.id);
+        this.refreshReferences(change.node.id);
         break;
       case "nodeMoved": {
         this.nodeViews.get(change.node.id)?.syncPosition();
         this.markNodeEdgesDirty(change.node.id);
         break;
       }
-      case "nodeDataChanged": {
-        const view = this.nodeViews.get(change.node.id);
-        if (view) {
-          view.refreshValues();
-          view.redraw();
-        }
-        break;
-      }
+      case "nodeDataChanged":
       case "nodeRenamed":
         this.nodeViews.get(change.node.id)?.rebuild();
         this.markNodeEdgesDirty(change.node.id);
+        this.refreshReferences(change.node.id);
         break;
       case "nodePortsChanged":
         this.nodeViews.get(change.node.id)?.rebuild();
@@ -422,6 +419,8 @@ export class GraphRenderer {
       isPortConnected: (portId) => this.graph.hasConnections(portId),
       portHighlight: (port) => this.portHighlight(port),
       portColor: (typeId) => this.portColor(typeId),
+      referenceLabel: (field, id) =>
+        field.type === "nodeRef" ? (this.graph.getNode(id)?.displayName ?? null) : itemRefLabel(this.graph, id),
     });
     view.setDetailVisible(this.detailVisible);
     this.nodeViews.set(nodeId, view);
@@ -553,7 +552,10 @@ export class GraphRenderer {
       nodeView.container.visible = visible;
       if (visible) {
         visibleNodes++;
-        if (nodeView.stale) {
+        if (nodeView.staleLayout) {
+          nodeView.stale = false;
+          nodeView.rebuild();
+        } else if (nodeView.stale) {
           nodeView.stale = false;
           nodeView.redraw();
         }
@@ -792,23 +794,23 @@ export class GraphRenderer {
     this.requestFrame();
   }
 
-  private setHovered(view: NodeView | null, portId: string | null, fieldIndex: number | null, segment: number | null = null): void {
+  private setHovered(view: NodeView | null, portId: string | null, controlKey: string | null, segment: number | null = null): void {
     if (this.hovered && this.hovered !== view) {
       const previous = this.hovered;
       previous.hovered = false;
       previous.hoveredPortId = null;
-      previous.hoveredField = null;
+      previous.hoveredControl = null;
       previous.hoveredSegment = null;
       previous.redraw();
     }
     this.hovered = view;
     if (
       view &&
-      (!view.hovered || view.hoveredPortId !== portId || view.hoveredField !== fieldIndex || view.hoveredSegment !== segment)
+      (!view.hovered || view.hoveredPortId !== portId || view.hoveredControl !== controlKey || view.hoveredSegment !== segment)
     ) {
       view.hovered = true;
       view.hoveredPortId = portId;
-      view.hoveredField = fieldIndex;
+      view.hoveredControl = controlKey;
       view.hoveredSegment = segment;
       view.redraw();
     }
@@ -870,14 +872,14 @@ export class GraphRenderer {
         this.setSelection(new Set([nodeId]));
       }
 
-      if (hit.hit.kind === "field") {
-        const { field, segment } = hit.hit;
-        if (field.kind === "bool" || field.kind === "segmented") {
-          this.interaction = { kind: "press", pointerId: event.pointerId, view: hit.view, field, segment };
-        } else {
-          this.openFieldEditor(hit.view, field);
+      if (hit.hit.kind === "control") {
+        const { control, segment } = hit.hit;
+        if (control.type === "field" && control.kind !== "bool" && control.kind !== "segmented") {
+          this.openFieldEditor(hit.view, control);
           return;
         }
+        // Checkboxes, segments, list buttons and matrix cells act on release over the same target.
+        this.interaction = { kind: "press", pointerId: event.pointerId, view: hit.view, control, segment };
       } else if (this.selection.has(nodeId)) {
         this.bringToFront(this.selection);
         const origins = new Map<string, Vec2>();
@@ -1026,13 +1028,10 @@ export class GraphRenderer {
         break;
       case "press": {
         const hit = this.hitTest(this.screenToWorld(this.localPoint(event)), false);
-        const { view, field, segment } = interaction;
-        if (hit?.kind === "node" && hit.view === view && hit.hit.kind === "field" && hit.hit.field.index === field.index) {
-          if (field.kind === "bool") {
-            this.editor.setField(view.node.id, field.field.id, view.node.data[field.field.id] !== true);
-          } else if (segment !== null && hit.hit.segment === segment && field.field.type === "enum") {
-            this.editor.setField(view.node.id, field.field.id, field.field.options[segment].value);
-          }
+        const { view, control, segment } = interaction;
+        const released = hit?.kind === "node" && hit.view === view && hit.hit.kind === "control" ? hit.hit : null;
+        if (released && released.control.key === control.key && released.segment === segment) {
+          this.applyControl(view, control, segment);
         }
         break;
       }
@@ -1075,10 +1074,10 @@ export class GraphRenderer {
       return;
     }
     const portId = hit.hit.kind === "port" ? hit.hit.port.id : null;
-    const field = hit.hit.kind === "field" ? hit.hit.field.index : null;
-    const segment = hit.hit.kind === "field" ? hit.hit.segment : null;
-    this.setHovered(hit.view, portId, field, segment);
-    canvas.style.cursor = portId ? "crosshair" : field !== null ? "pointer" : "move";
+    const control = hit.hit.kind === "control" ? hit.hit.control.key : null;
+    const segment = hit.hit.kind === "control" ? hit.hit.segment : null;
+    this.setHovered(hit.view, portId, control, segment);
+    canvas.style.cursor = portId ? "crosshair" : control !== null ? "pointer" : "move";
   }
 
   private updateBoxSelection(box: Extract<Interaction, { kind: "box" }>): void {
@@ -1147,11 +1146,40 @@ export class GraphRenderer {
     };
   }
 
-  private openFieldEditor(view: NodeView, layout: FieldLayout): void {
-    const { field } = layout;
+  /** Applies a click on a checkbox, enum segment, list button or matrix cell. */
+  private applyControl(view: NodeView, control: Control, segment: number | null): void {
     const nodeId = view.node.id;
-    const value = view.node.data[field.id];
-    const rect = this.screenRect(view, layout.hitRect);
+    if (control.type === "button") {
+      const { action } = control;
+      if (action.type === "add") this.editor.addListItem(nodeId, action.path);
+      else if (action.type === "remove") this.editor.removeListItem(nodeId, action.path, action.index);
+      else this.editor.moveListItem(nodeId, action.path, action.index, action.delta);
+    } else if (control.type === "cell") {
+      this.editor.toggleMatrixCell(nodeId, control.fieldId, control.row, control.column);
+    } else if (control.kind === "bool") {
+      this.editor.setValue(nodeId, control.path, getIn(view.node.data, control.path) !== true);
+    } else if (control.kind === "segmented" && segment !== null && control.field.type === "enum") {
+      this.editor.setValue(nodeId, control.path, control.field.options[segment].value);
+    }
+  }
+
+  /** Nodes showing item references re-read labels after the referenced node changes. */
+  private refreshReferences(changedNodeId: string): void {
+    for (const view of this.nodeViews.values()) {
+      if (!view.hasReferences || view.node.id === changedNodeId) continue;
+      if (view.container.visible) {
+        view.rebuild();
+      } else {
+        view.staleLayout = true;
+      }
+    }
+  }
+
+  private openFieldEditor(view: NodeView, control: Control & { type: "field" }): void {
+    const { field, path } = control;
+    const nodeId = view.node.id;
+    const value = getIn(view.node.data, path);
+    const rect = this.screenRect(view, control.hitRect);
     const fontSize = 12 * this.viewport.zoom;
     this.editedNode = view;
 
@@ -1161,7 +1189,18 @@ export class GraphRenderer {
         fontSize: Math.max(11, fontSize),
         options: field.options,
         current: typeof value === "string" ? value : null,
-        onPick: (picked) => this.editor.setField(nodeId, field.id, picked),
+        onPick: (picked) => this.editor.setValue(nodeId, path, picked),
+      });
+    } else if (field.type === "itemRef" || field.type === "nodeRef") {
+      const options = field.type === "itemRef" ? itemRefCandidates(this.graph, field) : nodeRefCandidates(this.graph, field);
+      this.inlineEditor.pick({
+        rect,
+        fontSize: Math.max(11, fontSize),
+        options: [{ value: "", label: "None" }, ...options],
+        current: typeof value === "string" ? value : "",
+        searchable: true,
+        emptyText: field.type === "itemRef" ? "No matching elements." : "No matching nodes.",
+        onPick: (picked) => this.editor.setValue(nodeId, path, picked || null),
       });
     } else if (field.type === "int" || field.type === "float") {
       this.inlineEditor.editText({
@@ -1177,7 +1216,7 @@ export class GraphRenderer {
             return;
           }
           const number = clampNumber(field, field.type === "int" ? Math.round(parsed) : parsed);
-          this.editor.setField(nodeId, field.id, number);
+          this.editor.setValue(nodeId, path, number);
         },
       });
     } else if (field.type === "string") {
@@ -1187,7 +1226,7 @@ export class GraphRenderer {
         value: typeof value === "string" ? value : "",
         multiline: field.multiline,
         placeholder: field.placeholder,
-        onCommit: (text) => this.editor.setField(nodeId, field.id, text),
+        onCommit: (text) => this.editor.setValue(nodeId, path, text),
       });
     }
   }

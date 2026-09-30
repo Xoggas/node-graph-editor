@@ -43,6 +43,7 @@ export const testPackFiles: PackFile[] = [
             id: "choices",
             type: "list",
             maxItems: 5,
+            itemLabel: "Choice {n}: {item.text}",
             item: { type: "record", fields: [{ id: "text", type: "string" }, { id: "extra", type: "bool" }] },
           },
         ],
@@ -79,6 +80,26 @@ export const testPackFiles: PackFile[] = [
           { id: "conditions", direction: "input", type: "bool", capacity: "multiple" },
           { id: "result", direction: "output", type: "bool" },
         ],
+      },
+      {
+        id: "test.picker",
+        title: "Picker",
+        ports: [{ id: "result", direction: "output", type: "bool" }],
+        fields: [{ id: "choice", type: "itemRef", schema: "test.line", list: "choices" }],
+      },
+      {
+        id: "test.grid",
+        title: "Grid",
+        fields: [
+          { id: "columns", type: "list", item: { type: "record", fields: [{ id: "name", type: "string" }] } },
+          { id: "rows", type: "int", min: 0, max: 5, default: 2 },
+          { id: "cells", type: "matrix", rows: "rows", columns: "columns" },
+        ],
+      },
+      {
+        id: "test.node-picker",
+        title: "Node picker",
+        fields: [{ id: "target", type: "nodeRef", schema: "test.line" }],
       },
       {
         id: "test.int-source",

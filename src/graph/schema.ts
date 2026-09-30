@@ -72,7 +72,34 @@ export interface ListField extends FieldBase {
   item: FieldSchema;
   minItems: number;
   maxItems?: number;
+  /** Label of an element when other nodes reference it, e.g. "Choice {n}: {item.text}". */
+  itemLabel: string;
 }
+
+/** Reference to an element of a list in another node (by the element GUID). */
+export interface ItemRefField extends FieldBase {
+  type: "itemRef";
+  schema: string;
+  list: string;
+}
+
+/** Reference to another node of the given schema (by the node GUID). */
+export interface NodeRefField extends FieldBase {
+  type: "nodeRef";
+  schema: string;
+}
+
+/** Bool grid whose rows and columns follow other fields (an int count or a list). */
+export interface MatrixField extends FieldBase {
+  type: "matrix";
+  rows: string;
+  columns: string;
+  rowLabel: string;
+  columnLabel: string;
+}
+
+/** `{ rowKey: { columnKey: value } }` — keys are element GUIDs (list dimensions) or indices (counts). */
+export type MatrixValue = Record<string, Record<string, boolean>>;
 
 /** A field type this editor version does not implement; its data is preserved untouched. */
 export interface UnsupportedField extends FieldBase {
@@ -80,7 +107,17 @@ export interface UnsupportedField extends FieldBase {
   declaredType: string;
 }
 
-export type FieldSchema = NumberField | StringField | BoolField | EnumField | RecordField | ListField | UnsupportedField;
+export type FieldSchema =
+  | NumberField
+  | StringField
+  | BoolField
+  | EnumField
+  | RecordField
+  | ListField
+  | ItemRefField
+  | NodeRefField
+  | MatrixField
+  | UnsupportedField;
 
 export interface NamingRules {
   /** The user can rename nodes of this schema. */
@@ -126,7 +163,7 @@ export interface PackFile {
 
 export class SchemaError extends Error {}
 
-const FIELD_TYPES = new Set(["int", "float", "string", "bool", "enum", "record", "list"]);
+const FIELD_TYPES = new Set(["int", "float", "string", "bool", "enum", "record", "list", "itemRef", "nodeRef", "matrix"]);
 const ID_PATTERN = /^[A-Za-z_][A-Za-z0-9_.-]*$/;
 
 // ---------------------------------------------------------------------------------------------
@@ -204,7 +241,35 @@ export function parseSchemaPack(files: PackFile[]): SchemaPack {
       }
     });
   }
+  for (const schema of pack.nodes.values()) {
+    for (const ref of collectFields(schema.fields, "nodeRef") as NodeRefField[]) {
+      if (!pack.nodes.has(ref.schema)) {
+        pack.warnings.push(`${schema.id} → ${ref.id}: referenced schema '${ref.schema}' does not exist.`);
+      }
+    }
+    for (const ref of collectFields(schema.fields, "itemRef") as ItemRefField[]) {
+      const target = pack.nodes.get(ref.schema);
+      const list = target?.fields.find((field) => field.id === ref.list);
+      if (!target) {
+        pack.warnings.push(`${schema.id} → ${ref.id}: referenced schema '${ref.schema}' does not exist.`);
+      } else if (list?.type !== "list" || list.item.type !== "record") {
+        pack.warnings.push(`${schema.id} → ${ref.id}: '${ref.schema}.${ref.list}' must be a list of records.`);
+      }
+    }
+  }
   return pack;
+}
+
+/** Fields of the given type, including those nested in lists and records. */
+export function collectFields(fields: FieldSchema[], type: FieldSchema["type"]): FieldSchema[] {
+  const result: FieldSchema[] = [];
+  const visit = (field: FieldSchema) => {
+    if (field.type === type) result.push(field);
+    if (field.type === "list") visit(field.item);
+    if (field.type === "record") field.fields.forEach(visit);
+  };
+  fields.forEach(visit);
+  return result;
 }
 
 export function parseNodeSchema(json: unknown, location: string, pack: Pick<SchemaPack, "portTypes">): NodeSchema {
@@ -225,6 +290,15 @@ export function parseNodeSchema(json: unknown, location: string, pack: Pick<Sche
   const fields = reader.array(root, "fields").map((raw, index) => parseField(reader, raw, `fields[${index}]`));
   checkUniqueIds(reader, fields, "fields");
   const fieldById = new Map(fields.map((field) => [field.id, field]));
+  fields.forEach((field, index) => {
+    if (field.type !== "matrix") return;
+    for (const dimension of ["rows", "columns"] as const) {
+      const source = fieldById.get(field[dimension])?.type;
+      if (source !== "int" && source !== "list") {
+        reader.error(`fields[${index}].${dimension}`, `must name an int or list field, got '${field[dimension]}'`);
+      }
+    }
+  });
 
   const ports = reader.array(root, "ports").map((raw, index) => {
     const path = `ports[${index}]`;
@@ -346,6 +420,12 @@ function parseField(reader: Reader, raw: unknown, path: string, requireId = true
     }
     case "list": {
       const item = parseField(reader, reader.object(field, "item", path), `${path}.item`, false);
+      if (item.type === "list" || item.type === "matrix") {
+        reader.error(`${path}.item`, `a list of '${item.type}' is not supported`);
+      }
+      if (item.type === "record" && item.fields.some((child) => child.type === "list" || child.type === "matrix")) {
+        reader.error(`${path}.item`, "records inside lists cannot contain lists or matrices");
+      }
       return {
         id,
         label,
@@ -353,8 +433,23 @@ function parseField(reader: Reader, raw: unknown, path: string, requireId = true
         item,
         minItems: Math.max(0, reader.int(field, "minItems", 0, path)),
         maxItems: reader.optionalNumber(field, "maxItems", path),
+        itemLabel: reader.string(field, "itemLabel", "Item {n}"),
       };
     }
+    case "itemRef":
+      return { id, label, type, schema: reader.string(field, "schema", "", path), list: reader.string(field, "list", "", path) };
+    case "nodeRef":
+      return { id, label, type, schema: reader.string(field, "schema", "", path) };
+    case "matrix":
+      return {
+        id,
+        label,
+        type,
+        rows: reader.string(field, "rows", "", path),
+        columns: reader.string(field, "columns", "", path),
+        rowLabel: reader.string(field, "rowLabel", "{n}"),
+        columnLabel: reader.string(field, "columnLabel", "{n}"),
+      };
   }
   throw new SchemaError(`${path}: unreachable field type '${type}'.`);
 }
@@ -382,8 +477,12 @@ export function defaultValue(field: FieldSchema): unknown {
     }
     case "list":
       return Array.from({ length: field.minItems }, () => defaultValue(field.item));
+    case "itemRef":
+    case "nodeRef":
     case "unsupported":
       return null;
+    case "matrix":
+      return {};
   }
 }
 
@@ -392,7 +491,7 @@ export function createData(schema: NodeSchema): NodeData {
   for (const field of schema.fields) {
     data[field.id] = defaultValue(field);
   }
-  return data;
+  return reconcileData(schema, data);
 }
 
 /**
@@ -405,7 +504,53 @@ export function normalizeData(schema: NodeSchema, raw: unknown, warn: (message: 
   for (const field of schema.fields) {
     data[field.id] = normalizeValue(field, source[field.id], field.id, warn);
   }
-  return data;
+  return reconcileData(schema, data);
+}
+
+/**
+ * Brings values that depend on other fields up to date — currently matrices, whose rows and columns
+ * follow a count or a list. Existing cells keep their value; cells of removed rows/columns are dropped.
+ */
+export function reconcileData(schema: NodeSchema, data: NodeData): NodeData {
+  let result = data;
+  for (const field of schema.fields) {
+    if (field.type !== "matrix") continue;
+    const current = isRecord(data[field.id]) ? (data[field.id] as Record<string, unknown>) : {};
+    const next: MatrixValue = {};
+    for (const row of dimensionKeys(data, field.rows)) {
+      const cells = isRecord(current[row]) ? (current[row] as Record<string, unknown>) : {};
+      next[row] = {};
+      for (const column of dimensionKeys(data, field.columns)) {
+        next[row][column] = cells[column] === true;
+      }
+    }
+    if (!sameMatrix(current, next)) {
+      result = result === data ? { ...data } : result;
+      result[field.id] = next;
+    }
+  }
+  return result;
+}
+
+/** Keys along a matrix dimension: element GUIDs of a list (index when missing) or 0..n-1 of a count. */
+export function dimensionKeys(data: NodeData, fieldId: string): string[] {
+  const value = data[fieldId];
+  if (Array.isArray(value)) {
+    return value.map((item, index) => (isRecord(item) && isStableId(item.id) ? item.id : String(index)));
+  }
+  const count = typeof value === "number" && Number.isFinite(value) ? Math.max(0, Math.floor(value)) : 0;
+  return Array.from({ length: count }, (_, index) => String(index));
+}
+
+function sameMatrix(a: Record<string, unknown>, b: MatrixValue): boolean {
+  const rows = Object.keys(b);
+  if (rows.length !== Object.keys(a).length) return false;
+  return rows.every((row) => {
+    const cells = a[row];
+    if (!isRecord(cells)) return false;
+    const columns = Object.keys(b[row]);
+    return columns.length === Object.keys(cells).length && columns.every((column) => cells[column] === b[row][column]);
+  });
 }
 
 export function normalizeValue(field: FieldSchema, value: unknown, path: string, warn: (message: string) => void): unknown {
@@ -452,6 +597,11 @@ export function normalizeValue(field: FieldSchema, value: unknown, path: string,
       }
       return field.maxItems !== undefined ? items.slice(0, field.maxItems) : items;
     }
+    case "itemRef":
+    case "nodeRef":
+      return value === null || typeof value === "string" ? value ?? null : fallback("expected an id");
+    case "matrix":
+      return isRecord(value) ? value : fallback("expected an object");
     case "unsupported":
       return value ?? null;
   }

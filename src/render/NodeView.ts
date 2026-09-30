@@ -1,6 +1,7 @@
 import { type BitmapText, Container, Graphics } from "pixi.js";
+import { type DataPath, getIn } from "../graph/dataOps";
 import type { NodeModel } from "../graph/node";
-import type { EnumField, FieldSchema } from "../graph/schema";
+import { dimensionKeys, type EnumField, type FieldSchema, formatLabel, isRecord, type ListField, type MatrixField } from "../graph/schema";
 import type { Port, Vec2 } from "../graph/types";
 import type { Rect } from "./geometry";
 import { fitText, makeText, measureText } from "./text";
@@ -14,13 +15,22 @@ const FIELD_HEIGHT = 24;
 const MULTILINE_LINES = 3;
 const LINE_HEIGHT = 16;
 const FIELD_GAP = 6;
+const ITEM_GAP = 4;
+const ITEM_INDENT = 22;
+const BUTTON_SIZE = 18;
+const BUTTON_GAP = 2;
+const ITEM_BUTTONS_WIDTH = 3 * (BUTTON_SIZE + BUTTON_GAP) + 4;
+const CELL_SIZE = 18;
+const CELL_GAP = 3;
 const MIN_WIDTH = 220;
-const MAX_WIDTH = 360;
+const MAX_WIDTH = 420;
+const MAX_MATRIX_WIDTH = 760;
 const CORNER_RADIUS = 6;
 const PORT_RADIUS = 5;
 const PORT_LABEL_OFFSET = 13;
 const LABEL_SIZE = 12;
 const VALUE_SIZE = 12;
+const SMALL_SIZE = 11;
 const LABEL_GAP = 10;
 const MIN_VALUE_WIDTH = 96;
 
@@ -31,22 +41,21 @@ export interface PortLayout {
   y: number;
 }
 
-export type FieldKind = "number" | "text" | "multiline" | "bool" | "dropdown" | "segmented" | "readonly";
+export type FieldKind = "number" | "text" | "multiline" | "bool" | "dropdown" | "segmented" | "reference" | "readonly";
 
-export interface FieldLayout {
-  index: number;
-  field: FieldSchema;
-  kind: FieldKind;
-  rect: Rect;
-  /** Interactive area: the value box, checkbox row or segment strip. */
-  hitRect: Rect;
-  /** Segment rectangles for `segmented` enums, in option order. */
-  segments?: Rect[];
-}
+export type ListAction =
+  | { type: "add"; path: DataPath }
+  | { type: "remove"; path: DataPath; index: number }
+  | { type: "move"; path: DataPath; index: number; delta: number };
+
+export type Control =
+  | { type: "field"; key: string; path: DataPath; field: FieldSchema; kind: FieldKind; hitRect: Rect; segments?: Rect[] }
+  | { type: "button"; key: string; rect: Rect; glyph: string; action: ListAction; enabled: boolean }
+  | { type: "cell"; key: string; rect: Rect; fieldId: string; row: string; column: string };
 
 export type NodeHit =
   | { kind: "port"; port: Port }
-  | { kind: "field"; field: FieldLayout; segment: number | null }
+  | { kind: "control"; control: Control; segment: number | null }
   | { kind: "header" }
   | { kind: "body" };
 
@@ -57,6 +66,8 @@ export interface NodeViewContext {
   /** Only consulted while a connection is being dragged. */
   portHighlight(port: Port): PortHighlight;
   portColor(typeId: string): number;
+  /** Display label of a referenced list element or node, or null when it does not exist. */
+  referenceLabel(field: FieldSchema, id: string): string | null;
 }
 
 export class NodeView {
@@ -64,20 +75,25 @@ export class NodeView {
   width = MIN_WIDTH;
   height = 0;
   ports: PortLayout[] = [];
-  fields: FieldLayout[] = [];
+  controls: Control[] = [];
+  /** True when a field shows other nodes' data (item references) and must follow their changes. */
+  hasReferences = false;
 
   selected = false;
   hovered = false;
   hoveredPortId: string | null = null;
-  hoveredField: number | null = null;
+  hoveredControl: string | null = null;
   hoveredSegment: number | null = null;
   /** Set when the node must be redrawn once it becomes visible again. */
   stale = false;
+  /** Set when the node must be rebuilt once it becomes visible again. */
+  staleLayout = false;
 
   private readonly background = new Graphics();
   private readonly detail = new Container();
   private readonly portsById = new Map<string, PortLayout>();
-  private readonly valueTexts = new Map<number, BitmapText[]>();
+  private portsBottom = HEADER_HEIGHT;
+  private itemRects: Rect[] = [];
 
   constructor(
     readonly node: NodeModel,
@@ -109,101 +125,69 @@ export class NodeView {
     return layout ? { x: this.node.position.x + layout.x, y: this.node.position.y + layout.y } : null;
   }
 
-  /** Recreates texts and layout. Needed when ports, the name or the schema change. */
+  /** Recreates texts, controls and layout from the node's schema, data and ports. */
   rebuild(): void {
     for (const child of this.detail.removeChildren()) {
       child.destroy();
     }
-    this.valueTexts.clear();
     this.portsById.clear();
+    this.controls = [];
+    this.itemRects = [];
+    this.hasReferences = false;
+    this.staleLayout = false;
 
     const node = this.node;
     const fields = node.schema?.fields ?? [];
-    const inputs = node.inputs;
-    const outputs = node.outputs;
-
-    // Width: title, port labels and field labels decide; values are shortened to fit.
-    const maxLabel = (ports: Port[]) => ports.reduce((max, port) => Math.max(max, measureText(port.displayName, 12)), 0);
-    const fieldLabelWidth = fields.reduce(
-      (max, field) => (fieldKind(field) === "bool" ? max : Math.max(max, measureText(field.label, LABEL_SIZE))),
-      0,
-    );
-    let width = Math.max(MIN_WIDTH, measureText(node.displayName, 13, true) + 40);
-    width = Math.max(width, maxLabel(inputs) + maxLabel(outputs) + PORT_LABEL_OFFSET * 2 + 24);
-    width = Math.max(width, BODY_PADDING * 2 + fieldLabelWidth + LABEL_GAP + MIN_VALUE_WIDTH);
-    for (const field of fields) {
-      if (field.type === "enum" && field.display === "segmented") {
-        const segmentsWidth = field.options.reduce((sum, option) => sum + measureText(option.label, VALUE_SIZE) + 16, 0);
-        width = Math.max(width, BODY_PADDING * 2 + measureText(field.label, LABEL_SIZE) + LABEL_GAP + segmentsWidth);
-      }
-    }
-    width = Math.ceil(Math.min(MAX_WIDTH, width));
+    const width = this.measureWidth(fields);
     this.width = width;
 
     // Header
-    const titleText = fitText(node.displayName, width - 24, 13, true);
-    const title = this.detail.addChild(makeText(titleText, 13, theme.textPrimary, true));
+    const title = this.detail.addChild(makeText(fitText(node.displayName, width - 24, 13, true), 13, theme.textPrimary, true));
     title.position.set(12, Math.round((HEADER_HEIGHT - title.height) / 2));
 
-    // Ports
-    const rows = Math.max(inputs.length, outputs.length, 1);
+    // Ports that repeat per list element sit on their element's row; the rest go to the port band.
+    const alignedLists = this.alignedLists();
+    const aligned = (port: Port) => alignedLists.has(port.key.split(":")[0]) && port.key.includes(":");
+    const bandInputs = node.inputs.filter((port) => !aligned(port));
+    const bandOutputs = node.outputs.filter((port) => !aligned(port));
+    const rows = Math.max(bandInputs.length, bandOutputs.length, fields.length > 0 && !node.isPlaceholder ? 0 : 1);
     const portsTop = HEADER_HEIGHT + PORTS_PADDING;
     const rowCenter = (index: number) => portsTop + index * PORT_ROW_HEIGHT + PORT_ROW_HEIGHT / 2;
-    const labelWidth = width / 2 - PORT_LABEL_OFFSET - 6;
     this.ports = [];
-    inputs.forEach((port, index) => {
-      const layout = { port, x: 0, y: rowCenter(index) };
-      const label = this.detail.addChild(makeText(fitText(port.displayName, labelWidth, 12), 12, theme.textPort));
-      label.position.set(PORT_LABEL_OFFSET, Math.round(layout.y - label.height / 2));
-      this.ports.push(layout);
-    });
-    outputs.forEach((port, index) => {
-      const layout = { port, x: width, y: rowCenter(index) };
-      const label = this.detail.addChild(makeText(fitText(port.displayName, labelWidth, 12), 12, theme.textPort));
-      label.position.set(Math.round(width - PORT_LABEL_OFFSET - label.width), Math.round(layout.y - label.height / 2));
-      this.ports.push(layout);
-    });
-    this.ports.forEach((layout) => this.portsById.set(layout.port.id, layout));
-    let bottom = portsTop + rows * PORT_ROW_HEIGHT + PORTS_PADDING;
+    bandInputs.forEach((port, index) => this.placePort(port, 0, rowCenter(index)));
+    bandOutputs.forEach((port, index) => this.placePort(port, width, rowCenter(index)));
+    this.portsBottom = rows > 0 ? portsTop + rows * PORT_ROW_HEIGHT + PORTS_PADDING : HEADER_HEIGHT;
+    let y = this.portsBottom;
 
     // Fields
-    this.fields = [];
+    const rowCenters = new Map<string, number>();
     if (node.isPlaceholder) {
-      const note = this.detail.addChild(makeText("Schema not found. The node data is kept as-is.", 11, theme.textMuted));
-      note.position.set(BODY_PADDING, bottom + BODY_PADDING);
-      bottom += BODY_PADDING * 2 + FIELD_HEIGHT;
+      const note = this.detail.addChild(makeText("Schema not found. The node data is kept as-is.", SMALL_SIZE, theme.textMuted));
+      note.position.set(BODY_PADDING, y + BODY_PADDING);
+      y += BODY_PADDING * 2 + FIELD_HEIGHT;
     } else if (fields.length > 0) {
-      let y = bottom + BODY_PADDING;
-      fields.forEach((field, index) => {
-        const layout = this.layoutField(index, field, y, fieldLabelWidth);
-        this.fields.push(layout);
-        y += layout.rect.height + FIELD_GAP;
-      });
-      bottom = y - FIELD_GAP + BODY_PADDING;
-    }
-
-    this.height = bottom;
-    this.refreshValues();
-    this.redraw();
-  }
-
-  /** Updates value texts after a data change without changing the layout. */
-  refreshValues(): void {
-    for (const layout of this.fields) {
-      for (const text of this.valueTexts.get(layout.index) ?? []) {
-        text.destroy();
+      y += BODY_PADDING;
+      const labelWidth = scalarLabelWidth(fields);
+      for (const field of fields) {
+        y += this.layoutField([field.id], field, BODY_PADDING, y, width - BODY_PADDING * 2, labelWidth, rowCenters) + FIELD_GAP;
       }
-      this.valueTexts.delete(layout.index);
-      const texts = this.createValueTexts(layout);
-      this.valueTexts.set(layout.index, texts);
-      texts.forEach((text) => this.detail.addChild(text));
+      y += BODY_PADDING - FIELD_GAP;
     }
+
+    for (const port of node.ports) {
+      if (aligned(port)) {
+        const center = rowCenters.get(`${port.key.split(":")[0]}:${port.key.slice(port.key.indexOf(":") + 1)}`);
+        this.placePort(port, port.direction === "Input" ? 0 : width, center ?? HEADER_HEIGHT + PORT_ROW_HEIGHT / 2);
+      }
+    }
+
+    this.height = Math.max(y, HEADER_HEIGHT + PORT_ROW_HEIGHT);
+    this.redraw();
   }
 
   redraw(): void {
     const g = this.background;
     const { width, height } = this;
-    const portsBottom = this.fields.length > 0 ? this.fields[0].rect.y - BODY_PADDING : height;
     const accent = this.node.schema?.color ?? null;
     g.clear();
 
@@ -214,12 +198,16 @@ export class NodeView {
     if (accent !== null) {
       g.rect(0, HEADER_HEIGHT - 2, width, 2).fill(accent);
     }
-    section(g, 0, HEADER_HEIGHT, width, portsBottom - HEADER_HEIGHT, 0, portsBottom === height ? CORNER_RADIUS : 0).fill(
-      theme.nodePorts,
-    );
+    if (this.portsBottom > HEADER_HEIGHT) {
+      const bandHeight = this.portsBottom - HEADER_HEIGHT;
+      section(g, 0, HEADER_HEIGHT, width, bandHeight, 0, this.portsBottom >= height ? CORNER_RADIUS : 0).fill(theme.nodePorts);
+    }
+    for (const rect of this.itemRects) {
+      g.roundRect(rect.x, rect.y, rect.width, rect.height, 4).fill(theme.listItemBackground);
+    }
 
-    for (const layout of this.fields) {
-      this.drawField(g, layout);
+    for (const control of this.controls) {
+      this.drawControl(g, control);
     }
 
     const borderColor = this.selected ? theme.nodeBorderSelected : this.hovered ? theme.nodeBorderHover : theme.nodeBorder;
@@ -253,12 +241,13 @@ export class NodeView {
     if (localY <= HEADER_HEIGHT) {
       return { kind: "header" };
     }
-    for (const layout of this.fields) {
-      if (layout.kind === "readonly" || !contains(layout.hitRect, localX, localY)) {
-        continue;
-      }
-      const segment = layout.segments?.findIndex((rect) => contains(rect, localX, localY)) ?? -1;
-      return { kind: "field", field: layout, segment: segment >= 0 ? segment : null };
+    for (const control of this.controls) {
+      const rect = control.type === "field" ? control.hitRect : control.rect;
+      if (!contains(rect, localX, localY)) continue;
+      if (control.type === "field" && control.kind === "readonly") continue;
+      if (control.type === "button" && !control.enabled) continue;
+      const segment = control.type === "field" ? (control.segments?.findIndex((r) => contains(r, localX, localY)) ?? -1) : -1;
+      return { kind: "control", control, segment: segment >= 0 ? segment : null };
     }
     return { kind: "body" };
   }
@@ -267,44 +256,236 @@ export class NodeView {
     this.container.destroy({ children: true });
   }
 
-  private layoutField(index: number, field: FieldSchema, y: number, labelWidth: number): FieldLayout {
-    const kind = fieldKind(field);
-    const x = BODY_PADDING;
-    const fullWidth = this.width - BODY_PADDING * 2;
-    const height = kind === "multiline" ? FIELD_HEIGHT + LINE_HEIGHT * (MULTILINE_LINES - 1) : FIELD_HEIGHT;
-    const rect = { x, y, width: fullWidth, height };
+  // --- Layout --------------------------------------------------------------------------------
 
-    if (kind === "bool") {
-      const label = this.detail.addChild(makeText(fitText(field.label, fullWidth - 28, LABEL_SIZE), LABEL_SIZE, theme.textSecondary));
-      label.position.set(x + 24, Math.round(y + (FIELD_HEIGHT - label.height) / 2));
-      return { index, field, kind, rect, hitRect: { x, y, width: Math.min(fullWidth, 28 + label.width), height } };
+  private placePort(port: Port, x: number, y: number): void {
+    const layout = { port, x, y };
+    const labelWidth = this.width / 2 - PORT_LABEL_OFFSET - 6;
+    const label = this.detail.addChild(makeText(fitText(port.displayName, labelWidth, 12), 12, theme.textPort));
+    const labelX = x === 0 ? PORT_LABEL_OFFSET : this.width - PORT_LABEL_OFFSET - label.width;
+    // Ports placed on list rows keep their label outside the row content.
+    label.position.set(Math.round(labelX), Math.round(y - label.height / 2));
+    if (this.alignedLists().has(port.key.split(":")[0]) && port.key.includes(":")) {
+      label.visible = false;
+    }
+    this.ports.push(layout);
+    this.portsById.set(port.id, layout);
+  }
+
+  /** Port ids whose repeat list is displayed as a top-level list field. */
+  private alignedLists(): Set<string> {
+    const result = new Set<string>();
+    for (const port of this.node.schema?.ports ?? []) {
+      if (port.repeat && "list" in port.repeat && this.node.schema!.fields.some((field) => field.id === (port.repeat as { list: string }).list)) {
+        result.add(port.id);
+      }
+    }
+    return result;
+  }
+
+  private measureWidth(fields: FieldSchema[]): number {
+    const node = this.node;
+    const maxLabel = (ports: Port[]) => ports.reduce((max, port) => Math.max(max, measureText(port.displayName, 12)), 0);
+    let width = Math.max(MIN_WIDTH, measureText(node.displayName, 13, true) + 40);
+    width = Math.max(width, maxLabel(node.inputs) + maxLabel(node.outputs) + PORT_LABEL_OFFSET * 2 + 24);
+    const labelWidth = scalarLabelWidth(fields);
+    let limit = MAX_WIDTH;
+    for (const field of fields) {
+      const needed = BODY_PADDING * 2 + fieldWidth(field, labelWidth);
+      width = Math.max(width, needed);
+      if (field.type === "matrix") {
+        const columns = dimensionKeys(node.data, field.columns).length;
+        const rows = dimensionKeys(node.data, field.rows);
+        const rowLabel = rows.reduce((max, _, index) => Math.max(max, measureText(this.dimensionLabel(field, "rows", index), SMALL_SIZE)), 0);
+        width = Math.max(width, BODY_PADDING * 2 + rowLabel + 8 + columns * (CELL_SIZE + CELL_GAP));
+        limit = MAX_MATRIX_WIDTH;
+      }
+    }
+    return Math.ceil(Math.min(limit, width));
+  }
+
+  /** Lays out one field at `path`; returns its height. */
+  private layoutField(
+    path: DataPath,
+    field: FieldSchema,
+    x: number,
+    y: number,
+    width: number,
+    labelWidth: number,
+    rowCenters: Map<string, number>,
+    showLabel = true,
+  ): number {
+    if (field.type === "list") {
+      return this.layoutList(path, field, x, y, width, rowCenters);
+    }
+    if (field.type === "matrix") {
+      return this.layoutMatrix(path, field, x, y, width);
+    }
+    if (field.type === "record") {
+      const childLabel = scalarLabelWidth(field.fields);
+      let height = 0;
+      for (const child of field.fields) {
+        height += this.layoutField([...path, child.id], child, x, y + height, width, childLabel, rowCenters) + ITEM_GAP;
+      }
+      return Math.max(0, height - ITEM_GAP);
     }
 
-    const label = this.detail.addChild(makeText(fitText(field.label, fullWidth / 2, LABEL_SIZE), LABEL_SIZE, theme.textSecondary));
-    label.position.set(x, Math.round(y + (FIELD_HEIGHT - label.height) / 2));
-    const boxX = x + Math.min(labelWidth, fullWidth / 2) + LABEL_GAP;
-    const box = { x: boxX, y, width: x + fullWidth - boxX, height };
-    const layout: FieldLayout = { index, field, kind, rect, hitRect: box };
+    const kind = fieldKind(field);
+    const height = kind === "multiline" ? FIELD_HEIGHT + LINE_HEIGHT * (MULTILINE_LINES - 1) : FIELD_HEIGHT;
+    const key = path.join(".");
+    if (kind === "bool") {
+      const label = this.detail.addChild(makeText(fitText(field.label, width - 28, LABEL_SIZE), LABEL_SIZE, theme.textSecondary));
+      label.position.set(x + 24, Math.round(y + (FIELD_HEIGHT - label.height) / 2));
+      const control: Control = { type: "field", key, path, field, kind, hitRect: { x, y, width: Math.min(width, 28 + label.width), height } };
+      this.controls.push(control);
+      this.addValueTexts(control);
+      return height;
+    }
 
+    let boxX = x;
+    if (showLabel) {
+      const label = this.detail.addChild(makeText(fitText(field.label, width / 2, LABEL_SIZE), LABEL_SIZE, theme.textSecondary));
+      label.position.set(x, Math.round(y + (FIELD_HEIGHT - label.height) / 2));
+      boxX = x + Math.min(labelWidth, width / 2) + LABEL_GAP;
+    }
+    const box = { x: boxX, y, width: x + width - boxX, height };
+    const control: Control & { type: "field" } = { type: "field", key, path, field, kind, hitRect: box };
     if (kind === "segmented") {
       const options = (field as EnumField).options;
       const weights = options.map((option) => measureText(option.label, VALUE_SIZE) + 16);
       const total = weights.reduce((sum, weight) => sum + weight, 0);
       let segmentX = box.x;
-      layout.segments = weights.map((weight) => {
+      control.segments = weights.map((weight) => {
         const segmentWidth = (box.width * weight) / total;
         const segment = { x: segmentX, y: box.y, width: segmentWidth, height: box.height };
         segmentX += segmentWidth;
         return segment;
       });
     }
-    return layout;
+    if (kind === "reference") {
+      this.hasReferences = true;
+    }
+    this.controls.push(control);
+    this.addValueTexts(control);
+    return height;
   }
 
-  private createValueTexts(layout: FieldLayout): BitmapText[] {
-    const { field, kind, hitRect: box } = layout;
-    const value = this.node.data[field.id];
-    const centerY = (text: BitmapText, rowY = box.y, rowHeight = FIELD_HEIGHT) => Math.round(rowY + (rowHeight - text.height) / 2);
+  private layoutList(path: DataPath, field: ListField, x: number, y: number, width: number, rowCenters: Map<string, number>): number {
+    const items = getIn(this.node.data, path);
+    const list = Array.isArray(items) ? items : [];
+    const full = field.maxItems !== undefined && list.length >= field.maxItems;
+    const key = path.join(".");
+
+    const label = this.detail.addChild(makeText(fitText(field.label, width - 60, LABEL_SIZE), LABEL_SIZE, theme.textSecondary, true));
+    label.position.set(x, Math.round(y + (FIELD_HEIGHT - label.height) / 2));
+    const count = this.detail.addChild(
+      makeText(field.maxItems !== undefined ? `${list.length}/${field.maxItems}` : String(list.length), SMALL_SIZE, theme.textMuted),
+    );
+    count.position.set(Math.round(x + label.width + 6), Math.round(y + (FIELD_HEIGHT - count.height) / 2));
+    this.addButton(`${key}+`, { x: x + width - BUTTON_SIZE, y: y + 3, width: BUTTON_SIZE, height: BUTTON_SIZE }, "+", { type: "add", path }, !full);
+
+    let cursor = y + FIELD_HEIGHT + ITEM_GAP;
+    if (list.length === 0) {
+      const empty = this.detail.addChild(makeText("No items", SMALL_SIZE, theme.textMuted));
+      empty.position.set(x + ITEM_INDENT, Math.round(cursor + (FIELD_HEIGHT - empty.height) / 2));
+      return cursor + FIELD_HEIGHT - y;
+    }
+
+    const contentX = x + ITEM_INDENT;
+    const contentWidth = width - ITEM_INDENT - ITEM_BUTTONS_WIDTH;
+    list.forEach((item, index) => {
+      const itemTop = cursor;
+      const itemPath = [...path, index];
+      const itemKey = isRecord(item) && typeof item.id === "string" ? item.id : String(index);
+      const badge = this.detail.addChild(makeText(String(index + 1), SMALL_SIZE, theme.textMuted));
+      badge.position.set(Math.round(x + (ITEM_INDENT - badge.width) / 2 - 2), Math.round(cursor + (FIELD_HEIGHT - badge.height) / 2));
+
+      const buttonsX = x + width - ITEM_BUTTONS_WIDTH + 4;
+      const button = (offset: number) => ({ x: buttonsX + offset * (BUTTON_SIZE + BUTTON_GAP), y: cursor + 3, width: BUTTON_SIZE, height: BUTTON_SIZE });
+      this.addButton(`${key}.${index}↑`, button(0), "↑", { type: "move", path, index, delta: -1 }, index > 0);
+      this.addButton(`${key}.${index}↓`, button(1), "↓", { type: "move", path, index, delta: 1 }, index < list.length - 1);
+      this.addButton(`${key}.${index}×`, button(2), "×", { type: "remove", path, index }, list.length > field.minItems);
+
+      const labelWidth = field.item.type === "record" ? scalarLabelWidth(field.item.fields) : 0;
+      const height = this.layoutField(itemPath, field.item, contentX, cursor, contentWidth, labelWidth, rowCenters, field.item.type === "record");
+      const itemHeight = Math.max(FIELD_HEIGHT, height);
+      this.itemRects.push({ x: x - 3, y: itemTop - 2, width: width + 6, height: itemHeight + 4 });
+      rowCenters.set(`${path[path.length - 1]}:${itemKey}`, itemTop + FIELD_HEIGHT / 2);
+      cursor += itemHeight + ITEM_GAP + 4;
+    });
+    // Ports repeat per element of top-level lists; they are keyed `<port id>:<element>`, see derivePorts.
+    for (const port of this.node.schema?.ports ?? []) {
+      if (port.repeat && "list" in port.repeat && port.repeat.list === path[0]) {
+        list.forEach((item, index) => {
+          const itemKey = isRecord(item) && typeof item.id === "string" ? item.id : String(index);
+          const center = rowCenters.get(`${path[0]}:${itemKey}`);
+          if (center !== undefined) rowCenters.set(`${port.id}:${itemKey}`, center);
+        });
+      }
+    }
+    return cursor - ITEM_GAP - 4 - y;
+  }
+
+  private layoutMatrix(path: DataPath, field: MatrixField, x: number, y: number, width: number): number {
+    const rows = dimensionKeys(this.node.data, field.rows);
+    const columns = dimensionKeys(this.node.data, field.columns);
+    const label = this.detail.addChild(makeText(field.label, LABEL_SIZE, theme.textSecondary, true));
+    label.position.set(x, Math.round(y + (FIELD_HEIGHT - label.height) / 2));
+    let cursor = y + FIELD_HEIGHT;
+    if (rows.length === 0 || columns.length === 0) {
+      const empty = this.detail.addChild(makeText("Empty: add rows and columns", SMALL_SIZE, theme.textMuted));
+      empty.position.set(x, Math.round(cursor + (FIELD_HEIGHT - empty.height) / 2));
+      return cursor + FIELD_HEIGHT - y;
+    }
+    const rowLabelWidth = rows.reduce((max, _, index) => Math.max(max, measureText(this.dimensionLabel(field, "rows", index), SMALL_SIZE)), 0) + 8;
+    const step = CELL_SIZE + CELL_GAP;
+    const gridX = x + Math.min(rowLabelWidth, width / 3);
+    columns.forEach((_, column) => {
+      const text = this.detail.addChild(
+        makeText(fitText(this.dimensionLabel(field, "columns", column), step + 4, SMALL_SIZE), SMALL_SIZE, theme.textMuted),
+      );
+      text.position.set(Math.round(gridX + column * step + (CELL_SIZE - text.width) / 2), Math.round(cursor + 2));
+    });
+    cursor += 16;
+    const values = getIn(this.node.data, path);
+    rows.forEach((row, rowIndex) => {
+      const text = this.detail.addChild(makeText(this.dimensionLabel(field, "rows", rowIndex), SMALL_SIZE, theme.textMuted));
+      text.position.set(x, Math.round(cursor + (CELL_SIZE - text.height) / 2));
+      columns.forEach((column, columnIndex) => {
+        const rect = { x: gridX + columnIndex * step, y: cursor, width: CELL_SIZE, height: CELL_SIZE };
+        this.controls.push({ type: "cell", key: `${path.join(".")}[${row}][${column}]`, rect, fieldId: String(path[0]), row, column });
+        if (getIn(values, [row, column]) === true) {
+          const check = this.detail.addChild(makeText("✓", 12, theme.textPrimary, true));
+          check.position.set(Math.round(rect.x + (CELL_SIZE - check.width) / 2), Math.round(rect.y + (CELL_SIZE - check.height) / 2));
+        }
+      });
+      cursor += step;
+    });
+    return cursor - CELL_GAP - y;
+  }
+
+  private dimensionLabel(field: MatrixField, dimension: "rows" | "columns", index: number): string {
+    const source = this.node.data[field[dimension]];
+    const item = Array.isArray(source) ? source[index] : null;
+    return formatLabel(dimension === "rows" ? field.rowLabel : field.columnLabel, index, item);
+  }
+
+  private addButton(key: string, rect: Rect, glyph: string, action: ListAction, enabled: boolean): void {
+    this.controls.push({ type: "button", key, rect, glyph, action, enabled });
+    const text = this.detail.addChild(makeText(glyph, 12, enabled ? theme.textPrimary : theme.textDisabled, true));
+    text.position.set(Math.round(rect.x + (rect.width - text.width) / 2), Math.round(rect.y + (rect.height - text.height) / 2) - 1);
+  }
+
+  private addValueTexts(control: Control & { type: "field" }): void {
+    for (const text of this.createValueTexts(control)) {
+      this.detail.addChild(text);
+    }
+  }
+
+  private createValueTexts(control: Control & { type: "field" }): BitmapText[] {
+    const { field, kind, hitRect: box } = control;
+    const value = getIn(this.node.data, control.path);
+    const centerY = (text: BitmapText) => Math.round(box.y + (FIELD_HEIGHT - text.height) / 2);
     const inner = box.width - 16;
 
     switch (kind) {
@@ -320,59 +501,86 @@ export class NodeView {
         text.position.set(box.x + 8, centerY(text));
         return [text];
       }
-      case "multiline": {
-        const lines = wrapLines(typeof value === "string" ? value : "", inner, MULTILINE_LINES);
-        return lines.map((line, index) => {
+      case "multiline":
+        return wrapLines(typeof value === "string" ? value : "", inner, MULTILINE_LINES).map((line, index) => {
           const text = makeText(line, VALUE_SIZE, theme.textPrimary);
           text.position.set(box.x + 8, Math.round(box.y + 4 + index * LINE_HEIGHT));
           return text;
         });
-      }
       case "bool":
         return value === true ? [positioned(makeText("✓", 13, theme.textPrimary, true), box.x + 4, box.y + 3)] : [];
       case "dropdown": {
         const option = (field as EnumField).options.find((candidate) => candidate.value === value);
         const text = makeText(fitText(option?.label ?? String(value ?? ""), inner - 12, VALUE_SIZE), VALUE_SIZE, theme.textPrimary);
         text.position.set(box.x + 8, centerY(text));
-        const arrow = makeText("▾", VALUE_SIZE, theme.textMuted);
-        arrow.position.set(Math.round(box.x + box.width - 8 - arrow.width), centerY(arrow));
-        return [text, arrow];
+        return [text, this.arrow(box)];
+      }
+      case "reference": {
+        const label = typeof value === "string" ? this.context.referenceLabel(field, value) : null;
+        const missing = typeof value === "string" && label === null;
+        const content = missing ? `⚠ missing ${field.type === "nodeRef" ? "node" : "element"}` : label ?? "None";
+        const color = missing ? theme.textWarning : label ? theme.textPrimary : theme.textMuted;
+        const text = makeText(fitText(content, inner - 12, VALUE_SIZE), VALUE_SIZE, color);
+        text.position.set(box.x + 8, centerY(text));
+        return [text, this.arrow(box)];
       }
       case "segmented":
         return (field as EnumField).options.map((option, index) => {
-          const segment = layout.segments![index];
+          const segment = control.segments![index];
           const text = makeText(option.label, VALUE_SIZE, option.value === value ? theme.textPrimary : theme.textSecondary);
           text.position.set(Math.round(segment.x + (segment.width - text.width) / 2), centerY(text));
           return text;
         });
       case "readonly": {
-        const text = makeText(fitText(readonlySummary(field, value), inner, 11), 11, theme.textMuted);
+        const summary = field.type === "unsupported" ? `${field.declaredType}: not supported yet` : "—";
+        const text = makeText(fitText(summary, inner, SMALL_SIZE), SMALL_SIZE, theme.textMuted);
         text.position.set(box.x + 8, centerY(text));
         return [text];
       }
     }
   }
 
-  private drawField(g: Graphics, layout: FieldLayout): void {
-    const { hitRect: box, kind, index } = layout;
-    const hovered = this.hoveredField === index;
+  private arrow(box: Rect): BitmapText {
+    const arrow = makeText("▾", VALUE_SIZE, theme.textMuted);
+    arrow.position.set(Math.round(box.x + box.width - 8 - arrow.width), Math.round(box.y + (FIELD_HEIGHT - arrow.height) / 2));
+    return arrow;
+  }
+
+  // --- Drawing -------------------------------------------------------------------------------
+
+  private drawControl(g: Graphics, control: Control): void {
+    const hovered = this.hoveredControl === control.key;
     const border = hovered ? theme.nodeBorderHover : theme.widgetBorder;
-    switch (kind) {
+
+    if (control.type === "button") {
+      const fill = !control.enabled ? theme.buttonDisabled : hovered ? theme.buttonHover : theme.buttonBackground;
+      g.roundRect(control.rect.x, control.rect.y, control.rect.width, control.rect.height, 3).fill(fill);
+      return;
+    }
+    if (control.type === "cell") {
+      const checked = getIn(this.node.data, [control.fieldId, control.row, control.column]) === true;
+      g.roundRect(control.rect.x, control.rect.y, control.rect.width, control.rect.height, 3)
+        .fill(checked ? theme.checkboxChecked : theme.widgetBackground)
+        .stroke({ width: 1, color: border, alignment: 1 });
+      return;
+    }
+
+    const box = control.hitRect;
+    switch (control.kind) {
       case "bool": {
-        const checked = this.node.data[layout.field.id] === true;
+        const checked = getIn(this.node.data, control.path) === true;
         g.roundRect(box.x + 1, box.y + 5, 14, 14, 3)
           .fill(checked ? theme.checkboxChecked : theme.widgetBackground)
           .stroke({ width: 1, color: border, alignment: 1 });
         return;
       }
       case "segmented": {
-        const value = this.node.data[layout.field.id];
-        const options = (layout.field as EnumField).options;
+        const value = getIn(this.node.data, control.path);
+        const options = (control.field as EnumField).options;
         g.roundRect(box.x, box.y, box.width, box.height, 4).fill(theme.widgetBackground);
-        layout.segments!.forEach((segment, segmentIndex) => {
-          const active = options[segmentIndex].value === value;
-          const hoveredSegment = hovered && this.hoveredSegment === segmentIndex;
-          if (active || hoveredSegment) {
+        control.segments!.forEach((segment, index) => {
+          const active = options[index].value === value;
+          if (active || (hovered && this.hoveredSegment === index)) {
             g.roundRect(segment.x + 1, segment.y + 1, segment.width - 2, segment.height - 2, 3).fill(
               active ? theme.segmentActive : theme.buttonHover,
             );
@@ -385,9 +593,7 @@ export class NodeView {
         g.roundRect(box.x, box.y, box.width, box.height, 4).stroke({ width: 1, color: theme.widgetBorderMuted, alignment: 1 });
         return;
       default:
-        g.roundRect(box.x, box.y, box.width, box.height, 4)
-          .fill(theme.widgetBackground)
-          .stroke({ width: 1, color: border, alignment: 1 });
+        g.roundRect(box.x, box.y, box.width, box.height, 4).fill(theme.widgetBackground).stroke({ width: 1, color: border, alignment: 1 });
     }
   }
 }
@@ -403,6 +609,9 @@ export function fieldKind(field: FieldSchema): FieldKind {
       return "bool";
     case "enum":
       return field.display === "segmented" ? "segmented" : "dropdown";
+    case "itemRef":
+    case "nodeRef":
+      return "reference";
     default:
       return "readonly";
   }
@@ -412,15 +621,37 @@ export function formatNumber(value: unknown): string {
   return typeof value === "number" && Number.isFinite(value) ? String(Number(value.toFixed(4))) : "—";
 }
 
-function readonlySummary(field: FieldSchema, value: unknown): string {
-  if (field.type === "list") {
-    const count = Array.isArray(value) ? value.length : 0;
-    return `${count} item${count === 1 ? "" : "s"}`;
+/** Width of the widest label among fields shown as "label: value" rows. */
+function scalarLabelWidth(fields: FieldSchema[]): number {
+  return fields.reduce((max, field) => {
+    const kind = fieldKind(field);
+    const labelled = field.type !== "list" && field.type !== "matrix" && field.type !== "record" && kind !== "bool";
+    return labelled ? Math.max(max, measureText(field.label, LABEL_SIZE)) : max;
+  }, 0);
+}
+
+/** Minimum content width a field needs. */
+function fieldWidth(field: FieldSchema, labelWidth: number): number {
+  switch (field.type) {
+    case "list": {
+      const item = field.item.type === "record" ? scalarLabelWidth(field.item.fields) + LABEL_GAP : 0;
+      const nested = field.item.type === "record" ? Math.max(0, ...field.item.fields.map((child) => fieldWidth(child, 0))) : MIN_VALUE_WIDTH;
+      return ITEM_INDENT + item + Math.max(MIN_VALUE_WIDTH, nested) + ITEM_BUTTONS_WIDTH;
+    }
+    case "record":
+      return Math.max(0, ...field.fields.map((child) => fieldWidth(child, scalarLabelWidth(field.fields))));
+    case "matrix":
+      return 0;
+    case "bool":
+      return 28 + measureText(field.label, LABEL_SIZE);
+    case "enum":
+      if (field.display === "segmented") {
+        return labelWidth + LABEL_GAP + field.options.reduce((sum, option) => sum + measureText(option.label, VALUE_SIZE) + 16, 0);
+      }
+      return labelWidth + LABEL_GAP + MIN_VALUE_WIDTH;
+    default:
+      return labelWidth + LABEL_GAP + MIN_VALUE_WIDTH;
   }
-  if (field.type === "unsupported") {
-    return `${field.declaredType}: not supported yet`;
-  }
-  return "—";
 }
 
 /** Splits text into at most `maxLines` lines that fit `width`, marking truncation with an ellipsis. */
