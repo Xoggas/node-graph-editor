@@ -1,5 +1,6 @@
 import type { Rect } from "./geometry";
 import { t } from "../i18n";
+import { EXIT_MS } from "../motion";
 
 export interface TextEditRequest {
   /** Position in host (canvas) pixels. */
@@ -189,7 +190,9 @@ export class InlineEditor {
     if (commit) {
       active.commit?.();
     }
-    active.element.remove();
+    // Option lists fade out; text fields go at once, since the canvas shows their text again.
+    if (active.element.classList.contains("ng-inline-list")) removeAfterExit(active.element);
+    else active.element.remove();
     active.onClose?.();
   }
 
@@ -198,6 +201,12 @@ export class InlineEditor {
     this.active = { element, commit, onClose };
     window.addEventListener("pointerdown", this.onOutsidePointer, true);
   }
+}
+
+/** Plays the element's exit animation (the `leaving` class in App.css), then removes it. */
+export function removeAfterExit(element: HTMLElement): void {
+  element.classList.add("leaving");
+  window.setTimeout(() => element.remove(), EXIT_MS);
 }
 
 function place(element: HTMLElement, rect: Rect): void {

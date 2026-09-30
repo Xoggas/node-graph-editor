@@ -13,6 +13,7 @@ import { ProblemsPanel, summary } from "./ui/ProblemsPanel";
 import { LocalizationTable } from "./ui/LocalizationTable";
 import { PasteModeDialog } from "./ui/PasteModeDialog";
 import { SettingsDialog } from "./ui/SettingsDialog";
+import { usePresence } from "./ui/usePresence";
 import { ResourceBrowser } from "./ui/ResourceBrowser";
 import { SearchPanel } from "./ui/SearchPanel";
 import { ShortcutHelp } from "./ui/ShortcutHelp";
@@ -206,6 +207,16 @@ export default function App() {
 
   const documentName = snapshot.fileName ?? t("Untitled");
 
+  // Panels, menus and dialogs stay for a moment after they close, to play their exit animation.
+  const problemsPresence = usePresence(problemsOpen);
+  const searchPresence = usePresence(searchRequest > 0 ? searchRequest : null);
+  const overlayPresence = usePresence(activeTab !== GRAPH_TAB ? activeTab : null);
+  const menuPresence = usePresence(menu);
+  const helpPresence = usePresence(helpOpen);
+  const pastePresence = usePresence(pasteQuestion);
+  const settingsPresence = usePresence(settingsOpen);
+  const overlayType = overlayPresence.value && overlayPresence.value !== LOCALIZATION_TAB ? resourceTypes.find((type) => type.id === overlayPresence.value) : undefined;
+
   // Status messages are transient: shown for a few seconds after each change.
   const [statusVisible, setStatusVisible] = useState(false);
   useEffect(() => {
@@ -289,21 +300,25 @@ export default function App() {
       </header>
 
       <main className="workspace">
-        {problemsOpen && (
-          <ProblemsPanel
-            problems={snapshot.problems}
-            loadWarnings={snapshot.warnings}
-            onShow={(problem) => {
-              const target = problem.viewId ?? problem.nodeId;
-              if (target) rendererRef.current?.focusView(target);
-            }}
-            onClose={() => setProblemsOpen(false)}
-          />
+        {problemsPresence.value && (
+          <Leaving when={problemsPresence.closing}>
+            <ProblemsPanel
+              problems={snapshot.problems}
+              loadWarnings={snapshot.warnings}
+              onShow={(problem) => {
+                const target = problem.viewId ?? problem.nodeId;
+                if (target) rendererRef.current?.focusView(target);
+              }}
+              onClose={() => setProblemsOpen(false)}
+            />
+          </Leaving>
         )}
         <div className="canvas-area">
           <GraphCanvas editor={editor} onRenderer={onRenderer} />
-          {searchRequest > 0 && (
-            <SearchPanel editor={editor} renderer={() => rendererRef.current} focusRequest={searchRequest} onClose={closeSearch} />
+          {searchPresence.value !== null && (
+            <Leaving when={searchPresence.closing}>
+              <SearchPanel editor={editor} renderer={() => rendererRef.current} focusRequest={searchPresence.value} onClose={closeSearch} />
+            </Leaving>
           )}
           {toasts.length > 0 && (
             <div className="toasts" role="status" aria-live="polite">
@@ -328,24 +343,23 @@ export default function App() {
           onChoosePack={() => void editor.choosePackFolder()}
           onReloadPack={() => void editor.reloadPack()}
         />
-        {activeTab === LOCALIZATION_TAB && (
-          <LocalizationTable
-            editor={editor}
-            languages={snapshot.languages}
-            focusRequest={resourceFocusRequest}
-            onShowUses={showUses}
-          />
+        {overlayPresence.value === LOCALIZATION_TAB && (
+          <Leaving when={overlayPresence.closing}>
+            <LocalizationTable editor={editor} languages={snapshot.languages} focusRequest={resourceFocusRequest} onShowUses={showUses} />
+          </Leaving>
         )}
-        {resourceType && library && (
-          <ResourceBrowser
-            editor={editor}
-            library={library}
-            type={resourceType}
-            language={snapshot.displayLanguage}
-            languageSelect={languageSelect || null}
-            focusRequest={resourceFocusRequest}
-            onShowUses={showUses}
-          />
+        {overlayType && library && (
+          <Leaving when={overlayPresence.closing}>
+            <ResourceBrowser
+              editor={editor}
+              library={library}
+              type={overlayType}
+              language={snapshot.displayLanguage}
+              languageSelect={languageSelect || null}
+              focusRequest={resourceFocusRequest}
+              onShowUses={showUses}
+            />
+          </Leaving>
         )}
       </main>
 
@@ -430,21 +444,44 @@ export default function App() {
         )}
       </footer>
 
-      {menu && <ContextMenu x={menu.x} y={menu.y} items={menu.items} onClose={closeMenu} />}
-
-      {helpOpen && <ShortcutHelp onClose={() => setHelpOpen(false)} />}
-
-      {pasteQuestion && <PasteModeDialog question={pasteQuestion.question} onAnswer={answerPaste} />}
-
-      {settingsOpen && (
-        <SettingsDialog
-          autoExport={snapshot.autoExport}
-          onAutoExportChange={(on) => editor.setAutoExport(on)}
-          showDebug={showDebug}
-          onShowDebugChange={changeShowDebug}
-          onClose={() => setSettingsOpen(false)}
-        />
+      {menuPresence.value && (
+        <Leaving when={menuPresence.closing}>
+          <ContextMenu x={menuPresence.value.x} y={menuPresence.value.y} items={menuPresence.value.items} onClose={closeMenu} />
+        </Leaving>
       )}
+
+      {helpPresence.value && (
+        <Leaving when={helpPresence.closing}>
+          <ShortcutHelp onClose={() => setHelpOpen(false)} />
+        </Leaving>
+      )}
+
+      {pastePresence.value && (
+        <Leaving when={pastePresence.closing}>
+          <PasteModeDialog question={pastePresence.value.question} onAnswer={answerPaste} />
+        </Leaving>
+      )}
+
+      {settingsPresence.value && (
+        <Leaving when={settingsPresence.closing}>
+          <SettingsDialog
+            autoExport={snapshot.autoExport}
+            onAutoExportChange={(on) => editor.setAutoExport(on)}
+            showDebug={showDebug}
+            onShowDebugChange={changeShowDebug}
+            onClose={() => setSettingsOpen(false)}
+          />
+        </Leaving>
+      )}
+    </div>
+  );
+}
+
+/** Marks its content as leaving (see `.ui-leaving` in App.css) without adding a box to the layout. */
+function Leaving({ when, children }: { when: boolean; children: React.ReactNode }) {
+  return (
+    <div className={when ? "ui-leaving" : undefined} style={{ display: "contents" }}>
+      {children}
     </div>
   );
 }

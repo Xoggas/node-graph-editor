@@ -1,4 +1,5 @@
 import type { Rect } from "./geometry";
+import { removeAfterExit } from "./InlineEditor";
 
 const GAP = 6;
 const MARGIN = 8;
@@ -43,7 +44,7 @@ export class NodeTooltip {
   }
 
   hide(): void {
-    this.element?.remove();
+    if (this.element) removeAfterExit(this.element);
     this.element = null;
     this.anchorKey = null;
   }

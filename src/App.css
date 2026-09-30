@@ -1834,6 +1834,8 @@ kbd {
   --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
   --duration-quick: 0.12s;
   --duration-enter: 0.18s;
+  /* Keep in sync with EXIT_MS (src/motion.ts). */
+  --duration-exit: 0.14s;
 }
 
 @keyframes ui-fade-in {
@@ -1935,6 +1937,66 @@ select,
 
 .toast.leaving {
   animation: toast-out 0.2s ease-in forwards;
+}
+
+/* Exits: the reverse of the entrances, played while `usePresence` keeps the element (see `Leaving`). */
+@keyframes ui-fade-out {
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes ui-pop-out {
+  to {
+    opacity: 0;
+    transform: translateY(4px) scale(0.98);
+  }
+}
+
+@keyframes ui-slide-out-left {
+  to {
+    opacity: 0;
+    transform: translateX(-16px);
+  }
+}
+
+@keyframes ui-slide-up {
+  to {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+}
+
+/* Leaving elements no longer take clicks, so nothing under them is blocked. */
+.ui-leaving * {
+  pointer-events: none;
+}
+
+.ui-leaving .dialog-backdrop,
+.ui-leaving .help-backdrop,
+.ui-leaving .resource-browser {
+  animation: ui-fade-out var(--duration-exit) ease-in forwards;
+}
+
+.ui-leaving .dialog,
+.ui-leaving .help-dialog,
+.ui-leaving .context-menu {
+  animation: ui-pop-out var(--duration-exit) ease-in forwards;
+}
+
+.ui-leaving .problems-panel {
+  animation: ui-slide-out-left var(--duration-exit) ease-in forwards;
+}
+
+.ui-leaving .search-panel {
+  animation: ui-slide-up var(--duration-exit) ease-in forwards;
+}
+
+/* Popups made outside React (option lists, node tooltips) get this class before they are removed. */
+.ng-inline-list.leaving,
+.ng-node-tooltip.leaving {
+  pointer-events: none;
+  animation: ui-pop-out var(--duration-exit) ease-in forwards;
 }
 
 /* People who asked their system for less motion get none. */
