@@ -14,40 +14,73 @@ interface ClipboardNode {
   placeholderPorts: { key: string; direction: PortDirection }[];
 }
 
+interface ClipboardAlias {
+  /** A copied node (by index), or a node that stays in the graph: the paste links to it again. */
+  node: { copied: number } | { existing: string };
+  position: Vec2;
+}
+
+/** A copied node or alias, by index. */
+type ClipboardView = { node: number } | { alias: number };
+
 interface ClipboardConnection {
-  outputNode: number;
+  output: ClipboardView;
   outputPort: string;
-  inputNode: number;
+  input: ClipboardView;
   inputPort: string;
 }
 
 export interface ClipboardData {
   nodes: ClipboardNode[];
-  /** Only connections between copied nodes. */
+  aliases: ClipboardAlias[];
+  /** Only connections between copied views. */
   connections: ClipboardConnection[];
   bounds: { minX: number; minY: number; maxX: number; maxY: number };
 }
 
-export function copyNodes(graph: GraphModel, nodeIds: Iterable<string>): ClipboardData | null {
-  const nodes = [...new Set(nodeIds)].map((id) => graph.getNode(id)).filter((node): node is NodeModel => !!node);
-  if (nodes.length === 0) {
+export interface PasteResult {
+  /** New nodes, in clipboard order. */
+  nodeIds: string[];
+  /** New nodes and aliases, e.g. to select them. */
+  viewIds: string[];
+}
+
+/**
+ * Copies views (node ids and alias ids). An alias copied with its node becomes an alias of the
+ * copy; an alias copied alone pastes as another alias of the same node.
+ */
+export function copyViews(graph: GraphModel, viewIds: Iterable<string>): ClipboardData | null {
+  const ids = [...new Set(viewIds)];
+  const nodes = ids.map((id) => graph.getNode(id)).filter((node): node is NodeModel => !!node);
+  const aliases = ids.map((id) => graph.getAlias(id)).filter((alias) => !!alias);
+  if (nodes.length === 0 && aliases.length === 0) {
     return null;
   }
-  const index = new Map(nodes.map((node, i) => [node.id, i]));
+  const nodeIndex = new Map(nodes.map((node, i) => [node.id, i]));
+  const views = new Map<string, ClipboardView>();
+  nodes.forEach((node, i) => views.set(node.id, { node: i }));
+  aliases.forEach((alias, i) => views.set(alias.id, { alias: i }));
+
   const connections: ClipboardConnection[] = [];
-  for (const node of nodes) {
-    for (const port of node.outputs) {
-      for (const connection of graph.getPortConnections(port.id)) {
-        const inputNode = index.get(connection.inputNodeId);
-        const inputPort = graph.getPort(connection.inputPortId);
-        if (connection.outputPortId === port.id && inputNode !== undefined && inputPort) {
-          connections.push({ outputNode: index.get(node.id)!, outputPort: port.key, inputNode, inputPort: inputPort.key });
-        }
+  const seen = new Set<string>();
+  for (const nodeId of new Set([...nodes.map((node) => node.id), ...aliases.map((alias) => alias.nodeId)])) {
+    for (const connection of graph.getNodeConnections(nodeId)) {
+      if (seen.has(connection.id)) continue;
+      seen.add(connection.id);
+      const output = views.get(connection.outputViewId);
+      const input = views.get(connection.inputViewId);
+      if (output && input) {
+        connections.push({
+          output,
+          outputPort: graph.getPort(connection.outputPortId)!.key,
+          input,
+          inputPort: graph.getPort(connection.inputPortId)!.key,
+        });
       }
     }
   }
   const bounds = { minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity };
-  for (const { position } of nodes) {
+  for (const { position } of [...nodes, ...aliases]) {
     bounds.minX = Math.min(bounds.minX, position.x);
     bounds.minY = Math.min(bounds.minY, position.y);
     bounds.maxX = Math.max(bounds.maxX, position.x);
@@ -62,16 +95,21 @@ export function copyNodes(graph: GraphModel, nodeIds: Iterable<string>): Clipboa
       data: structuredClone(node.data),
       placeholderPorts: node.isPlaceholder ? node.ports.map((port) => ({ key: port.key, direction: port.direction })) : [],
     })),
+    aliases: aliases.map((alias) => {
+      const copied = nodeIndex.get(alias.nodeId);
+      return { node: copied !== undefined ? { copied } : { existing: alias.nodeId }, position: { ...alias.position } };
+    }),
     connections,
     bounds,
   };
 }
 
 /**
- * Adds copies of the clipboard nodes shifted by `offset`. Nodes and list elements get fresh GUIDs
- * (port keys that embed element GUIDs are remapped), unique names get a suffix. Returns the new node ids.
+ * Adds copies of the clipboard nodes and aliases shifted by `offset`. Nodes and list elements get
+ * fresh GUIDs (port keys that embed element GUIDs are remapped), unique names get a suffix. Aliases
+ * of nodes that are no longer in the graph are skipped.
  */
-export function pasteNodes(graph: GraphModel, data: ClipboardData, offset: Vec2): string[] {
+export function pasteViews(graph: GraphModel, data: ClipboardData, offset: Vec2): PasteResult {
   const takenNames = uniqueNames(graph);
   // Fresh GUIDs for every list element first, so references between pasted nodes can follow them.
   const allIds = new Map<string, string>();
@@ -104,16 +142,29 @@ export function pasteNodes(graph: GraphModel, data: ClipboardData, offset: Vec2)
     return { node, ids };
   });
 
+  const noIds = new Map<string, string>();
+  const createdAliases = data.aliases.map((entry) => {
+    const source = "copied" in entry.node ? created[entry.node.copied] : { node: graph.getNode(entry.node.existing), ids: noIds };
+    if (!source?.node) {
+      return null;
+    }
+    const alias = graph.addAlias(source.node.id, { x: entry.position.x + offset.x, y: entry.position.y + offset.y });
+    return { node: source.node, ids: source.ids, viewId: alias.id };
+  });
+  const resolve = (view: ClipboardView) =>
+    "node" in view ? { ...created[view.node], viewId: created[view.node].node.id } : createdAliases[view.alias];
+
   for (const connection of data.connections) {
-    const output = created[connection.outputNode];
-    const input = created[connection.inputNode];
+    const output = resolve(connection.output);
+    const input = resolve(connection.input);
     const outputPort = output?.node.getPort(remapKey(connection.outputPort, output.ids));
     const inputPort = input?.node.getPort(remapKey(connection.inputPort, input.ids));
-    if (outputPort && inputPort) {
-      graph.connect(outputPort.id, inputPort.id);
+    if (output && input && outputPort && inputPort) {
+      graph.connect(outputPort.id, inputPort.id, undefined, { output: output.viewId, input: input.viewId });
     }
   }
-  return created.map(({ node }) => node.id);
+  const nodeIds = created.map(({ node }) => node.id);
+  return { nodeIds, viewIds: [...nodeIds, ...createdAliases.flatMap((alias) => (alias ? [alias.viewId] : []))] };
 }
 
 /**

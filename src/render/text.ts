@@ -6,7 +6,7 @@ const FONT_STACK = "'Segoe UI', 'Inter', system-ui, sans-serif";
 /** Glyphs are rasterized large once and scaled down, so text stays readable when zooming in. */
 const GLYPH_SIZE = 36;
 
-const CHARS: (string | string[])[] = [[" ", "~"], ["А", "я"], "ЁёЇїІіЄєҐґ«»–—…·°±×÷№€≠≥≤▾✓↵→←"];
+const CHARS: (string | string[])[] = [[" ", "~"], ["А", "я"], "ЁёЇїІіЄєҐґ«»–—…·°±×÷№€≠≥≤▾✓↵→←↗"];
 
 let installed = false;
 

@@ -3,6 +3,8 @@ import { Editor, type Notice } from "./app/editor";
 import { physicalKey } from "./app/keys";
 import { findShortcut, isEditableTarget } from "./app/shortcuts";
 import type { GraphRenderer, RendererStats } from "./render/GraphRenderer";
+import { ContextMenu, type ContextMenuItem } from "./ui/ContextMenu";
+import { buildContextMenu } from "./ui/contextMenuItems";
 import { GraphCanvas } from "./ui/GraphCanvas";
 import { NodePalette } from "./ui/NodePalette";
 import { ShortcutHelp } from "./ui/ShortcutHelp";
@@ -37,8 +39,15 @@ export default function App() {
   const helpOpenRef = useRef(helpOpen);
   helpOpenRef.current = helpOpen;
 
+  const [menu, setMenu] = useState<{ x: number; y: number; items: ContextMenuItem[] } | null>(null);
+  const closeMenu = useCallback(() => setMenu(null), []);
+
   const onRenderer = useCallback((renderer: GraphRenderer | null) => {
+    rendererRef.current?.onContextMenu(null);
     rendererRef.current = renderer;
+    renderer?.onContextMenu((request) =>
+      setMenu({ x: request.clientX, y: request.clientY, items: buildContextMenu(request, editor, renderer) }),
+    );
   }, []);
 
   const onDrop = useCallback((schemaId: string, clientX: number, clientY: number) => {
@@ -218,6 +227,8 @@ export default function App() {
           </span>
         )}
       </footer>
+
+      {menu && <ContextMenu x={menu.x} y={menu.y} items={menu.items} onClose={closeMenu} />}
 
       {helpOpen && <ShortcutHelp onClose={() => setHelpOpen(false)} />}
     </div>

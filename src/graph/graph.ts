@@ -6,7 +6,9 @@ import {
   type Connection,
   type ConnectionFailureReason,
   type ConnectionResult,
+  type ConnectionViews,
   isValidId,
+  type NodeAlias,
   newId,
   type Port,
   RegistryError,
@@ -23,6 +25,9 @@ export type GraphChange =
   | { kind: "nodeRenamed"; node: NodeModel; previous: string }
   /** Ports are derived from data, so this follows a `nodeDataChanged` that altered them. */
   | { kind: "nodePortsChanged"; node: NodeModel; previous: readonly Port[] }
+  | { kind: "aliasAdded"; alias: NodeAlias }
+  | { kind: "aliasRemoved"; alias: NodeAlias }
+  | { kind: "aliasMoved"; alias: NodeAlias; previous: Vec2 }
   | { kind: "connectionAdded"; connection: Connection }
   | { kind: "connectionRemoved"; connection: Connection }
   | { kind: "viewportChanged" }
@@ -47,6 +52,8 @@ export class GraphModel {
   private readonly portMap = new Map<string, Port>();
   private readonly connectionMap = new Map<string, Connection>();
   private readonly connectionsByPort = new Map<string, Set<Connection>>();
+  private readonly aliasMap = new Map<string, NodeAlias>();
+  private readonly aliasesByNode = new Map<string, Set<NodeAlias>>();
   private readonly listeners = new Set<GraphListener>();
   private batchDepth = 0;
   private batchChanged = false;
@@ -77,6 +84,10 @@ export class GraphModel {
 
   get connectionCount(): number {
     return this.connectionMap.size;
+  }
+
+  get aliases(): IterableIterator<NodeAlias> {
+    return this.aliasMap.values();
   }
 
   get viewport(): Viewport {
@@ -123,6 +134,40 @@ export class GraphModel {
 
   getNode(id: string): NodeModel | undefined {
     return this.nodeMap.get(id);
+  }
+
+  getAlias(id: string): NodeAlias | undefined {
+    return this.aliasMap.get(id);
+  }
+
+  aliasesOf(nodeId: string): NodeAlias[] {
+    const aliases = this.aliasesByNode.get(nodeId);
+    return aliases ? [...aliases] : [];
+  }
+
+  // A "view" is a place where a node is shown: the node itself (view id = node id) or an alias.
+
+  /** The node shown by a view. */
+  viewNode(viewId: string): NodeModel | undefined {
+    return this.nodeMap.get(viewId) ?? this.nodeMap.get(this.aliasMap.get(viewId)?.nodeId ?? "");
+  }
+
+  viewPosition(viewId: string): Vec2 | undefined {
+    return this.nodeMap.get(viewId)?.position ?? this.aliasMap.get(viewId)?.position;
+  }
+
+  moveView(viewId: string, position: Vec2): boolean {
+    return this.nodeMap.has(viewId) ? this.moveNode(viewId, position) : this.moveAlias(viewId, position);
+  }
+
+  /** Removes a node (with its aliases) or just an alias. */
+  removeView(viewId: string): boolean {
+    return this.nodeMap.has(viewId) ? this.removeNode(viewId) : this.removeAlias(viewId);
+  }
+
+  /** The node itself and its aliases. */
+  viewIdsOf(nodeId: string): string[] {
+    return [nodeId, ...this.aliasesOf(nodeId).map((alias) => alias.id)];
   }
 
   getPort(id: string): Port | undefined {
@@ -203,6 +248,9 @@ export class GraphModel {
     for (const connection of this.getNodeConnections(nodeId)) {
       this.disconnect(connection.id);
     }
+    for (const alias of this.aliasesOf(nodeId)) {
+      this.removeAlias(alias.id);
+    }
     for (const port of node.ports) {
       this.portMap.delete(port.id);
       this.connectionsByPort.delete(port.id);
@@ -222,6 +270,64 @@ export class GraphModel {
       const previous = node.position;
       node.position = { x: position.x, y: position.y };
       this.emit({ kind: "nodeMoved", node, previous });
+    }
+    return true;
+  }
+
+  /** Adds an alias of an existing node; pass an alias object to restore a removed one. */
+  addAlias(nodeIdOrAlias: string | NodeAlias, position?: Vec2): NodeAlias {
+    const alias: NodeAlias =
+      typeof nodeIdOrAlias === "string" ? { id: newId(), nodeId: nodeIdOrAlias, position: { x: 0, y: 0 } } : nodeIdOrAlias;
+    if (!this.nodeMap.has(alias.nodeId)) {
+      throw new RegistryError(`Node '${alias.nodeId}' does not exist.`);
+    }
+    if (!isValidId(alias.id) || this.aliasMap.has(alias.id) || this.nodeMap.has(alias.id)) {
+      throw new RegistryError(`Alias id '${alias.id}' is invalid or already used.`);
+    }
+    if (position) {
+      alias.position = { x: position.x, y: position.y };
+    }
+    this.aliasMap.set(alias.id, alias);
+    let set = this.aliasesByNode.get(alias.nodeId);
+    if (!set) {
+      set = new Set();
+      this.aliasesByNode.set(alias.nodeId, set);
+    }
+    set.add(alias);
+    this.emit({ kind: "aliasAdded", alias });
+    return alias;
+  }
+
+  /** Removes an alias together with the connections drawn at it. */
+  removeAlias(aliasId: string): boolean {
+    const alias = this.aliasMap.get(aliasId);
+    if (!alias) {
+      return false;
+    }
+    for (const connection of this.getNodeConnections(alias.nodeId)) {
+      if (connection.outputViewId === aliasId || connection.inputViewId === aliasId) {
+        this.disconnect(connection.id);
+      }
+    }
+    this.aliasMap.delete(aliasId);
+    const set = this.aliasesByNode.get(alias.nodeId);
+    set?.delete(alias);
+    if (set?.size === 0) {
+      this.aliasesByNode.delete(alias.nodeId);
+    }
+    this.emit({ kind: "aliasRemoved", alias });
+    return true;
+  }
+
+  moveAlias(aliasId: string, position: Vec2): boolean {
+    const alias = this.aliasMap.get(aliasId);
+    if (!alias) {
+      return false;
+    }
+    if (alias.position.x !== position.x || alias.position.y !== position.y) {
+      const previous = alias.position;
+      alias.position = { x: position.x, y: position.y };
+      this.emit({ kind: "aliasMoved", alias, previous });
     }
     return true;
   }
@@ -314,7 +420,8 @@ export class GraphModel {
     return null;
   }
 
-  connect(outputPortId: string, inputPortId: string, connectionId?: string): ConnectionResult {
+  /** `views` names aliases to draw the ends at; ids that are not aliases of the port's node are ignored. */
+  connect(outputPortId: string, inputPortId: string, connectionId?: string, views: ConnectionViews = {}): ConnectionResult {
     const failure = this.canConnect(outputPortId, inputPortId);
     if (failure) {
       return failure;
@@ -331,6 +438,8 @@ export class GraphModel {
       inputPortId,
       outputNodeId: output.nodeId,
       inputNodeId: input.nodeId,
+      outputViewId: this.viewOf(output.nodeId, views.output),
+      inputViewId: this.viewOf(input.nodeId, views.input),
     };
     this.connectionMap.set(connection.id, connection);
     this.indexConnection(outputPortId, connection);
@@ -358,6 +467,10 @@ export class GraphModel {
 
   addUnresolvedConnection(connection: UnresolvedConnection): void {
     this.unresolvedConnections.push(connection);
+  }
+
+  private viewOf(nodeId: string, aliasId: string | undefined): string {
+    return aliasId !== undefined && this.aliasMap.get(aliasId)?.nodeId === nodeId ? aliasId : nodeId;
   }
 
   private indexConnection(portId: string, connection: Connection): void {

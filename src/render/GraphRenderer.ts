@@ -31,7 +31,8 @@ type Hit =
 
 type Interaction =
   | { kind: "none" }
-  | { kind: "pan"; pointerId: number; start: Vec2; startViewport: Viewport }
+  /** `moved` tells a right-button drag (pan) from a right click (context menu). */
+  | { kind: "pan"; pointerId: number; button: number; moved: boolean; start: Vec2; startViewport: Viewport }
   | {
       kind: "drag";
       pointerId: number;
@@ -41,10 +42,24 @@ type Interaction =
       internalEdges: Set<string>;
       applied: Vec2;
     }
-  | { kind: "connect"; pointerId: number; from: Port; cursor: Vec2; target: Port | null }
+  | { kind: "connect"; pointerId: number; from: Port; fromView: NodeView; cursor: Vec2; target: { port: Port; view: NodeView } | null }
   | { kind: "box"; pointerId: number; start: Vec2; current: Vec2; mode: "replace" | "add" | "toggle"; initial: Set<string> }
   /** Pressing a checkbox or an enum segment; applied on release over the same target. */
   | { kind: "press"; pointerId: number; view: NodeView; control: Control; segment: number | null };
+
+/** What a right click hit; the selection is already updated to include it. */
+export type ContextTarget = { kind: "node"; viewId: string } | { kind: "edge"; connectionId: string } | { kind: "canvas" };
+
+export interface ContextMenuRequest {
+  clientX: number;
+  clientY: number;
+  /** Graph position of the click, e.g. to paste there. */
+  world: Vec2;
+  target: ContextTarget;
+}
+
+/** Pointer travel (px) after which a right-button press becomes a pan instead of a click. */
+const CLICK_SLOP = 4;
 
 export interface RendererStats {
   frameMs: number;
@@ -62,13 +77,17 @@ export class GraphRenderer {
   private readonly overlay = new Graphics();
 
   private graph!: GraphModel;
+  // Views are keyed by view id: the node id for a node, the alias id for a linked copy.
   private unsubscribeGraph: () => void = () => {};
   private unsubscribeEditor: () => void = () => {};
   private unsubscribeLocalization: () => void = () => {};
   private readonly nodeViews = new Map<string, NodeView>();
   private readonly viewsByContainer = new Map<Container, NodeView>();
   private readonly edgeViews = new Map<string, EdgeView>();
+  /** Selected view ids. */
   private readonly selection = new Set<string>();
+  /** Other views of the selected nodes, drawn highlighted. */
+  private linkHighlights = new Set<string>();
   private selectedEdge: EdgeView | null = null;
   private hovered: NodeView | null = null;
   private interaction: Interaction = { kind: "none" };
@@ -98,7 +117,7 @@ export class GraphRenderer {
     (path) => this.editor.readResource(path),
     (views) => {
       for (const view of views) {
-        if (!this.nodeViews.has(view.node.id)) continue;
+        if (this.nodeViews.get(view.viewId) !== view) continue;
         if (view.container.visible) view.rebuild();
         else view.staleLayout = true;
       }
@@ -107,6 +126,7 @@ export class GraphRenderer {
   );
   /** Node being edited inline, so the editor closes if the node disappears. */
   private editedNode: NodeView | null = null;
+  private contextMenuListener: ((request: ContextMenuRequest) => void) | null = null;
   private readonly frameTimes: number[] = [];
   private visibleNodes = 0;
   private visibleEdges = 0;
@@ -275,6 +295,27 @@ export class GraphRenderer {
     });
   }
 
+  onContextMenu(listener: ((request: ContextMenuRequest) => void) | null): void {
+    this.contextMenuListener = listener;
+  }
+
+  /** True when the view can be renamed (its node's schema allows custom names). */
+  canRename(viewId: string): boolean {
+    return !!this.graph.viewNode(viewId)?.schema?.naming.editable;
+  }
+
+  /** Opens the rename field on the only selected node. */
+  renameSelection(): boolean {
+    const [viewId] = this.selection;
+    const view = this.selection.size === 1 ? this.nodeViews.get(viewId) : undefined;
+    if (!view || !this.canRename(viewId)) {
+      this.editor.setStatus(view ? "This node has no editable name." : "Select one node to rename.");
+      return false;
+    }
+    this.openRenameEditor(view);
+    return true;
+  }
+
   /** True while a mouse gesture (drag, connect, pan, box select) is in progress. */
   isInteracting(): boolean {
     return this.interaction.kind !== "none";
@@ -285,19 +326,20 @@ export class GraphRenderer {
     return this.pointerInside ? this.screenToWorld(this.pointer) : null;
   }
 
-  selectedNodeIds(): string[] {
+  selectedViewIds(): string[] {
     return [...this.selection];
   }
 
-  selectNodes(nodeIds: Iterable<string>): void {
+  /** Selects nodes and linked copies by view id. */
+  selectViews(viewIds: Iterable<string>): void {
     this.selectEdge(null);
-    const ids = new Set([...nodeIds].filter((id) => this.nodeViews.has(id)));
+    const ids = new Set([...viewIds].filter((id) => this.nodeViews.has(id)));
     this.setSelection(ids);
     this.bringToFront(ids);
   }
 
   selectAll(): void {
-    this.selectNodes(this.nodeViews.keys());
+    this.selectViews(this.nodeViews.keys());
   }
 
   clearSelection(): void {
@@ -307,11 +349,32 @@ export class GraphRenderer {
 
   nudgeSelection(dx: number, dy: number): void {
     for (const id of this.selection) {
-      const node = this.graph.getNode(id);
-      if (node) {
-        this.graph.moveNode(id, { x: node.position.x + dx, y: node.position.y + dy });
+      const position = this.graph.viewPosition(id);
+      if (position) {
+        this.graph.moveView(id, { x: position.x + dx, y: position.y + dy });
       }
     }
+  }
+
+  /** Selects the next view of the selected node (the node, then its linked copies) and pans to it. */
+  goToNextLinkedView(): boolean {
+    const current = this.selection.size === 1 ? [...this.selection][0] : null;
+    const node = current ? this.graph.viewNode(current) : undefined;
+    const views = node ? this.graph.viewIdsOf(node.id) : [];
+    if (!current || views.length < 2) {
+      this.editor.setStatus("Select a node with linked copies.");
+      return false;
+    }
+    const next = views[(views.indexOf(current) + 1) % views.length];
+    this.selectViews([next]);
+    const view = this.nodeViews.get(next);
+    if (view) {
+      const { x, y, width, height } = view.rect;
+      const zoom = this.viewport.zoom;
+      this.setViewport({ x: this.screen.width / 2 - (x + width / 2) * zoom, y: this.screen.height / 2 - (y + height / 2) * zoom, zoom });
+    }
+    this.editor.setStatus(next === node!.id ? "Original node." : `Linked copy ${views.indexOf(next)} of ${views.length - 1}.`);
+    return true;
   }
 
   deleteSelection(): void {
@@ -365,8 +428,12 @@ export class GraphRenderer {
     this.selection.clear();
     this.selectedEdge = null;
     this.hovered = null;
+    this.linkHighlights = new Set();
     for (const node of this.graph.nodes) {
       this.addNodeView(node.id);
+    }
+    for (const alias of this.graph.aliases) {
+      this.addNodeView(alias.id);
     }
     for (const connection of this.graph.connections) {
       this.addEdgeView(connection);
@@ -391,14 +458,26 @@ export class GraphRenderer {
         this.markNodeEdgesDirty(change.node.id);
         break;
       }
+      case "aliasAdded":
+        this.addNodeView(change.alias.id);
+        this.rebuildViewsOf(change.alias.nodeId);
+        break;
+      case "aliasRemoved":
+        this.removeNodeView(change.alias.id);
+        this.rebuildViewsOf(change.alias.nodeId);
+        break;
+      case "aliasMoved":
+        this.nodeViews.get(change.alias.id)?.syncPosition();
+        this.markNodeEdgesDirty(change.alias.nodeId);
+        break;
       case "nodeDataChanged":
       case "nodeRenamed":
-        this.nodeViews.get(change.node.id)?.rebuild();
+        this.rebuildViewsOf(change.node.id);
         this.markNodeEdgesDirty(change.node.id);
         this.refreshReferences(change.node.id);
         break;
       case "nodePortsChanged":
-        this.nodeViews.get(change.node.id)?.rebuild();
+        this.rebuildViewsOf(change.node.id);
         this.markNodeEdgesDirty(change.node.id);
         break;
       case "connectionAdded":
@@ -432,13 +511,22 @@ export class GraphRenderer {
     this.requestFrame();
   };
 
-  private addNodeView(nodeId: string): void {
-    const node = this.graph.getNode(nodeId);
-    if (!node || this.nodeViews.has(nodeId)) {
+  /** Adds the view of a node or of an alias. */
+  private addNodeView(viewId: string): void {
+    const node = this.graph.viewNode(viewId);
+    if (!node || this.nodeViews.has(viewId)) {
       return;
     }
     const view = new NodeView(node, {
-      isPortConnected: (portId) => this.graph.hasConnections(portId),
+      portConnection: (portId) => {
+        let state: "here" | "elsewhere" | null = null;
+        for (const connection of this.graph.getPortConnections(portId)) {
+          if ((connection.outputPortId === portId ? connection.outputViewId : connection.inputViewId) === viewId) return "here";
+          state = "elsewhere";
+        }
+        return state;
+      },
+      aliasCount: () => this.graph.aliasesOf(node.id).length,
       portHighlight: (port) => this.portHighlight(port),
       portColor: (typeId) => this.portColor(typeId),
       resources: () => this.graph.registry.pack?.resources ?? null,
@@ -450,15 +538,16 @@ export class GraphRenderer {
       image: (path, view) => this.images.get(path, view),
       referenceLabel: (field, id) =>
         field.type === "nodeRef" ? (this.graph.getNode(id)?.displayName ?? null) : itemRefLabel(this.graph, id),
-    });
+    }, this.graph.getAlias(viewId) ?? null);
     view.setDetailVisible(this.detailVisible);
-    this.nodeViews.set(nodeId, view);
+    view.linkHighlighted = this.linkHighlights.has(viewId);
+    this.nodeViews.set(viewId, view);
     this.viewsByContainer.set(view.container, view);
     this.nodeLayer.addChild(view.container);
   }
 
-  private removeNodeView(nodeId: string): void {
-    const view = this.nodeViews.get(nodeId);
+  private removeNodeView(viewId: string): void {
+    const view = this.nodeViews.get(viewId);
     if (!view) {
       return;
     }
@@ -468,12 +557,21 @@ export class GraphRenderer {
     if (this.editedNode === view) {
       this.inlineEditor.close(false);
     }
-    if (this.selection.delete(nodeId)) {
+    if (this.selection.delete(viewId)) {
       this.editor.setSelectionCount(this.selection.size);
+      this.updateLinkHighlights();
     }
+    this.linkHighlights.delete(viewId);
     this.viewsByContainer.delete(view.container);
-    this.nodeViews.delete(nodeId);
+    this.nodeViews.delete(viewId);
     view.destroy();
+  }
+
+  /** Rebuilds every view of a node (the node and its linked copies). */
+  private rebuildViewsOf(nodeId: string): void {
+    for (const viewId of this.graph.viewIdsOf(nodeId)) {
+      this.nodeViews.get(viewId)?.rebuild();
+    }
   }
 
   private addEdgeView(connection: Connection): void {
@@ -492,15 +590,17 @@ export class GraphRenderer {
     }
   }
 
+  /** Port dots show where a port is connected, so every view of both nodes is redrawn. */
   private redrawNodes(connection: Connection): void {
-    this.nodeViews.get(connection.outputNodeId)?.redraw();
-    this.nodeViews.get(connection.inputNodeId)?.redraw();
+    for (const viewId of [...this.graph.viewIdsOf(connection.outputNodeId), ...this.graph.viewIdsOf(connection.inputNodeId)]) {
+      this.nodeViews.get(viewId)?.redraw();
+    }
   }
 
   private refreshEdge(view: EdgeView): void {
     const { connection } = view;
-    const source = this.nodeViews.get(connection.outputNodeId);
-    const target = this.nodeViews.get(connection.inputNodeId);
+    const source = this.nodeViews.get(connection.outputViewId);
+    const target = this.nodeViews.get(connection.inputViewId);
     const start = source?.portWorldPosition(connection.outputPortId);
     const end = target?.portWorldPosition(connection.inputPortId);
     view.update(start && end ? computeEdgePath(start, end, source!.rect, target!.rect) : null, this.edgeScale);
@@ -610,12 +710,12 @@ export class GraphRenderer {
     if (this.interaction.kind !== "connect") {
       return;
     }
-    const { from, cursor, target } = this.interaction;
-    const fromPosition = this.nodeViews.get(from.nodeId)?.portWorldPosition(from.id);
+    const { from, fromView, cursor, target } = this.interaction;
+    const fromPosition = fromView.portWorldPosition(from.id);
     if (!fromPosition) {
       return;
     }
-    const other = (target && this.nodeViews.get(target.nodeId)?.portWorldPosition(target.id)) || cursor;
+    const other = (target && target.view.portWorldPosition(target.port.id)) || cursor;
     const [start, end] = from.direction === "Output" ? [fromPosition, other] : [other, fromPosition];
     traceEdgePath(g, computeEdgePath(start, end));
     g.stroke({ width: 2.5 * this.edgeScale, color: this.portColor(from.typeId), alpha: target ? 1 : 0.75, cap: "round" });
@@ -717,7 +817,29 @@ export class GraphRenderer {
     this.selection.clear();
     next.forEach((id) => this.selection.add(id));
     this.editor.setSelectionCount(this.selection.size);
+    this.updateLinkHighlights();
     this.requestFrame();
+  }
+
+  /** Highlights the other views (original / linked copies) of the selected nodes. */
+  private updateLinkHighlights(): void {
+    const next = new Set<string>();
+    for (const id of this.selection) {
+      const node = this.graph.viewNode(id);
+      if (!node) continue;
+      for (const viewId of this.graph.viewIdsOf(node.id)) {
+        if (!this.selection.has(viewId)) next.add(viewId);
+      }
+    }
+    for (const id of new Set([...this.linkHighlights, ...next])) {
+      const view = this.nodeViews.get(id);
+      const highlighted = next.has(id);
+      if (view && view.linkHighlighted !== highlighted) {
+        view.linkHighlighted = highlighted;
+        view.redraw();
+      }
+    }
+    this.linkHighlights = next;
   }
 
   private setNodeSelected(nodeId: string, selected: boolean): void {
@@ -868,9 +990,17 @@ export class GraphRenderer {
 
     if (event.button === 1 || event.button === 2 || (event.button === 0 && this.spaceDown)) {
       event.preventDefault();
-      this.interaction = { kind: "pan", pointerId: event.pointerId, start: point, startViewport: { ...this.viewport } };
+      this.interaction = {
+        kind: "pan",
+        pointerId: event.pointerId,
+        button: event.button,
+        moved: false,
+        start: point,
+        startViewport: { ...this.viewport },
+      };
       canvas.setPointerCapture(event.pointerId);
-      canvas.style.cursor = "grabbing";
+      // A right press may still become a click (context menu): show the grab cursor once it moves.
+      if (event.button !== 2) canvas.style.cursor = "grabbing";
       return;
     }
     if (event.button !== 0) {
@@ -883,11 +1013,11 @@ export class GraphRenderer {
 
     if (hit?.kind === "node" && hit.hit.kind === "port") {
       this.selectEdge(null);
-      this.interaction = { kind: "connect", pointerId: event.pointerId, from: hit.hit.port, cursor: world, target: null };
+      this.interaction = { kind: "connect", pointerId: event.pointerId, from: hit.hit.port, fromView: hit.view, cursor: world, target: null };
       this.invalidateAllNodes();
       this.editor.setStatus(`Connecting from ${hit.hit.port.displayName}...`);
     } else if (hit?.kind === "node") {
-      const nodeId = hit.view.node.id;
+      const nodeId = hit.view.viewId;
       this.selectEdge(null);
       if (toggle) {
         const next = new Set(this.selection);
@@ -914,11 +1044,12 @@ export class GraphRenderer {
         const origins = new Map<string, Vec2>();
         const internalEdges = new Set<string>();
         for (const id of this.selection) {
-          const node = this.graph.getNode(id);
-          if (node) {
-            origins.set(id, { ...node.position });
-            for (const connection of this.graph.getNodeConnections(id)) {
-              if (this.selection.has(connection.outputNodeId) && this.selection.has(connection.inputNodeId)) {
+          const position = this.graph.viewPosition(id);
+          const node = this.graph.viewNode(id);
+          if (position && node) {
+            origins.set(id, { ...position });
+            for (const connection of this.graph.getNodeConnections(node.id)) {
+              if (this.selection.has(connection.outputViewId) && this.selection.has(connection.inputViewId)) {
                 internalEdges.add(connection.id);
               }
             }
@@ -974,6 +1105,11 @@ export class GraphRenderer {
         return;
       case "pan":
         if (event.pointerId === interaction.pointerId) {
+          if (!interaction.moved) {
+            if (Math.hypot(point.x - interaction.start.x, point.y - interaction.start.y) < CLICK_SLOP) return;
+            interaction.moved = true;
+            this.app.canvas.style.cursor = "grabbing";
+          }
           this.setViewport({
             x: interaction.startViewport.x + point.x - interaction.start.x,
             y: interaction.startViewport.y + point.y - interaction.start.y,
@@ -988,7 +1124,7 @@ export class GraphRenderer {
         const dx = world.x - interaction.start.x;
         const dy = world.y - interaction.start.y;
         for (const [id, origin] of interaction.origins) {
-          this.graph.moveNode(id, { x: origin.x + dx, y: origin.y + dy });
+          this.graph.moveView(id, { x: origin.x + dx, y: origin.y + dy });
         }
         const stepX = dx - interaction.applied.x;
         const stepY = dy - interaction.applied.y;
@@ -1005,7 +1141,10 @@ export class GraphRenderer {
         interaction.cursor = world;
         const hit = this.hitTest(world, false);
         const port = hit?.kind === "node" && hit.hit.kind === "port" ? hit.hit.port : null;
-        interaction.target = port && this.portHighlight(port) === "compatible" && port.id !== interaction.from.id ? port : null;
+        interaction.target =
+          port && hit?.kind === "node" && this.portHighlight(port) === "compatible" && port.id !== interaction.from.id
+            ? { port, view: hit.view }
+            : null;
         this.requestFrame();
         return;
       }
@@ -1034,14 +1173,20 @@ export class GraphRenderer {
     canvas.style.cursor = "";
 
     switch (interaction.kind) {
+      case "pan":
+        if (interaction.button === 2 && !interaction.moved) {
+          this.openContextMenu(event);
+        }
+        break;
       case "connect":
         if (interaction.target) {
-          this.editor.connectPorts(interaction.from.id, interaction.target.id);
+          const { port, view } = interaction.target;
+          this.editor.connectPorts(interaction.from.id, port.id, interaction.fromView.viewId, view.viewId);
         } else {
           const hit = this.hitTest(this.screenToWorld(this.localPoint(event)), false);
           if (hit?.kind === "node" && hit.hit.kind === "port" && hit.hit.port.id !== interaction.from.id) {
             // Let the editor report why the connection is not allowed.
-            this.editor.connectPorts(interaction.from.id, hit.hit.port.id);
+            this.editor.connectPorts(interaction.from.id, hit.hit.port.id, interaction.fromView.viewId, hit.view.viewId);
           } else {
             this.editor.setStatus("Connection cancelled.");
           }
@@ -1068,6 +1213,28 @@ export class GraphRenderer {
     this.updateHover(this.screenToWorld(this.localPoint(event)));
     this.requestFrame();
   };
+
+  /** Selects what was right-clicked (keeping a selection it is part of) and asks for a menu. */
+  private openContextMenu(event: PointerEvent): void {
+    if (!this.contextMenuListener) return;
+    const world = this.screenToWorld(this.localPoint(event));
+    const hit = this.hitTest(world);
+    let target: ContextTarget;
+    if (hit?.kind === "node") {
+      const viewId = hit.view.viewId;
+      this.selectEdge(null);
+      if (!this.selection.has(viewId)) this.setSelection(new Set([viewId]));
+      target = { kind: "node", viewId };
+    } else if (hit?.kind === "edge") {
+      this.setSelection(new Set());
+      this.selectEdge(hit.view);
+      target = { kind: "edge", connectionId: hit.view.connection.id };
+    } else {
+      target = { kind: "canvas" };
+    }
+    this.requestFrame();
+    this.contextMenuListener({ clientX: event.clientX, clientY: event.clientY, world, target });
+  }
 
   /** Double-click on a node header renames the node. */
   private readonly onDoubleClick = (event: MouseEvent): void => {
@@ -1122,7 +1289,7 @@ export class GraphRenderer {
       if (!rectsIntersect({ minX: x, minY: y, maxX: x + width, maxY: y + height }, area)) {
         continue;
       }
-      const id = view.node.id;
+      const id = view.viewId;
       if (box.mode === "toggle" && box.initial.has(id)) {
         next.delete(id);
       } else {
@@ -1168,8 +1335,8 @@ export class GraphRenderer {
   private screenRect(view: NodeView, rect: { x: number; y: number; width: number; height: number }) {
     const { x, y, zoom } = this.viewport;
     return {
-      x: x + (view.node.position.x + rect.x) * zoom,
-      y: y + (view.node.position.y + rect.y) * zoom,
+      x: x + (view.position.x + rect.x) * zoom,
+      y: y + (view.position.y + rect.y) * zoom,
       width: rect.width * zoom,
       height: rect.height * zoom,
     };

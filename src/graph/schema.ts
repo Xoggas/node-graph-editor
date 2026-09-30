@@ -181,6 +181,8 @@ export interface SchemaPack {
   version: number;
   name: string;
   languages: string[];
+  /** Order of palette categories (`menus` in pack.json); categories not listed follow alphabetically. */
+  menus: string[];
   portTypes: Map<string, PortTypeSchema>;
   nodes: Map<string, NodeSchema>;
   resources: ResourceLibrary;
@@ -237,6 +239,7 @@ export function parseSchemaPack(files: PackFile[], packDir: string | null = null
     version: reader.int(root, "version", 1),
     name: reader.string(root, "name", "") || reader.id(root, "id"),
     languages: reader.stringArray(root, "languages", []),
+    menus: reader.stringArray(root, "menus", []),
     portTypes: new Map(),
     nodes: new Map(),
     resources: { types: new Map(), items: new Map(), roots: [] },

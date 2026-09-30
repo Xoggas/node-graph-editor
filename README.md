@@ -27,6 +27,8 @@ Requires Node.js and a Rust toolchain ([Tauri prerequisites](https://tauri.app/s
 | Connect | Drag from a port to a compatible port (compatible ports are highlighted) |
 | Undo / Redo | Ctrl+Z / Ctrl+Y (Ctrl+Shift+Z) |
 | Copy / Cut / Paste / Duplicate | Ctrl+C / Ctrl+X / Ctrl+V (at the cursor) / Ctrl+D |
+| Create linked copy / Go to the next linked copy | Ctrl+L / Ctrl+Shift+L |
+| Rename node / Context menu | F2 / Right click (right drag pans) |
 | Delete | Delete / Backspace (selected nodes or connection) |
 | Nudge selection | Arrows (Shift: further) |
 | Select all / Clear selection | Ctrl+A / Esc |
@@ -67,6 +69,7 @@ re-reads it from disk (the open graph keeps its data). The last folder is rememb
 // pack.json
 {
   "id": "my-game", "name": "My Game", "version": 1,
+  "menus": ["Flow", "Dialogue", "Conditions"],   // palette category order; nodes keep their file order
   "portTypes": {
     "flow": { "color": "#b8bcc5", "capacity": { "input": "multiple", "output": "single" } },
     "bool": { "color": "#e07a6f" }
@@ -154,10 +157,26 @@ Unity project (characters with emotions, backgrounds, music, sfx, diary entries)
 See `docs/schema-design.md` for the full design, including the planned resource library,
 localization and the remaining field types.
 
+## Linked copies
+
+A linked copy (Ctrl+L) shows the same node in another place of the graph — handy instead of a long
+edge across the canvas. It has no data of its own: fields, name and ports are the node's, so an edit in
+one place shows in all of them. Connections can be attached to any view; they always link the node's
+ports (capacity and duplicate checks see them all), each end just remembers where it is drawn.
+
+- Copies sit in a blue outer frame and have a `↗ link` badge; the node shows `↗ N` for its N copies. Selecting a
+  view highlights the others; Ctrl+Shift+L walks through them.
+- A port dot with a center point is connected at another view of the node.
+- Deleting a copy deletes the connections drawn at it; deleting the node deletes its copies.
+- Copy/paste: a copy pasted together with its node links to the pasted node, a copy pasted alone links
+  to the same node again.
+- The runtime export ignores copies: connections are already between the nodes.
+
 ## File format
 
 Graphs are JSON (`"format": "node-graph", "version": 2`). Each node stores its schema id and version,
-name, position and `data`; connections reference `{ node, port }` with the schema port key. Nodes whose
+name, position and `data`; connections reference `{ node, port }` with the schema port key, plus
+`view` (an alias id) for an end drawn at a linked copy; linked copies are `aliases: [{ id, node, position }]`. Nodes whose
 schema is missing load as placeholders and are written back unchanged; connections that cannot be
 restored (e.g. to a removed repeated port) are kept in `unresolvedConnections`.
 

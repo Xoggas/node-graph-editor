@@ -6,6 +6,16 @@
     "ru",
     "en"
   ],
+  "menus": [
+    "Flow",
+    "Dialogue",
+    "Scene",
+    "Audio",
+    "Diary",
+    "Progress",
+    "Conditions",
+    "Logic"
+  ],
   "portTypes": {
     "flow": {
       "label": "Flow",

@@ -124,6 +124,7 @@ pumpkin-quest.schemas/
   "id": "pumpkin-quest",
   "version": 1,
   "languages": ["ru", "en"],
+  "menus": ["Flow", "Dialogue", "Scene", "Audio", "Diary", "Progress", "Conditions", "Logic"],
   "portTypes": {
     "flow":   { "color": "#b8bcc5" },
     "bool":   { "color": "#e07a6f" }

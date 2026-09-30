@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { copyNodes, pasteNodes } from "./clipboard";
+import { copyViews, pasteViews } from "./clipboard";
 import { GraphModel } from "./graph";
 import { GraphHistory } from "./history";
 import { createTestRegistry } from "./testPack";
@@ -113,8 +113,8 @@ describe("clipboard", () => {
     const outside = graph.addNode("test.line", at(600));
     graph.connect(target.getPort("next")!.id, outside.getPort("in")!.id);
 
-    const data = copyNodes(graph, [line.id, target.id])!;
-    const [lineCopyId, targetCopyId] = pasteNodes(graph, data, at(50, 50));
+    const data = copyViews(graph, [line.id, target.id])!;
+    const [lineCopyId, targetCopyId] = pasteViews(graph, data, at(50, 50)).nodeIds;
 
     const lineCopy = graph.getNode(lineCopyId)!;
     const choice = (lineCopy.data.choices as { id: string; text: string; extra: boolean }[])[0];

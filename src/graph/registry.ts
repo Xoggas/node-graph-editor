@@ -30,10 +30,20 @@ export class SchemaRegistry {
     return target === source || this.ancestors(source).has(target);
   }
 
+  /**
+   * Palette entries: categories in the pack's `menus` order (others alphabetically after them),
+   * nodes inside a category in the order the pack defines them.
+   */
   descriptors(): NodeDescriptor[] {
+    const menus = this.pack?.menus ?? [];
+    const rank = (menu: string) => {
+      const index = menus.indexOf(menu);
+      return index < 0 ? menus.length : index;
+    };
     return [...(this.pack?.nodes.values() ?? [])]
-      .map((schema) => ({ schemaId: schema.id, title: schema.title, menu: schema.menu, color: schema.color }))
-      .sort((a, b) => a.menu.localeCompare(b.menu) || a.title.localeCompare(b.title));
+      .map((schema, order) => ({ schemaId: schema.id, title: schema.title, menu: schema.menu, color: schema.color, order }))
+      .sort((a, b) => rank(a.menu) - rank(b.menu) || a.menu.localeCompare(b.menu) || a.order - b.order)
+      .map(({ order: _order, ...descriptor }) => descriptor);
   }
 
   private ancestors(typeId: string): ReadonlySet<string> {

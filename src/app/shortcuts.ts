@@ -16,7 +16,24 @@ interface KeyBinding {
   alt?: boolean;
 }
 
+/** Shortcuts other UI refers to, e.g. for the key hints in the context menu. */
+export type ShortcutId =
+  | "undo"
+  | "redo"
+  | "copy"
+  | "cut"
+  | "paste"
+  | "duplicate"
+  | "linkedCopy"
+  | "nextLinked"
+  | "rename"
+  | "delete"
+  | "selectAll"
+  | "frameSelection"
+  | "frameAll";
+
 export interface Shortcut {
+  id?: ShortcutId;
   group: "File" | "Edit" | "Selection" | "View" | "Help";
   description: string;
   /** Human-readable key labels shown in the help overlay. */
@@ -106,6 +123,7 @@ export const shortcuts: Shortcut[] = [
   },
   {
     group: "Edit",
+    id: "undo",
     description: "Undo",
     keys: ["Ctrl+Z"],
     bindings: [{ code: "KeyZ", ctrl: true }],
@@ -113,6 +131,7 @@ export const shortcuts: Shortcut[] = [
   },
   {
     group: "Edit",
+    id: "redo",
     description: "Redo",
     keys: ["Ctrl+Y", "Ctrl+Shift+Z"],
     bindings: [
@@ -123,38 +142,67 @@ export const shortcuts: Shortcut[] = [
   },
   {
     group: "Edit",
+    id: "copy",
     description: "Copy",
     keys: ["Ctrl+C"],
     bindings: [{ code: "KeyC", ctrl: true }],
-    run: withRenderer((renderer, { editor }) => editor.copy(renderer.selectedNodeIds())),
+    run: withRenderer((renderer, { editor }) => editor.copy(renderer.selectedViewIds())),
   },
   {
     group: "Edit",
+    id: "cut",
     description: "Cut",
     keys: ["Ctrl+X"],
     bindings: [{ code: "KeyX", ctrl: true }],
     run: whenIdle((renderer, { editor }) => {
-      const ids = renderer.selectedNodeIds();
+      const ids = renderer.selectedViewIds();
       renderer.clearSelection();
       editor.cut(ids);
     }),
   },
   {
     group: "Edit",
+    id: "paste",
     description: "Paste (at the cursor)",
     keys: ["Ctrl+V"],
     bindings: [{ code: "KeyV", ctrl: true }],
-    run: whenIdle((renderer, { editor }) => renderer.selectNodes(editor.paste(renderer.pointerPosition() ?? undefined))),
+    run: whenIdle((renderer, { editor }) => renderer.selectViews(editor.paste(renderer.pointerPosition() ?? undefined))),
   },
   {
     group: "Edit",
+    id: "duplicate",
     description: "Duplicate",
     keys: ["Ctrl+D"],
     bindings: [{ code: "KeyD", ctrl: true }],
-    run: whenIdle((renderer, { editor }) => renderer.selectNodes(editor.duplicate(renderer.selectedNodeIds()))),
+    run: whenIdle((renderer, { editor }) => renderer.selectViews(editor.duplicate(renderer.selectedViewIds()))),
   },
   {
     group: "Edit",
+    id: "linkedCopy",
+    description: "Create linked copy (same node in another place)",
+    keys: ["Ctrl+L"],
+    bindings: [{ code: "KeyL", ctrl: true }],
+    run: whenIdle((renderer, { editor }) => renderer.selectViews(editor.createLinkedCopies(renderer.selectedViewIds()))),
+  },
+  {
+    group: "Selection",
+    id: "nextLinked",
+    description: "Go to the next linked copy / the original",
+    keys: ["Ctrl+Shift+L"],
+    bindings: [{ code: "KeyL", ctrl: true, shift: true }],
+    run: whenIdle((renderer) => renderer.goToNextLinkedView()),
+  },
+  {
+    group: "Edit",
+    id: "rename",
+    description: "Rename node",
+    keys: ["F2"],
+    bindings: [{ code: "F2" }],
+    run: whenIdle((renderer) => renderer.renameSelection()),
+  },
+  {
+    group: "Edit",
+    id: "delete",
     description: "Delete selection",
     keys: ["Delete", "Backspace"],
     bindings: [{ code: "Delete" }, { code: "Backspace" }],
@@ -162,6 +210,7 @@ export const shortcuts: Shortcut[] = [
   },
   {
     group: "Selection",
+    id: "selectAll",
     description: "Select all",
     keys: ["Ctrl+A"],
     bindings: [{ code: "KeyA", ctrl: true }],
@@ -187,6 +236,7 @@ export const shortcuts: Shortcut[] = [
   },
   {
     group: "View",
+    id: "frameSelection",
     description: "Frame selection (or everything)",
     keys: ["F"],
     bindings: [{ code: "KeyF" }],
@@ -194,6 +244,7 @@ export const shortcuts: Shortcut[] = [
   },
   {
     group: "View",
+    id: "frameAll",
     description: "Frame everything",
     keys: ["Shift+F", "Home"],
     bindings: [{ code: "KeyF", shift: true }, { code: "Home" }],
@@ -249,8 +300,14 @@ export const mouseControls: { description: string; keys: string[] }[] = [
   { description: "Select / add / toggle", keys: ["Click", "Shift+click", "Ctrl+click"] },
   { description: "Box select", keys: ["Drag on empty space"] },
   { description: "Connect", keys: ["Drag from a port"] },
+  { description: "Context menu", keys: ["Right click"] },
   { description: "Add node", keys: ["Drag or click in the palette"] },
 ];
+
+/** The main key label of a shortcut, e.g. "Ctrl+L". */
+export function shortcutLabel(id: ShortcutId): string {
+  return shortcuts.find((shortcut) => shortcut.id === id)?.keys[0] ?? "";
+}
 
 export function findShortcut(event: KeyboardEvent): Shortcut | undefined {
   const ctrl = event.ctrlKey || event.metaKey;

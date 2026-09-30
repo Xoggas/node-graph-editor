@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { copyNodes, pasteNodes } from "./clipboard";
+import { copyViews, pasteViews } from "./clipboard";
 import { getIn, itemRefCandidates, itemRefLabel, listAdd, listMove, listRemove, nodeRefCandidates, setIn } from "./dataOps";
 import { GraphModel } from "./graph";
 import type { SchemaRegistry } from "./registry";
@@ -112,11 +112,11 @@ describe("item references", () => {
     const outside = graph.addNode("test.picker", at);
     graph.setNodeData(outside.id, { choice: "1.1-0" });
 
-    const [lineCopy, insideCopy] = pasteNodes(graph, copyNodes(graph, [line.id, inside.id])!, at).map((id) => graph.getNode(id)!);
+    const [lineCopy, insideCopy] = pasteViews(graph, copyViews(graph, [line.id, inside.id])!, at).nodeIds.map((id) => graph.getNode(id)!);
     const copiedChoice = (lineCopy.data.choices as { id: string }[])[0].id;
     expect(insideCopy.data.choice).toBe(copiedChoice);
 
-    const [outsideCopy] = pasteNodes(graph, copyNodes(graph, [outside.id])!, at).map((id) => graph.getNode(id)!);
+    const [outsideCopy] = pasteViews(graph, copyViews(graph, [outside.id])!, at).nodeIds.map((id) => graph.getNode(id)!);
     expect(outsideCopy.data.choice).toBe("1.1-0");
   });
 
@@ -125,7 +125,7 @@ describe("item references", () => {
     const data = reconcileData(grid.schema!, { ...grid.data, columns: [{ id: "c1", name: "" }] });
     graph.setNodeData(grid.id, setIn(data, ["cells", "0", "c1"], true));
 
-    const [copy] = pasteNodes(graph, copyNodes(graph, [grid.id])!, at).map((id) => graph.getNode(id)!);
+    const [copy] = pasteViews(graph, copyViews(graph, [grid.id])!, at).nodeIds.map((id) => graph.getNode(id)!);
     const column = (copy.data.columns as { id: string }[])[0].id;
     expect(column).not.toBe("c1");
     expect((copy.data.cells as MatrixValue)["0"]).toEqual({ [column]: true });
@@ -151,10 +151,10 @@ describe("node references", () => {
     const picker = graph.addNode("test.node-picker", at);
     graph.setNodeData(picker.id, { target: line.id });
 
-    const [lineCopy, pickerCopy] = pasteNodes(graph, copyNodes(graph, [line.id, picker.id])!, at).map((id) => graph.getNode(id)!);
+    const [lineCopy, pickerCopy] = pasteViews(graph, copyViews(graph, [line.id, picker.id])!, at).nodeIds.map((id) => graph.getNode(id)!);
     expect(pickerCopy.data.target).toBe(lineCopy.id);
 
-    const [alone] = pasteNodes(graph, copyNodes(graph, [picker.id])!, at).map((id) => graph.getNode(id)!);
+    const [alone] = pasteViews(graph, copyViews(graph, [picker.id])!, at).nodeIds.map((id) => graph.getNode(id)!);
     expect(alone.data.target).toBe(line.id);
   });
 });

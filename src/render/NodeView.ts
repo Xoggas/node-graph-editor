@@ -14,7 +14,7 @@ import {
   type ResourceField,
   type ResourceVariantField,
 } from "../graph/schema";
-import type { Port, Vec2 } from "../graph/types";
+import type { NodeAlias, Port, Vec2 } from "../graph/types";
 import type { Rect } from "./geometry";
 import { fitText, makeText, measureText } from "./text";
 import { theme } from "./theme";
@@ -22,6 +22,11 @@ import { theme } from "./theme";
 const HEADER_HEIGHT = 32;
 /** Space between a node's name and its "(Type)" in the header. */
 const TYPE_GAP = 6;
+/** Space between the title and the link badge on the right of the header. */
+const BADGE_GAP = 10;
+/** Outer frame of a linked copy: distance from the node and line width. */
+const ALIAS_FRAME_GAP = 4;
+const ALIAS_FRAME_WIDTH = 2.5;
 const PORT_ROW_HEIGHT = 24;
 const PORTS_PADDING = 4;
 const BODY_PADDING = 8;
@@ -86,8 +91,13 @@ export type NodeHit =
 
 export type PortHighlight = "normal" | "compatible" | "incompatible";
 
+/** A port's connections as seen from one view: drawn here, only at another view of the node, or none. */
+export type PortConnectionState = "here" | "elsewhere" | null;
+
 export interface NodeViewContext {
-  isPortConnected(portId: string): boolean;
+  portConnection(portId: string): PortConnectionState;
+  /** Number of linked copies of the node. */
+  aliasCount(): number;
   /** Only consulted while a connection is being dragged. */
   portHighlight(port: Port): PortHighlight;
   portColor(typeId: string): number;
@@ -113,6 +123,8 @@ export class NodeView {
   hasUnnamedTexts = false;
 
   selected = false;
+  /** Another view of the same node is selected. */
+  linkHighlighted = false;
   hovered = false;
   hoveredPortId: string | null = null;
   hoveredControl: string | null = null;
@@ -129,17 +141,26 @@ export class NodeView {
   private itemRects: Rect[] = [];
   private previewRects: Rect[] = [];
 
+  /** The node id for the node itself, the alias id for a linked copy. */
+  readonly viewId: string;
+
   constructor(
     readonly node: NodeModel,
     private readonly context: NodeViewContext,
+    readonly alias: NodeAlias | null = null,
   ) {
+    this.viewId = alias?.id ?? node.id;
     this.container.addChild(this.background, this.detail);
     this.rebuild();
     this.syncPosition();
   }
 
+  get position(): Vec2 {
+    return this.alias?.position ?? this.node.position;
+  }
+
   get rect(): Rect {
-    return { x: this.node.position.x, y: this.node.position.y, width: this.width, height: this.height };
+    return { x: this.position.x, y: this.position.y, width: this.width, height: this.height };
   }
 
   get headerHeight(): number {
@@ -147,7 +168,7 @@ export class NodeView {
   }
 
   syncPosition(): void {
-    this.container.position.set(this.node.position.x, this.node.position.y);
+    this.container.position.set(this.position.x, this.position.y);
   }
 
   setDetailVisible(visible: boolean): void {
@@ -156,7 +177,7 @@ export class NodeView {
 
   portWorldPosition(portId: string): Vec2 | null {
     const layout = this.portsById.get(portId);
-    return layout ? { x: this.node.position.x + layout.x, y: this.node.position.y + layout.y } : null;
+    return layout ? { x: this.position.x + layout.x, y: this.position.y + layout.y } : null;
   }
 
   /** Recreates texts, controls and layout from the node's schema, data and ports. */
@@ -179,10 +200,17 @@ export class NodeView {
     this.width = width;
 
     // Header
-    const title = this.detail.addChild(makeText(fitText(node.displayName, width - 24, 13, true), 13, theme.textPrimary, true));
+    const badgeLabel = this.badgeLabel();
+    let titleSpace = width - 24;
+    if (badgeLabel) {
+      const badge = this.detail.addChild(makeText(badgeLabel, SMALL_SIZE, this.alias ? theme.linkText : theme.textSecondary));
+      badge.position.set(Math.round(width - 12 - badge.width), Math.round((HEADER_HEIGHT - badge.height) / 2));
+      titleSpace -= badge.width + BADGE_GAP;
+    }
+    const title = this.detail.addChild(makeText(fitText(node.displayName, titleSpace, 13, true), 13, theme.textPrimary, true));
     title.position.set(12, Math.round((HEADER_HEIGHT - title.height) / 2));
     const typeLabel = this.typeLabel();
-    const typeSpace = width - 24 - title.width - TYPE_GAP;
+    const typeSpace = titleSpace - title.width - TYPE_GAP;
     if (typeLabel && typeSpace > 24) {
       const type = this.detail.addChild(makeText(fitText(typeLabel, typeSpace, 12), 12, theme.textSecondary));
       type.position.set(12 + title.width + TYPE_GAP, Math.round((HEADER_HEIGHT - type.height) / 2));
@@ -263,16 +291,37 @@ export class NodeView {
       this.drawControl(g, control);
     }
 
-    const borderColor = this.selected ? theme.nodeBorderSelected : this.hovered ? theme.nodeBorderHover : theme.nodeBorder;
-    g.roundRect(0, 0, width, height, CORNER_RADIUS).stroke({ width: this.selected ? 2 : 1, color: borderColor, alignment: 1 });
+    const borderColor = this.selected
+      ? theme.nodeBorderSelected
+      : this.linkHighlighted
+        ? theme.linkHighlight
+        : this.hovered
+          ? theme.nodeBorderHover
+          : theme.nodeBorder;
+    const borderWidth = this.selected || this.linkHighlighted ? 2 : 1;
+    g.roundRect(0, 0, width, height, CORNER_RADIUS).stroke({ width: borderWidth, color: borderColor, alignment: 1 });
+    if (this.alias) {
+      // A linked copy sits in an outer frame, so it cannot be mistaken for the node itself.
+      const inset = -ALIAS_FRAME_GAP;
+      g.roundRect(inset, inset, width - inset * 2, height - inset * 2, CORNER_RADIUS + ALIAS_FRAME_GAP).stroke({
+        width: ALIAS_FRAME_WIDTH,
+        color: this.hovered || this.selected ? theme.aliasBorderHover : theme.aliasBorder,
+        alignment: 0,
+      });
+    }
 
     for (const { port, x, y } of this.ports) {
       const color = this.context.portColor(port.typeId);
       const highlight = this.context.portHighlight(port);
       const alpha = highlight === "incompatible" ? theme.portIncompatibleAlpha : 1;
       const radius = port.id === this.hoveredPortId || highlight === "compatible" ? PORT_RADIUS + 1.5 : PORT_RADIUS;
-      if (this.context.isPortConnected(port.id)) {
+      const connection = this.context.portConnection(port.id);
+      if (connection === "here") {
         g.circle(x, y, radius).fill({ color, alpha });
+      } else if (connection === "elsewhere") {
+        // Connected at another view of this node.
+        g.circle(x, y, radius).fill({ color: theme.nodePorts, alpha }).stroke({ width: 2, color, alpha });
+        g.circle(x, y, 2).fill({ color, alpha });
       } else {
         g.circle(x, y, radius).fill({ color: theme.nodePorts, alpha }).stroke({ width: 2, color, alpha });
       }
@@ -336,6 +385,15 @@ export class NodeView {
     return result;
   }
 
+  /** "↗ link" on a linked copy; "↗ N" on a node that has N linked copies. */
+  private badgeLabel(): string | null {
+    if (this.alias) {
+      return "↗ link";
+    }
+    const count = this.context.aliasCount();
+    return count > 0 ? `↗ ${count}` : null;
+  }
+
   /** "(Line)" after a custom name, so named nodes still show what they are. */
   private typeLabel(): string | null {
     const schema = this.node.schema;
@@ -346,7 +404,11 @@ export class NodeView {
     const node = this.node;
     const maxLabel = (ports: Port[]) => ports.reduce((max, port) => Math.max(max, measureText(port.displayName, 12)), 0);
     const typeLabel = this.typeLabel();
-    const titleWidth = measureText(node.displayName, 13, true) + (typeLabel ? TYPE_GAP + measureText(typeLabel, 12) : 0);
+    const badgeLabel = this.badgeLabel();
+    const titleWidth =
+      measureText(node.displayName, 13, true) +
+      (typeLabel ? TYPE_GAP + measureText(typeLabel, 12) : 0) +
+      (badgeLabel ? BADGE_GAP + measureText(badgeLabel, SMALL_SIZE) : 0);
     let width = Math.max(MIN_WIDTH, titleWidth + 40);
     width = Math.max(width, maxLabel(node.inputs) + maxLabel(node.outputs) + PORT_LABEL_OFFSET * 2 + 24);
     const labelWidth = scalarLabelWidth(fields);

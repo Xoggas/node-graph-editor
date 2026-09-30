@@ -10,6 +10,11 @@ export const theme = {
   nodeBorderHover: 0x91959e,
   nodeBorderSelected: 0xdcdfe4,
   placeholderHeader: 0x6b3a3a,
+  /** Linked copies (aliases) and the highlight of other views of a selected node. */
+  aliasBorder: 0x6f8fc9,
+  aliasBorderHover: 0x9db5e3,
+  linkHighlight: 0x8ab4ff,
+  linkText: 0xa9c3f5,
 
   textPrimary: 0xf5f6f8,
   textSecondary: 0xcfd2d8,

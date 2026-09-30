@@ -1,5 +1,5 @@
 import type { GraphChange, GraphModel } from "./graph";
-import type { Vec2 } from "./types";
+import type { Connection, Vec2 } from "./types";
 
 export interface HistoryStep {
   undo(graph: GraphModel): void;
@@ -10,7 +10,7 @@ type Step = HistoryStep;
 
 interface Transaction {
   steps: Step[];
-  /** Index of the coalesced move step per node, so a drag becomes one step per node. */
+  /** Index of the coalesced move step per node or alias, so a drag becomes one step per view. */
   moves: Map<string, { step: Step; to: Vec2 }>;
 }
 
@@ -123,10 +123,11 @@ export class GraphHistory {
       return;
     }
     const transaction = this.open();
-    if (change.kind === "nodeMoved") {
-      const nodeId = change.node.id;
-      const to = { ...change.node.position };
-      const existing = transaction.moves.get(nodeId);
+    if (change.kind === "nodeMoved" || change.kind === "aliasMoved") {
+      const view = change.kind === "nodeMoved" ? change.node : change.alias;
+      const viewId = view.id;
+      const to = { ...view.position };
+      const existing = transaction.moves.get(viewId);
       if (existing) {
         existing.to = to;
         return;
@@ -134,10 +135,10 @@ export class GraphHistory {
       const from = { ...change.previous };
       const move = { step: null as unknown as Step, to };
       move.step = {
-        undo: (graph) => graph.moveNode(nodeId, from),
-        redo: (graph) => graph.moveNode(nodeId, move.to),
+        undo: (graph) => graph.moveView(viewId, from),
+        redo: (graph) => graph.moveView(viewId, move.to),
       };
-      transaction.moves.set(nodeId, move);
+      transaction.moves.set(viewId, move);
       transaction.steps.push(move.step);
       return;
     }
@@ -212,17 +213,33 @@ function createStep(change: GraphChange): Step | null {
         redo: (graph) => graph.renameNode(node.id, next),
       };
     }
+    case "aliasAdded": {
+      const { alias } = change;
+      const position = { ...alias.position };
+      return {
+        undo: (graph) => graph.removeAlias(alias.id),
+        redo: (graph) => graph.addAlias(alias, position),
+      };
+    }
+    case "aliasRemoved": {
+      const { alias } = change;
+      const position = { ...alias.position };
+      return {
+        undo: (graph) => graph.addAlias(alias, position),
+        redo: (graph) => graph.removeAlias(alias.id),
+      };
+    }
     case "connectionAdded": {
       const { connection } = change;
       return {
         undo: (graph) => graph.disconnect(connection.id),
-        redo: (graph) => graph.connect(connection.outputPortId, connection.inputPortId, connection.id),
+        redo: (graph) => reconnect(graph, connection),
       };
     }
     case "connectionRemoved": {
       const { connection } = change;
       return {
-        undo: (graph) => graph.connect(connection.outputPortId, connection.inputPortId, connection.id),
+        undo: (graph) => reconnect(graph, connection),
         redo: (graph) => graph.disconnect(connection.id),
       };
     }
@@ -230,4 +247,11 @@ function createStep(change: GraphChange): Step | null {
     default:
       return null;
   }
+}
+
+function reconnect(graph: GraphModel, connection: Connection): void {
+  graph.connect(connection.outputPortId, connection.inputPortId, connection.id, {
+    output: connection.outputViewId,
+    input: connection.inputViewId,
+  });
 }

@@ -24,11 +24,35 @@ export interface Connection {
   inputPortId: string;
   outputNodeId: string;
   inputNodeId: string;
+  /**
+   * Where each end is drawn: the node id for the node itself, or the id of one of its aliases.
+   * Purely visual — the connection always links the node's ports.
+   */
+  outputViewId: string;
+  inputViewId: string;
+}
+
+/**
+ * A linked copy of a node: a second place in the graph that shows the same node (same data, name
+ * and ports). Connections can be attached to it; for the engine it does not exist.
+ */
+export interface NodeAlias {
+  id: string;
+  nodeId: string;
+  position: Vec2;
+}
+
+/** Views a connection is drawn at, when not the nodes themselves (see `Connection.outputViewId`). */
+export interface ConnectionViews {
+  output?: string;
+  input?: string;
 }
 
 export interface PortRef {
   node: string;
   port: string;
+  /** Alias the connection end is drawn at; absent for the node itself. */
+  view?: string;
 }
 
 /** A connection from the document that could not be restored; kept so saving does not lose it. */

@@ -639,3 +639,66 @@ kbd {
     transform: translateY(8px);
   }
 }
+
+/* Context menu */
+
+.context-menu {
+  position: fixed;
+  z-index: 60;
+  min-width: 230px;
+  padding: 4px;
+  background: #2b2e35;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.5);
+  user-select: none;
+}
+
+.context-menu-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  width: 100%;
+  padding: 6px 10px;
+  color: #eceef2;
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  background: none;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.context-menu-item:hover:not(:disabled) {
+  background: #3d4250;
+}
+
+.context-menu-item.danger:hover:not(:disabled) {
+  background: #5a2f2f;
+}
+
+.context-menu-item:disabled {
+  color: #6b707a;
+  cursor: default;
+}
+
+.context-menu-item kbd {
+  padding: 0;
+  color: #8f949e;
+  font-size: 12px;
+  line-height: inherit;
+  background: none;
+  border: none;
+}
+
+.context-menu-item:disabled kbd {
+  color: #5a5e67;
+}
+
+.context-menu-separator {
+  height: 1px;
+  margin: 4px 6px;
+  background: var(--border);
+}

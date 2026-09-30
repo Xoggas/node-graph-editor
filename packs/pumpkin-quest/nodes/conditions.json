@@ -1,80 +1,9 @@
 [
   {
-    "id": "condition.and",
-    "title": "And",
-    "menu": "Dialogue/Conditional",
-    "color": "#787878",
-    "naming": {
-      "editable": false
-    },
-    "ports": [
-      {
-        "id": "conditions",
-        "direction": "input",
-        "type": "bool",
-        "capacity": "multiple",
-        "label": "Conditions"
-      },
-      {
-        "id": "result",
-        "direction": "output",
-        "type": "bool",
-        "label": "Result"
-      }
-    ]
-  },
-  {
-    "id": "condition.or",
-    "title": "Or",
-    "menu": "Dialogue/Conditional",
-    "color": "#8c8c8c",
-    "naming": {
-      "editable": false
-    },
-    "ports": [
-      {
-        "id": "conditions",
-        "direction": "input",
-        "type": "bool",
-        "capacity": "multiple",
-        "label": "Conditions"
-      },
-      {
-        "id": "result",
-        "direction": "output",
-        "type": "bool",
-        "label": "Result"
-      }
-    ]
-  },
-  {
-    "id": "condition.not",
-    "title": "Not",
-    "menu": "Dialogue/Conditional",
-    "color": "#646464",
-    "naming": {
-      "editable": false
-    },
-    "ports": [
-      {
-        "id": "condition",
-        "direction": "input",
-        "type": "bool",
-        "label": "Condition"
-      },
-      {
-        "id": "result",
-        "direction": "output",
-        "type": "bool",
-        "label": "Result"
-      }
-    ]
-  },
-  {
     "id": "condition.choice-was-made",
     "title": "Choice Was Made",
-    "menu": "Dialogue/Conditional",
-    "color": "#e69646",
+    "menu": "Conditions",
+    "color": "#c46f9f",
     "naming": {
       "editable": false
     },
@@ -98,8 +27,8 @@
   {
     "id": "condition.choices-were-made",
     "title": "Choices Were Made",
-    "menu": "Dialogue/Conditional",
-    "color": "#d28232",
+    "menu": "Conditions",
+    "color": "#c46f9f",
     "naming": {
       "editable": false
     },
@@ -138,10 +67,71 @@
     ]
   },
   {
+    "id": "condition.variable",
+    "title": "Variable Comparer",
+    "menu": "Conditions",
+    "color": "#c46f9f",
+    "naming": {
+      "editable": false
+    },
+    "ports": [
+      {
+        "id": "result",
+        "direction": "output",
+        "type": "bool",
+        "label": "Result"
+      }
+    ],
+    "fields": [
+      {
+        "id": "variable",
+        "type": "string",
+        "label": "Name"
+      },
+      {
+        "id": "comparison",
+        "type": "enum",
+        "display": "segmented",
+        "label": "Comparison",
+        "options": [
+          {
+            "value": "Equal",
+            "label": "="
+          },
+          {
+            "value": "NotEqual",
+            "label": "≠"
+          },
+          {
+            "value": "Greater",
+            "label": ">"
+          },
+          {
+            "value": "GreaterOrEqual",
+            "label": "≥"
+          },
+          {
+            "value": "Less",
+            "label": "<"
+          },
+          {
+            "value": "LessOrEqual",
+            "label": "≤"
+          }
+        ]
+      },
+      {
+        "id": "targetValue",
+        "type": "int",
+        "label": "Target value"
+      }
+    ]
+  },
+  {
     "id": "condition.relationship-points",
     "title": "Relationship Point Comparer",
-    "menu": "Dialogue/Conditional",
-    "color": "#c83c3c",
+    "menu": "Conditions",
+    "color": "#c46f9f",
     "naming": {
       "editable": false
     },
@@ -201,63 +191,73 @@
     ]
   },
   {
-    "id": "condition.variable",
-    "title": "Variable Comparer",
-    "menu": "Dialogue/Conditional",
-    "color": "#c83c3c",
+    "id": "condition.and",
+    "title": "And",
+    "menu": "Logic",
+    "color": "#8a909c",
     "naming": {
       "editable": false
     },
     "ports": [
+      {
+        "id": "conditions",
+        "direction": "input",
+        "type": "bool",
+        "capacity": "multiple",
+        "label": "Conditions"
+      },
       {
         "id": "result",
         "direction": "output",
         "type": "bool",
         "label": "Result"
       }
-    ],
-    "fields": [
+    ]
+  },
+  {
+    "id": "condition.or",
+    "title": "Or",
+    "menu": "Logic",
+    "color": "#8a909c",
+    "naming": {
+      "editable": false
+    },
+    "ports": [
       {
-        "id": "variable",
-        "type": "string",
-        "label": "Name"
+        "id": "conditions",
+        "direction": "input",
+        "type": "bool",
+        "capacity": "multiple",
+        "label": "Conditions"
       },
       {
-        "id": "comparison",
-        "type": "enum",
-        "display": "segmented",
-        "label": "Comparison",
-        "options": [
-          {
-            "value": "Equal",
-            "label": "="
-          },
-          {
-            "value": "NotEqual",
-            "label": "≠"
-          },
-          {
-            "value": "Greater",
-            "label": ">"
-          },
-          {
-            "value": "GreaterOrEqual",
-            "label": "≥"
-          },
-          {
-            "value": "Less",
-            "label": "<"
-          },
-          {
-            "value": "LessOrEqual",
-            "label": "≤"
-          }
-        ]
+        "id": "result",
+        "direction": "output",
+        "type": "bool",
+        "label": "Result"
+      }
+    ]
+  },
+  {
+    "id": "condition.not",
+    "title": "Not",
+    "menu": "Logic",
+    "color": "#8a909c",
+    "naming": {
+      "editable": false
+    },
+    "ports": [
+      {
+        "id": "condition",
+        "direction": "input",
+        "type": "bool",
+        "label": "Condition"
       },
       {
-        "id": "targetValue",
-        "type": "int",
-        "label": "Target value"
+        "id": "result",
+        "direction": "output",
+        "type": "bool",
+        "label": "Result"
       }
     ]
   }

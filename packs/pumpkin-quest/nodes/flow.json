@@ -2,8 +2,8 @@
   {
     "id": "dialogue.start",
     "title": "Start",
-    "menu": "Dialogue",
-    "color": "#50c878",
+    "menu": "Flow",
+    "color": "#4fb37a",
     "singleton": true,
     "naming": {
       "editable": false
@@ -21,140 +21,10 @@
     ]
   },
   {
-    "id": "dialogue.end",
-    "title": "End",
-    "menu": "Dialogue",
-    "color": "#3ca064",
-    "naming": {
-      "editable": false
-    },
-    "meta": {
-      "nodeType": "NonBlocking"
-    },
-    "ports": [
-      {
-        "id": "in",
-        "direction": "input",
-        "type": "flow",
-        "label": "Input"
-      }
-    ],
-    "fields": [
-      {
-        "id": "endingType",
-        "type": "enum",
-        "label": "Ending",
-        "options": [
-          {
-            "value": "GoToMainMenu",
-            "label": "Go to main menu"
-          },
-          {
-            "value": "Restart",
-            "label": "Restart"
-          }
-        ]
-      }
-    ]
-  },
-  {
-    "id": "dialogue.line",
-    "title": "Line",
-    "menu": "Dialogue",
-    "color": "#508cdc",
-    "naming": {
-      "unique": true,
-      "pattern": "^[\\p{L}0-9 ,.']+$",
-      "auto": "chapter.index"
-    },
-    "meta": {
-      "nodeType": "Blocking"
-    },
-    "ports": [
-      {
-        "id": "in",
-        "direction": "input",
-        "type": "flow",
-        "label": "Input"
-      },
-      {
-        "id": "next",
-        "direction": "output",
-        "type": "flow",
-        "label": "Next"
-      }
-    ],
-    "fields": [
-      {
-        "id": "speaker",
-        "type": "resource",
-        "resourceType": "character",
-        "label": "Character",
-        "previewHeight": 200
-      },
-      {
-        "id": "emotion",
-        "type": "resourceVariant",
-        "source": "speaker",
-        "collection": "emotions",
-        "label": "Emotion"
-      },
-      {
-        "id": "line",
-        "type": "localizedText",
-        "keyFrom": "name",
-        "multiline": true,
-        "label": "Line"
-      }
-    ]
-  },
-  {
-    "id": "dialogue.choice",
-    "title": "Choice",
-    "menu": "Dialogue/Choice",
-    "color": "#5abeaa",
-    "naming": {
-      "unique": true,
-      "pattern": "^[\\p{L}0-9 ,.']+$",
-      "auto": "chapter.index"
-    },
-    "meta": {
-      "nodeType": "NonBlocking"
-    },
-    "ports": [
-      {
-        "id": "in",
-        "direction": "input",
-        "type": "flow",
-        "label": "Input"
-      },
-      {
-        "id": "out",
-        "direction": "output",
-        "type": "flow",
-        "label": "Output"
-      }
-    ],
-    "fields": [
-      {
-        "id": "text",
-        "type": "localizedText",
-        "keyFrom": "name",
-        "multiline": true,
-        "label": "Text"
-      },
-      {
-        "id": "isExtraChoice",
-        "type": "bool",
-        "label": "Extra choice"
-      }
-    ]
-  },
-  {
     "id": "dialogue.if",
     "title": "If",
-    "menu": "Dialogue/Conditional",
-    "color": "#64dc8c",
+    "menu": "Flow",
+    "color": "#4fb37a",
     "meta": {
       "nodeType": "NonBlocking"
     },
@@ -188,8 +58,8 @@
   {
     "id": "dialogue.choice-matrix",
     "title": "Choice Matrix",
-    "menu": "Dialogue/Choice",
-    "color": "#8c50be",
+    "menu": "Flow",
+    "color": "#4fb37a",
     "meta": {
       "nodeType": "NonBlocking"
     },
@@ -254,10 +124,140 @@
     ]
   },
   {
+    "id": "dialogue.end",
+    "title": "End",
+    "menu": "Flow",
+    "color": "#4fb37a",
+    "naming": {
+      "editable": false
+    },
+    "meta": {
+      "nodeType": "NonBlocking"
+    },
+    "ports": [
+      {
+        "id": "in",
+        "direction": "input",
+        "type": "flow",
+        "label": "Input"
+      }
+    ],
+    "fields": [
+      {
+        "id": "endingType",
+        "type": "enum",
+        "label": "Ending",
+        "options": [
+          {
+            "value": "GoToMainMenu",
+            "label": "Go to main menu"
+          },
+          {
+            "value": "Restart",
+            "label": "Restart"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "dialogue.line",
+    "title": "Line",
+    "menu": "Dialogue",
+    "color": "#5b8fd9",
+    "naming": {
+      "unique": true,
+      "pattern": "^[\\p{L}0-9 ,.']+$",
+      "auto": "chapter.index"
+    },
+    "meta": {
+      "nodeType": "Blocking"
+    },
+    "ports": [
+      {
+        "id": "in",
+        "direction": "input",
+        "type": "flow",
+        "label": "Input"
+      },
+      {
+        "id": "next",
+        "direction": "output",
+        "type": "flow",
+        "label": "Next"
+      }
+    ],
+    "fields": [
+      {
+        "id": "speaker",
+        "type": "resource",
+        "resourceType": "character",
+        "label": "Character",
+        "previewHeight": 200
+      },
+      {
+        "id": "emotion",
+        "type": "resourceVariant",
+        "source": "speaker",
+        "collection": "emotions",
+        "label": "Emotion"
+      },
+      {
+        "id": "line",
+        "type": "localizedText",
+        "keyFrom": "name",
+        "multiline": true,
+        "label": "Line"
+      }
+    ]
+  },
+  {
+    "id": "dialogue.choice",
+    "title": "Choice",
+    "menu": "Dialogue",
+    "color": "#5b8fd9",
+    "naming": {
+      "unique": true,
+      "pattern": "^[\\p{L}0-9 ,.']+$",
+      "auto": "chapter.index"
+    },
+    "meta": {
+      "nodeType": "NonBlocking"
+    },
+    "ports": [
+      {
+        "id": "in",
+        "direction": "input",
+        "type": "flow",
+        "label": "Input"
+      },
+      {
+        "id": "out",
+        "direction": "output",
+        "type": "flow",
+        "label": "Output"
+      }
+    ],
+    "fields": [
+      {
+        "id": "text",
+        "type": "localizedText",
+        "keyFrom": "name",
+        "multiline": true,
+        "label": "Text"
+      },
+      {
+        "id": "isExtraChoice",
+        "type": "bool",
+        "label": "Extra choice"
+      }
+    ]
+  },
+  {
     "id": "dialogue.hide-ui",
     "title": "Hide UI",
-    "menu": "Dialogue/UI",
-    "color": "#dc8c32",
+    "menu": "Scene",
+    "color": "#9a7bd6",
     "meta": {
       "nodeType": "Blocking"
     },

@@ -1,4 +1,4 @@
-import { type ClipboardData, copyNodes, pasteNodes } from "../graph/clipboard";
+import { type ClipboardData, copyViews, pasteViews } from "../graph/clipboard";
 import { type GraphChange, GraphModel } from "../graph/graph";
 import { GraphHistory } from "../graph/history";
 import { LOCALIZATION_DIR, type LocalizationChange, LocalizationStore, localizedEntries } from "../graph/localization";
@@ -63,6 +63,8 @@ export interface EditorSnapshot {
 /** Approximate node size, used to center pasted nodes on the cursor. */
 const NODE_SIZE_ESTIMATE = { width: 220, height: 110 };
 const PASTE_STEP = 32;
+/** Where a new linked copy appears relative to the node it links to. */
+const LINK_OFFSET = { x: 48, y: 48 };
 const PACK_FOLDER_KEY = "node-graph-editor.packFolder";
 
 export interface GraphReplacedOptions {
@@ -423,21 +425,40 @@ export class Editor {
     }
   }
 
-  deleteElements(nodeIds: Iterable<string>, connectionIds: Iterable<string>): void {
+  /** Deletes views (a node takes its aliases along; an alias goes alone) and connections. */
+  deleteElements(viewIds: Iterable<string>, connectionIds: Iterable<string>): void {
     let removed = 0;
     for (const id of connectionIds) {
       removed += this.graph.disconnect(id) ? 1 : 0;
     }
-    for (const id of nodeIds) {
-      removed += this.graph.removeNode(id) ? 1 : 0;
+    for (const id of viewIds) {
+      removed += this.graph.removeView(id) ? 1 : 0;
     }
     if (removed > 0) {
       this.setStatus(`Deleted ${removed} element(s).`);
     }
   }
 
-  /** Connects two ports given in any order. */
-  connectPorts(firstPortId: string, secondPortId: string): void {
+  /**
+   * Adds a linked copy of each node shown by the given views, next to that view. Returns the new
+   * alias ids.
+   */
+  createLinkedCopies(viewIds: Iterable<string>): string[] {
+    const created: string[] = [];
+    for (const viewId of viewIds) {
+      const node = this.graph.viewNode(viewId);
+      const position = this.graph.viewPosition(viewId);
+      if (!node || !position) continue;
+      created.push(this.graph.addAlias(node.id, { x: position.x + LINK_OFFSET.x, y: position.y + LINK_OFFSET.y }).id);
+    }
+    if (created.length > 0) {
+      this.setStatus(`Created ${created.length} linked cop${created.length === 1 ? "y" : "ies"}.`);
+    }
+    return created;
+  }
+
+  /** Connects two ports given in any order; the view ids say where each end is drawn. */
+  connectPorts(firstPortId: string, secondPortId: string, firstViewId?: string, secondViewId?: string): void {
     const first = this.graph.getPort(firstPortId);
     const second = this.graph.getPort(secondPortId);
     if (!first || !second || first.id === second.id) {
@@ -449,7 +470,8 @@ export class Editor {
       return;
     }
     const [output, input] = first.direction === "Output" ? [first, second] : [second, first];
-    const result = this.graph.connect(output.id, input.id);
+    const views = first.direction === "Output" ? { output: firstViewId, input: secondViewId } : { output: secondViewId, input: firstViewId };
+    const result = this.graph.connect(output.id, input.id, undefined, views);
     if (result.success) {
       this.setStatus(`Connected ${output.displayName} → ${input.displayName}.`);
     } else {
@@ -594,19 +616,20 @@ export class Editor {
 
   // --- Clipboard ----------------------------------------------------------------
 
-  copy(nodeIds: Iterable<string>): boolean {
-    const data = copyNodes(this.graph, nodeIds);
+  /** Copies views: nodes and linked copies (see `copyViews`). */
+  copy(viewIds: Iterable<string>): boolean {
+    const data = copyViews(this.graph, viewIds);
     if (!data) {
       return false;
     }
     this.clipboard = data;
     this.pasteCount = 0;
-    this.update({ canPaste: true, status: `Copied ${data.nodes.length} node(s).` });
+    this.update({ canPaste: true, status: `Copied ${data.nodes.length + data.aliases.length} node(s).` });
     return true;
   }
 
-  cut(nodeIds: Iterable<string>): boolean {
-    const ids = [...nodeIds];
+  cut(viewIds: Iterable<string>): boolean {
+    const ids = [...viewIds];
     if (!this.copy(ids)) {
       return false;
     }
@@ -617,7 +640,7 @@ export class Editor {
 
   /**
    * Pastes the clipboard centered at `center` (graph coordinates), or offset from the
-   * original position when no center is given. Returns the ids of the new nodes.
+   * original position when no center is given. Returns the ids of the new views.
    */
   paste(center?: Vec2): string[] {
     const data = this.clipboard;
@@ -637,8 +660,8 @@ export class Editor {
     return this.insert(data, offset, "Pasted");
   }
 
-  duplicate(nodeIds: Iterable<string>): string[] {
-    const data = copyNodes(this.graph, nodeIds);
+  duplicate(viewIds: Iterable<string>): string[] {
+    const data = copyViews(this.graph, viewIds);
     return data ? this.insert(data, { x: PASTE_STEP, y: PASTE_STEP }, "Duplicated") : [];
   }
 
@@ -651,8 +674,8 @@ export class Editor {
       return [];
     }
     try {
-      const ids = pasteNodes(this.graph, data, offset);
-      ids.forEach((id, index) => {
+      const { nodeIds, viewIds } = pasteViews(this.graph, data, offset);
+      nodeIds.forEach((id, index) => {
         const node = this.graph.getNode(id)!;
         const name = node.schema ? autoName(this.graph, node.schema) : null;
         if (name) {
@@ -668,8 +691,8 @@ export class Editor {
           }
         });
       });
-      this.setStatus(`${verb} ${ids.length} node(s).`);
-      return ids;
+      this.setStatus(`${verb} ${viewIds.length} node(s).`);
+      return viewIds;
     } catch (error) {
       this.setStatus(`${verb} failed: ${errorMessage(error)}`, "error");
       return [];

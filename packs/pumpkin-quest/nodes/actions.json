@@ -2,8 +2,8 @@
   {
     "id": "dialogue.set-background",
     "title": "Set Background",
-    "menu": "Dialogue",
-    "color": "#5a96dc",
+    "menu": "Scene",
+    "color": "#9a7bd6",
     "meta": {
       "nodeType": "NonBlocking"
     },
@@ -34,8 +34,8 @@
   {
     "id": "dialogue.play-music",
     "title": "Play Music",
-    "menu": "Dialogue/Audio",
-    "color": "#6cff0a",
+    "menu": "Audio",
+    "color": "#d9a441",
     "meta": {
       "nodeType": "NonBlocking"
     },
@@ -66,8 +66,8 @@
   {
     "id": "dialogue.play-sfx",
     "title": "Play Sfx",
-    "menu": "Dialogue/Audio",
-    "color": "#6cff0a",
+    "menu": "Audio",
+    "color": "#d9a441",
     "meta": {
       "nodeType": "NonBlocking"
     },
@@ -98,8 +98,8 @@
   {
     "id": "dialogue.add-diary-entry",
     "title": "Add Diary Entry",
-    "menu": "Dialogue",
-    "color": "#4682c8",
+    "menu": "Diary",
+    "color": "#46b0bd",
     "meta": {
       "nodeType": "NonBlocking"
     },
@@ -130,8 +130,8 @@
   {
     "id": "dialogue.strikethrough-diary-entry",
     "title": "Strikethrough Diary Entry",
-    "menu": "Dialogue",
-    "color": "#4682c8",
+    "menu": "Diary",
+    "color": "#46b0bd",
     "meta": {
       "nodeType": "NonBlocking"
     },
@@ -160,10 +160,45 @@
     ]
   },
   {
+    "id": "dialogue.change-variable",
+    "title": "Change Variable",
+    "menu": "Progress",
+    "color": "#d9735b",
+    "meta": {
+      "nodeType": "NonBlocking"
+    },
+    "ports": [
+      {
+        "id": "in",
+        "direction": "input",
+        "type": "flow",
+        "label": "Input"
+      },
+      {
+        "id": "out",
+        "direction": "output",
+        "type": "flow",
+        "label": "Output"
+      }
+    ],
+    "fields": [
+      {
+        "id": "variable",
+        "type": "string",
+        "label": "Name"
+      },
+      {
+        "id": "valueToAdd",
+        "type": "int",
+        "label": "Value to add"
+      }
+    ]
+  },
+  {
     "id": "dialogue.add-relationship-points",
     "title": "Add Relationship Points",
-    "menu": "Dialogue",
-    "color": "#dc5050",
+    "menu": "Progress",
+    "color": "#d9735b",
     "meta": {
       "nodeType": "NonBlocking"
     },
@@ -193,41 +228,6 @@
         "id": "pointsToAdd",
         "type": "int",
         "label": "Points to add"
-      }
-    ]
-  },
-  {
-    "id": "dialogue.change-variable",
-    "title": "Change Variable",
-    "menu": "Dialogue",
-    "color": "#dc5050",
-    "meta": {
-      "nodeType": "NonBlocking"
-    },
-    "ports": [
-      {
-        "id": "in",
-        "direction": "input",
-        "type": "flow",
-        "label": "Input"
-      },
-      {
-        "id": "out",
-        "direction": "output",
-        "type": "flow",
-        "label": "Output"
-      }
-    ],
-    "fields": [
-      {
-        "id": "variable",
-        "type": "string",
-        "label": "Name"
-      },
-      {
-        "id": "valueToAdd",
-        "type": "int",
-        "label": "Value to add"
       }
     ]
   }

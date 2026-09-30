@@ -23,6 +23,12 @@ interface NodeDto {
   data: Record<string, unknown>;
 }
 
+interface AliasDto {
+  id: string;
+  node: string;
+  position: { x: number; y: number };
+}
+
 interface ConnectionDto {
   id: string | null;
   from: PortRef | null;
@@ -37,6 +43,8 @@ interface GraphDocumentDto {
   pack: { id: string; version: number } | null;
   viewport: { x: number; y: number; zoom: number };
   nodes: NodeDto[];
+  /** Linked copies of nodes (editor only). */
+  aliases?: AliasDto[];
   connections: ConnectionDto[];
   unresolvedConnections: ConnectionDto[];
 }
@@ -64,10 +72,15 @@ export class GraphJsonSerializer {
         position: { x: node.position.x, y: node.position.y },
         data: node.data,
       })),
+      aliases: [...graph.aliases].map((alias) => ({
+        id: alias.id,
+        node: alias.nodeId,
+        position: { x: alias.position.x, y: alias.position.y },
+      })),
       connections: [...graph.connections].map((connection) => ({
         id: connection.id,
-        from: { node: connection.outputNodeId, port: graph.getPort(connection.outputPortId)!.key },
-        to: { node: connection.inputNodeId, port: graph.getPort(connection.inputPortId)!.key },
+        from: portRef(connection.outputNodeId, graph.getPort(connection.outputPortId)!.key, connection.outputViewId),
+        to: portRef(connection.inputNodeId, graph.getPort(connection.inputPortId)!.key, connection.inputViewId),
       })),
       unresolvedConnections: graph.unresolvedConnections.map((connection) => ({ ...connection })),
     };
@@ -143,6 +156,18 @@ export class GraphJsonSerializer {
         graph.addNode(node, toPoint(nodeDto.position));
       }
 
+      for (const aliasDto of asArray<unknown>(document.aliases, "aliases")) {
+        const dto: Record<string, unknown> = isRecord(aliasDto) ? aliasDto : {};
+        if (!isValidId(dto.id) || !isValidId(dto.node) || !graph.getNode(dto.node)) {
+          warnings.push("A linked copy of a missing node was dropped.");
+          continue;
+        }
+        if (graph.getAlias(dto.id) || graph.getNode(dto.id)) {
+          throw new GraphSerializationError(`Duplicate id '${dto.id}'.`);
+        }
+        graph.addAlias({ id: dto.id, nodeId: dto.node, position: { x: 0, y: 0 } }, toPoint(dto.position));
+      }
+
       const connectionIds = new Set<string>();
       for (const dto of connectionDtos) {
         if (!dto.id) {
@@ -198,7 +223,7 @@ export class GraphJsonSerializer {
     if (!input) {
       return `Input port '${dto.to.port}' does not exist.`;
     }
-    const result = graph.connect(output.id, input.id, dto.id!);
+    const result = graph.connect(output.id, input.id, dto.id!, { output: dto.from.view, input: dto.to.view });
     return result.success ? null : result.message;
   }
 }
@@ -216,13 +241,20 @@ function placeholderPorts(nodeId: string, connections: UnresolvedConnection[]): 
 function normalizeConnection(value: unknown): UnresolvedConnection {
   const dto = isRecord(value) ? value : {};
   const ref = (raw: unknown): PortRef | null =>
-    isRecord(raw) && isValidId(raw.node) && typeof raw.port === "string" && raw.port ? { node: raw.node, port: raw.port } : null;
+    isRecord(raw) && isValidId(raw.node) && typeof raw.port === "string" && raw.port
+      ? portRef(raw.node, raw.port, isValidId(raw.view) ? raw.view : raw.node)
+      : null;
   return {
     id: isValidId(dto.id) ? dto.id : null,
     from: ref(dto.from),
     to: ref(dto.to),
     reason: typeof dto.reason === "string" ? dto.reason : "",
   };
+}
+
+/** `view` is written only for ends drawn at an alias. */
+function portRef(node: string, port: string, view: string): PortRef {
+  return view === node ? { node, port } : { node, port, view };
 }
 
 function requireId(value: unknown, field: string): string {
