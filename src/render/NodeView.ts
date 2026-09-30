@@ -27,6 +27,9 @@ const BADGE_GAP = 10;
 /** Outer frame of a linked copy: distance from the node and line width. */
 const ALIAS_FRAME_GAP = 4;
 const ALIAS_FRAME_WIDTH = 2.5;
+/** The "?" in the header of nodes whose schema has a description. */
+const INFO_SIZE = 16;
+const INFO_GAP = 8;
 const PORT_ROW_HEIGHT = 24;
 const PORTS_PADDING = 4;
 const BODY_PADDING = 8;
@@ -52,6 +55,9 @@ const VALUE_SIZE = 12;
 const SMALL_SIZE = 11;
 const LABEL_GAP = 10;
 const MIN_VALUE_WIDTH = 96;
+
+/** `hoveredControl` value while the pointer is over the "?" icon. */
+export const INFO_KEY = "info";
 
 export interface PortLayout {
   port: Port;
@@ -87,6 +93,8 @@ export type NodeHit =
   | { kind: "port"; port: Port }
   | { kind: "control"; control: Control; segment: number | null }
   | { kind: "header" }
+  /** The "?" icon: hovering it shows the schema description. */
+  | { kind: "info" }
   | { kind: "body" };
 
 export type PortHighlight = "normal" | "compatible" | "incompatible";
@@ -139,6 +147,8 @@ export class NodeView {
   private readonly portsById = new Map<string, PortLayout>();
   private portsBottom = HEADER_HEIGHT;
   private itemRects: Rect[] = [];
+  /** Node-local rectangle of the "?" icon, or null when the schema has no description. */
+  infoRect: Rect | null = null;
   private previewRects: Rect[] = [];
 
   /** The node id for the node itself, the alias id for a linked copy. */
@@ -200,13 +210,24 @@ export class NodeView {
     this.width = width;
 
     // Header
+    let right = width - 12;
+    this.infoRect = null;
+    if (node.schema?.description) {
+      this.infoRect = { x: right - INFO_SIZE, y: Math.round((HEADER_HEIGHT - INFO_SIZE) / 2), width: INFO_SIZE, height: INFO_SIZE };
+      const mark = this.detail.addChild(makeText("?", SMALL_SIZE, theme.textPrimary, true));
+      mark.position.set(
+        Math.round(this.infoRect.x + (INFO_SIZE - mark.width) / 2),
+        Math.round(this.infoRect.y + (INFO_SIZE - mark.height) / 2),
+      );
+      right -= INFO_SIZE + INFO_GAP;
+    }
     const badgeLabel = this.badgeLabel();
-    let titleSpace = width - 24;
     if (badgeLabel) {
       const badge = this.detail.addChild(makeText(badgeLabel, SMALL_SIZE, this.alias ? theme.linkText : theme.textSecondary));
-      badge.position.set(Math.round(width - 12 - badge.width), Math.round((HEADER_HEIGHT - badge.height) / 2));
-      titleSpace -= badge.width + BADGE_GAP;
+      badge.position.set(Math.round(right - badge.width), Math.round((HEADER_HEIGHT - badge.height) / 2));
+      right -= badge.width + BADGE_GAP;
     }
+    const titleSpace = right - 12;
     const title = this.detail.addChild(makeText(fitText(node.displayName, titleSpace, 13, true), 13, theme.textPrimary, true));
     title.position.set(12, Math.round((HEADER_HEIGHT - title.height) / 2));
     const typeLabel = this.typeLabel();
@@ -280,6 +301,11 @@ export class NodeView {
       const bandHeight = this.portsBottom - HEADER_HEIGHT;
       section(g, 0, HEADER_HEIGHT, width, bandHeight, 0, this.portsBottom >= height ? CORNER_RADIUS : 0).fill(theme.nodePorts);
     }
+    if (this.infoRect) {
+      const { x, y, width: size } = this.infoRect;
+      const hovered = this.hoveredControl === INFO_KEY;
+      g.circle(x + size / 2, y + size / 2, size / 2).fill({ color: 0x000000, alpha: hovered ? 0.45 : 0.22 });
+    }
     for (const rect of this.itemRects) {
       g.roundRect(rect.x, rect.y, rect.width, rect.height, 4).fill(theme.listItemBackground);
     }
@@ -339,6 +365,9 @@ export class NodeView {
     }
     if (localX < 0 || localY < 0 || localX > this.width || localY > this.height) {
       return null;
+    }
+    if (this.infoRect && contains(this.infoRect, localX, localY)) {
+      return { kind: "info" };
     }
     if (localY <= HEADER_HEIGHT) {
       return { kind: "header" };
@@ -408,7 +437,8 @@ export class NodeView {
     const titleWidth =
       measureText(node.displayName, 13, true) +
       (typeLabel ? TYPE_GAP + measureText(typeLabel, 12) : 0) +
-      (badgeLabel ? BADGE_GAP + measureText(badgeLabel, SMALL_SIZE) : 0);
+      (badgeLabel ? BADGE_GAP + measureText(badgeLabel, SMALL_SIZE) : 0) +
+      (node.schema?.description ? INFO_GAP + INFO_SIZE : 0);
     let width = Math.max(MIN_WIDTH, titleWidth + 40);
     width = Math.max(width, maxLabel(node.inputs) + maxLabel(node.outputs) + PORT_LABEL_OFFSET * 2 + 24);
     const labelWidth = scalarLabelWidth(fields);

@@ -11,8 +11,9 @@ import { physicalKey } from "../app/keys";
 import { resourcesOfType } from "../graph/resources";
 import { ImageCache } from "./ImageCache";
 import { InlineEditor } from "./InlineEditor";
+import { NodeTooltip } from "./NodeTooltip";
 import { getIn, itemRefCandidates, itemRefLabel, nodeRefCandidates } from "../graph/dataOps";
-import { type Control, formatNumber, type NodeHit, NodeView, type PortHighlight } from "./NodeView";
+import { type Control, formatNumber, INFO_KEY, type NodeHit, NodeView, type PortHighlight } from "./NodeView";
 import { installFonts } from "./text";
 import { theme, typeColor } from "./theme";
 
@@ -115,6 +116,7 @@ export class GraphRenderer {
   private destroyed = false;
   private resizeObserver: ResizeObserver | null = null;
   private inlineEditor!: InlineEditor;
+  private tooltip!: NodeTooltip;
   private readonly images = new ImageCache<NodeView>(
     (path) => this.editor.readResource(path),
     (views) => {
@@ -168,6 +170,7 @@ export class GraphRenderer {
     canvas.style.touchAction = "none";
     this.host.appendChild(canvas);
     this.inlineEditor = new InlineEditor(this.host);
+    this.tooltip = new NodeTooltip(this.host);
     canvas.addEventListener("pointerdown", this.onPointerDown);
     canvas.addEventListener("pointermove", this.onPointerMove);
     canvas.addEventListener("pointerup", this.onPointerUp);
@@ -400,6 +403,7 @@ export class GraphRenderer {
 
   private setGraph(graph: GraphModel, options: GraphReplacedOptions): void {
     this.inlineEditor.close(false);
+    this.tooltip.hide();
     if (graph.registry !== this.graph?.registry) {
       // A new pack may have different files behind the same paths.
       this.images.clear();
@@ -561,6 +565,7 @@ export class GraphRenderer {
     }
     if (this.hovered === view) {
       this.hovered = null;
+      this.tooltip.hide();
     }
     if (this.editedNode === view) {
       this.inlineEditor.close(false);
@@ -766,6 +771,7 @@ export class GraphRenderer {
     this.world.scale.set(zoom);
     this.gridDirty = true;
     this.inlineEditor?.close(true);
+    this.tooltip?.hide();
 
     const detailVisible = zoom >= DETAIL_ZOOM;
     if (detailVisible !== this.detailVisible) {
@@ -990,6 +996,7 @@ export class GraphRenderer {
     const point = this.localPoint(event);
     const world = this.screenToWorld(point);
     const canvas = this.app.canvas;
+    this.tooltip.hide();
     // Suppress the compatibility mousedown, which would move focus away from an inline editor we open below.
     event.preventDefault();
     if (document.activeElement instanceof HTMLElement && document.activeElement !== document.body) {
@@ -1254,6 +1261,7 @@ export class GraphRenderer {
 
   private readonly onPointerLeave = (): void => {
     this.pointerInside = false;
+    this.tooltip.hide();
     if (this.interaction.kind === "none" && this.hovered) {
       this.setHovered(null, null, null);
       this.app.canvas.style.cursor = "";
@@ -1274,14 +1282,22 @@ export class GraphRenderer {
       if (this.hovered) {
         this.setHovered(null, null, null);
       }
+      this.tooltip.hide();
       canvas.style.cursor = this.spaceDown ? "grab" : "";
       return;
     }
+    const info = hit.hit.kind === "info";
     const portId = hit.hit.kind === "port" ? hit.hit.port.id : null;
-    const control = hit.hit.kind === "control" ? hit.hit.control.key : null;
+    const control = hit.hit.kind === "control" ? hit.hit.control.key : info ? INFO_KEY : null;
     const segment = hit.hit.kind === "control" ? hit.hit.segment : null;
     this.setHovered(hit.view, portId, control, segment);
-    canvas.style.cursor = portId ? "crosshair" : control !== null ? "pointer" : "move";
+    const schema = hit.view.node.schema;
+    if (info && schema?.description && hit.view.infoRect) {
+      this.tooltip.show(hit.view.viewId, this.screenRect(hit.view, hit.view.infoRect), schema.title, schema.description);
+    } else {
+      this.tooltip.hide();
+    }
+    canvas.style.cursor = portId ? "crosshair" : info ? "help" : control !== null ? "pointer" : "move";
   }
 
   private updateBoxSelection(box: Extract<Interaction, { kind: "box" }>): void {

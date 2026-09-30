@@ -2,6 +2,7 @@
   {
     "id": "condition.choice-was-made",
     "title": "Choice Was Made",
+    "description": "Истинно, если игрок выбрал вариант Choice.\n\nНе часть потока диалога: только вычисляет значение для If и логических нод.",
     "menu": "Conditions",
     "color": "#c46f9f",
     "naming": {
@@ -27,6 +28,7 @@
   {
     "id": "condition.choices-were-made",
     "title": "Choices Were Made",
+    "description": "Истинно, если каждый выбор из списка в нужном состоянии: с отметкой Was made — сделан, без неё — не сделан.\n\nНе часть потока диалога: только вычисляет значение для If и логических нод.",
     "menu": "Conditions",
     "color": "#c46f9f",
     "naming": {
@@ -69,6 +71,7 @@
   {
     "id": "condition.variable",
     "title": "Variable Comparer",
+    "description": "Сравнивает переменную Name с Target value выбранным оператором.\n\nНе часть потока диалога: только вычисляет значение для If и логических нод.",
     "menu": "Conditions",
     "color": "#c46f9f",
     "naming": {
@@ -130,6 +133,7 @@
   {
     "id": "condition.relationship-points",
     "title": "Relationship Point Comparer",
+    "description": "Сравнивает очки отношений с персонажем Character с Target value выбранным оператором.\n\nНе часть потока диалога: только вычисляет значение для If и логических нод.",
     "menu": "Conditions",
     "color": "#c46f9f",
     "naming": {
@@ -193,6 +197,7 @@
   {
     "id": "condition.and",
     "title": "And",
+    "description": "Истинно, если истинны все подключённые условия.\n\nНе часть потока диалога: только вычисляет значение для If и логических нод.",
     "menu": "Logic",
     "color": "#8a909c",
     "naming": {
@@ -217,6 +222,7 @@
   {
     "id": "condition.or",
     "title": "Or",
+    "description": "Истинно, если истинно хотя бы одно из подключённых условий.\n\nНе часть потока диалога: только вычисляет значение для If и логических нод.",
     "menu": "Logic",
     "color": "#8a909c",
     "naming": {
@@ -241,6 +247,7 @@
   {
     "id": "condition.not",
     "title": "Not",
+    "description": "Обращает условие: истинно, когда входное условие ложно.\n\nНе часть потока диалога: только вычисляет значение для If и логических нод.",
     "menu": "Logic",
     "color": "#8a909c",
     "naming": {

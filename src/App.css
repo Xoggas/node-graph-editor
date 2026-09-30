@@ -828,3 +828,31 @@ kbd {
   background: #fad860;
   border-radius: 2px;
 }
+
+/* Node description ("?" in the node header) */
+
+.ng-node-tooltip {
+  position: absolute;
+  z-index: 20;
+  max-width: 410px;
+  padding: 10px 12px;
+  color: #d6d9de;
+  font-size: 14.5px;
+  line-height: 1.45;
+  background: #2b2e35;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.45);
+  pointer-events: none;
+}
+
+.ng-node-tooltip-title {
+  margin-bottom: 5px;
+  color: #f5f6f8;
+  font-size: 15.5px;
+  font-weight: 600;
+}
+
+.ng-node-tooltip-body {
+  white-space: pre-line;
+}

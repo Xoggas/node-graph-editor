@@ -83,6 +83,7 @@ re-reads it from disk (the open graph keeps its data). The last folder is rememb
 {
   "id": "dialogue.line",
   "title": "Line",
+  "description": "What the node does; shown by the ? in its header",
   "menu": "Dialogue",
   "color": "#508cdc",
   "naming": { "unique": true, "pattern": "^[\\p{L}0-9 ,.']+$" },
