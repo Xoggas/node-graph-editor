@@ -366,9 +366,9 @@ function estimateSize(schema, data) {
   const list = (key) => (Array.isArray(data[key]) ? data[key].length : 0);
   switch (schema) {
     case "dialogue.line":
-      return { width: 240, height: data.speaker ? 410 : 200 };
+      return { width: 240, height: data.speaker ? 430 : 222 };
     case "dialogue.choice":
-      return { width: 260, height: 140 };
+      return { width: 260, height: 162 };
     case "dialogue.set-background":
       return { width: 220, height: 256 };
     case "dialogue.add-relationship-points":

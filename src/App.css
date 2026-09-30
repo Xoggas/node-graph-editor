@@ -517,56 +517,6 @@ kbd {
   border-radius: 3px;
 }
 
-.ng-texts-panel {
-  position: absolute;
-  z-index: 10;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 10px;
-  background: #26282d;
-  border: 1px solid #8ab4ff;
-  border-radius: 6px;
-  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.5);
-}
-
-.ng-texts-header {
-  color: var(--muted);
-  font-size: 12px;
-}
-
-.ng-texts-language {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-  color: var(--muted);
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.05em;
-}
-
-.ng-texts-language textarea {
-  padding: 6px 8px;
-  color: #f5f6f8;
-  font: 13px/1.4 "Segoe UI", Inter, system-ui, sans-serif;
-  letter-spacing: normal;
-  background: #1b1c20;
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  outline: none;
-  resize: vertical;
-  user-select: text;
-}
-
-.ng-texts-language textarea:focus {
-  border-color: #8ab4ff;
-}
-
-.ng-texts-hint {
-  color: var(--muted);
-  font-size: 11px;
-}
-
 /* Toasts: warnings and errors over the canvas */
 
 .canvas-area {

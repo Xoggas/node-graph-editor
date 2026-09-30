@@ -17,8 +17,13 @@ import { type Control, formatNumber, INFO_KEY, type NodeHit, NodeView, type Port
 import { installFonts } from "./text";
 import { theme, typeColor } from "./theme";
 
-/** Below this zoom texts are hidden: they are unreadable anyway and dominate the draw cost. */
-const DETAIL_ZOOM = 0.4;
+/**
+ * Below this zoom nodes switch to the simplified look (colored block + name, see `NodeView.setOverview`).
+ * 0 keeps full details at every zoom.
+ */
+const DETAIL_ZOOM = 0;
+/** Zoomed out, node names are re-fitted only on these zoom steps. */
+const OVERVIEW_ZOOM_STEP = 1.12;
 /** `focusView` zooms in to at least this, so the focused node is readable. */
 const FOCUS_MIN_ZOOM = 0.75;
 /** Edges keep at least this on-screen width (px) when zoomed out. */
@@ -107,7 +112,8 @@ export class GraphRenderer {
 
   private viewport: Viewport = { x: 0, y: 0, zoom: 1 };
   private screen = { width: 1, height: 1 };
-  private detailVisible = true;
+  /** Quantized zoom of the zoomed-out node look, or null while node details are shown. */
+  private overviewZoom: number | null = null;
   private edgeScale = 1;
   private applyingViewport = false;
   private spaceDown = false;
@@ -564,7 +570,7 @@ export class GraphRenderer {
       referenceLabel: (field, id) =>
         field.type === "nodeRef" ? (this.graph.getNode(id)?.displayName ?? null) : itemRefLabel(this.graph, id),
     }, this.graph.getAlias(viewId) ?? null);
-    view.setDetailVisible(this.detailVisible);
+    view.setOverview(this.overviewZoom);
     view.linkHighlighted = this.linkHighlights.has(viewId);
     this.nodeViews.set(viewId, view);
     this.viewsByContainer.set(view.container, view);
@@ -707,6 +713,9 @@ export class GraphRenderer {
       nodeView.container.visible = visible;
       if (visible) {
         visibleNodes++;
+        if (nodeView.overviewZoom !== this.overviewZoom) {
+          nodeView.setOverview(this.overviewZoom);
+        }
         if (nodeView.staleLayout) {
           nodeView.stale = false;
           nodeView.rebuild();
@@ -786,11 +795,8 @@ export class GraphRenderer {
     this.inlineEditor?.close(true);
     this.tooltip?.hide();
 
-    const detailVisible = zoom >= DETAIL_ZOOM;
-    if (detailVisible !== this.detailVisible) {
-      this.detailVisible = detailVisible;
-      this.nodeViews.forEach((view) => view.setDetailVisible(detailVisible));
-    }
+    // Nodes switch look lazily: visible ones in `cull`, the rest once they scroll into view.
+    this.overviewZoom = zoom >= DETAIL_ZOOM ? null : Math.pow(OVERVIEW_ZOOM_STEP, Math.round(Math.log(zoom) / Math.log(OVERVIEW_ZOOM_STEP)));
 
     // Keep edges readable when zoomed out; quantized so edges are only rebuilt on a few zoom steps.
     const wanted = Math.max(1, MIN_EDGE_SCREEN_WIDTH / (EDGE_BASE_WIDTH * zoom));
@@ -1485,17 +1491,22 @@ export class GraphRenderer {
         this.openRenameEditor(view);
         return;
       }
-      const store = this.editor.localization;
-      const { languages, displayLanguage } = this.editor.getSnapshot();
-      this.inlineEditor.editTexts({
-        rect: { ...rect, height: 0 },
-        key,
-        languages,
-        values: Object.fromEntries(languages.map((language) => [language, store.get(language, key) ?? ""])),
-        focusLanguage: displayLanguage,
-        onCommit: (values) => {
-          const changed = Object.fromEntries(Object.entries(values).filter(([language, text]) => (store.get(language, key) ?? "") !== text));
-          if (Object.keys(changed).length > 0) this.editor.setTexts(key, changed);
+      // Edited in place, in the language chosen in the toolbar.
+      const language = this.editor.getSnapshot().displayLanguage;
+      if (!language) {
+        this.editor.setStatus("The schema pack has no languages.", "error");
+        return;
+      }
+      const current = this.editor.localization.get(language, key) ?? "";
+      this.inlineEditor.editText({
+        rect,
+        fontSize,
+        value: current,
+        multiline: field.multiline,
+        language,
+        placeholder: `${language.toUpperCase()} text`,
+        onCommit: (text) => {
+          if (text !== current) this.editor.setTexts(key, { [language]: text });
         },
       });
     } else if (field.type === "resource") {

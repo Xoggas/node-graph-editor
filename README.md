@@ -118,7 +118,7 @@ re-reads it from disk (the open graph keeps its data). The last folder is rememb
   Capacity defaults come from the port type.
 - **Localized text:** `localizedText` (`keyFrom: "name"`, `keySuffix`, `multiline`) — the text lives in
   `localization/<language>.json` of the pack (languages come from `pack.json`); by default the node name
-  is the key. Nodes show the language picked in the toolbar; clicking the field edits every language.
+  is the key. Nodes show the language picked in the toolbar; clicking the field edits that language in place (Ctrl+Enter or click away saves, Esc cancels).
 - **Naming:** `editable`, `unique`, `pattern`, `auto: "chapter.index"` (new nodes continue the `1.12`
   numbering). `singleton: true` allows one node per graph.
 - Problems in a node schema skip that node and are listed under ⚠ in the palette.

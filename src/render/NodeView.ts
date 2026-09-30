@@ -35,6 +35,10 @@ const PORTS_PADDING = 4;
 const BODY_PADDING = 8;
 const FIELD_HEIGHT = 24;
 const MULTILINE_LINES = 3;
+/** Height of the label row above a multiline text box. */
+const TALL_LABEL_HEIGHT = 20;
+/** Screen size (px) of the node name shown when zoomed out. */
+const OVERVIEW_TEXT_SIZE = 13;
 const LINE_HEIGHT = 16;
 const FIELD_GAP = 6;
 const ITEM_GAP = 4;
@@ -144,6 +148,9 @@ export class NodeView {
 
   private readonly background = new Graphics();
   private readonly detail = new Container();
+  /** Zoom of the zoomed-out look (colored block + name), or null while details are shown. */
+  overviewZoom: number | null = null;
+  private overviewLabel: BitmapText | null = null;
   private readonly portsById = new Map<string, PortLayout>();
   private portsBottom = HEADER_HEIGHT;
   private itemRects: Rect[] = [];
@@ -181,8 +188,37 @@ export class NodeView {
     this.container.position.set(this.position.x, this.position.y);
   }
 
-  setDetailVisible(visible: boolean): void {
-    this.detail.visible = visible;
+  /**
+   * Zoomed out (`zoom` given), texts and controls are unreadable: the node becomes a block in its
+   * category color with its name at a fixed screen size. Null shows the details again.
+   */
+  setOverview(zoom: number | null): void {
+    const modeChanged = (zoom === null) !== (this.overviewZoom === null);
+    this.overviewZoom = zoom;
+    this.detail.visible = zoom === null;
+    this.updateOverviewLabel();
+    if (modeChanged) {
+      this.redraw();
+    }
+  }
+
+  private updateOverviewLabel(): void {
+    const zoom = this.overviewZoom;
+    if (zoom === null) {
+      if (this.overviewLabel) this.overviewLabel.visible = false;
+      return;
+    }
+    if (!this.overviewLabel) {
+      this.overviewLabel = this.container.addChild(makeText("", OVERVIEW_TEXT_SIZE, theme.textPrimary, true));
+    }
+    const label = this.overviewLabel;
+    const available = this.width * zoom - 8;
+    // A name cut down to a couple of letters says nothing: then the block stays plain.
+    const fitted = available > OVERVIEW_TEXT_SIZE ? fitText(this.node.displayName, available, OVERVIEW_TEXT_SIZE, true) : "";
+    label.text = fitted === this.node.displayName || fitted.length >= 4 ? fitted : "";
+    label.visible = label.text !== "";
+    label.scale.set(1 / zoom);
+    label.position.set((this.width - label.width) / 2, (this.height - label.height) / 2);
   }
 
   portWorldPosition(portId: string): Vec2 | null {
@@ -282,6 +318,7 @@ export class NodeView {
 
     this.height = Math.max(y, HEADER_HEIGHT + PORT_ROW_HEIGHT);
     this.redraw();
+    this.updateOverviewLabel();
   }
 
   redraw(): void {
@@ -290,6 +327,19 @@ export class NodeView {
     const accent = this.node.schema?.color ?? null;
     g.clear();
 
+    if (this.overviewZoom !== null) {
+      // Zoomed out: one block in the category color, see `setOverview`.
+      g.roundRect(0, 0, width, height, CORNER_RADIUS).fill(
+        this.node.isPlaceholder ? theme.placeholderHeader : accent !== null ? mix(theme.nodeHeader, accent, 0.7) : theme.nodeHeader,
+      );
+    } else {
+      this.drawDetail(g, accent);
+    }
+    this.drawOutline(g);
+  }
+
+  private drawDetail(g: Graphics, accent: number | null): void {
+    const { width, height } = this;
     section(g, 0, 0, width, height, CORNER_RADIUS, CORNER_RADIUS).fill(theme.nodeBackground);
     section(g, 0, 0, width, HEADER_HEIGHT, CORNER_RADIUS, 0).fill(
       this.node.isPlaceholder ? theme.placeholderHeader : accent !== null ? mix(theme.nodeHeader, accent, 0.45) : theme.nodeHeader,
@@ -316,7 +366,11 @@ export class NodeView {
     for (const control of this.controls) {
       this.drawControl(g, control);
     }
+  }
 
+  /** Border, linked-copy frame and port dots, drawn in both looks. */
+  private drawOutline(g: Graphics): void {
+    const { width, height } = this;
     const borderColor = this.selected
       ? theme.nodeBorderSelected
       : this.linkHighlighted
@@ -365,6 +419,10 @@ export class NodeView {
     }
     if (localX < 0 || localY < 0 || localX > this.width || localY > this.height) {
       return null;
+    }
+    if (this.overviewZoom !== null) {
+      // Zoomed out, controls are hidden: the node only moves and connects.
+      return { kind: localY <= HEADER_HEIGHT ? "header" : "body" };
     }
     if (this.infoRect && contains(this.infoRect, localX, localY)) {
       return { kind: "info" };
@@ -484,7 +542,7 @@ export class NodeView {
     }
 
     const kind = fieldKind(field);
-    const tall = kind === "multiline" || (kind === "localized" && (field as LocalizedTextField).multiline);
+    const tall = isTall(field);
     const height = tall ? FIELD_HEIGHT + LINE_HEIGHT * (MULTILINE_LINES - 1) : FIELD_HEIGHT;
     const key = path.join(".");
     if (kind === "bool") {
@@ -497,12 +555,25 @@ export class NodeView {
     }
 
     let boxX = x;
-    if (showLabel) {
+    let boxY = y;
+    if (showLabel && tall) {
+      // Text boxes take the full width, with the label (and the localization key) on a row above.
+      const label = this.detail.addChild(makeText(fitText(field.label, width, LABEL_SIZE), LABEL_SIZE, theme.textSecondary));
+      label.position.set(x, y);
+      if (kind === "localized") {
+        const { key: textKey } = this.context.localizedText(field as LocalizedTextField, path, getIn(this.node.data, path));
+        if (textKey) {
+          const keyText = this.detail.addChild(makeText(fitText(`(${textKey})`, width - label.width - 6, SMALL_SIZE), SMALL_SIZE, theme.textMuted));
+          keyText.position.set(Math.round(x + label.width + 6), Math.round(y + (label.height - keyText.height) / 2));
+        }
+      }
+      boxY = y + TALL_LABEL_HEIGHT;
+    } else if (showLabel) {
       const label = this.detail.addChild(makeText(fitText(field.label, width / 2, LABEL_SIZE), LABEL_SIZE, theme.textSecondary));
       label.position.set(x, Math.round(y + (FIELD_HEIGHT - label.height) / 2));
       boxX = x + Math.min(labelWidth, width / 2) + LABEL_GAP;
     }
-    const box = { x: boxX, y, width: x + width - boxX, height };
+    const box = { x: boxX, y: boxY, width: x + width - boxX, height };
     const control: Control & { type: "field" } = { type: "field", key, path, field, kind, hitRect: box };
     if (kind === "segmented") {
       const options = (field as EnumField).options;
@@ -521,7 +592,7 @@ export class NodeView {
     }
     this.controls.push(control);
     this.addValueTexts(control);
-    return height;
+    return boxY - y + height;
   }
 
   private layoutList(path: DataPath, field: ListField, x: number, y: number, width: number, rowCenters: Map<string, number>): number {
@@ -722,12 +793,10 @@ export class NodeView {
           return [text];
         }
         this.localizedKeys.add(localized.key);
-        const keyText = makeText(fitText(localized.key, inner / 2, 10), 10, theme.textMuted);
-        keyText.position.set(Math.round(box.x + box.width - 6 - keyText.width), Math.round(box.y + box.height - keyText.height - 3));
         if (!localized.text) {
           const empty = makeText(`No ${localized.language ?? ""} text`.replace("  ", " "), SMALL_SIZE, theme.textMuted);
           empty.position.set(box.x + 8, Math.round(box.y + 5));
-          return [empty, keyText];
+          return [empty];
         }
         const lines = (field as LocalizedTextField).multiline ? MULTILINE_LINES : 1;
         const texts = wrapLines(localized.text, inner, lines).map((line, index) => {
@@ -735,7 +804,7 @@ export class NodeView {
           text.position.set(box.x + 8, Math.round(box.y + 4 + index * LINE_HEIGHT));
           return text;
         });
-        return [...texts, keyText];
+        return texts;
       }
       case "resource": {
         const item = typeof value === "string" ? this.context.resources()?.items.get(value) : undefined;
@@ -887,13 +956,22 @@ function previewFor(
 function scalarLabelWidth(fields: FieldSchema[]): number {
   return fields.reduce((max, field) => {
     const kind = fieldKind(field);
-    const labelled = field.type !== "list" && field.type !== "matrix" && field.type !== "record" && kind !== "bool";
+    const labelled = field.type !== "list" && field.type !== "matrix" && field.type !== "record" && kind !== "bool" && !isTall(field);
     return labelled ? Math.max(max, measureText(field.label, LABEL_SIZE)) : max;
   }, 0);
 }
 
+/** Multiline text fields: drawn full width under their label. */
+function isTall(field: FieldSchema): boolean {
+  const kind = fieldKind(field);
+  return kind === "multiline" || (kind === "localized" && (field as LocalizedTextField).multiline);
+}
+
 /** Minimum content width a field needs. */
 function fieldWidth(field: FieldSchema, labelWidth: number): number {
+  if (isTall(field)) {
+    return Math.max(MIN_VALUE_WIDTH, measureText(field.label, LABEL_SIZE));
+  }
   switch (field.type) {
     case "list": {
       const item = field.item.type === "record" ? scalarLabelWidth(field.item.fields) + LABEL_GAP : 0;
