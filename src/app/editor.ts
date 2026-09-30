@@ -374,8 +374,9 @@ export class Editor {
   }
 
   /**
-   * Writes the engine version of the graph (no editor data, see `exportRuntimeGraph`). Re-exports go
-   * to the last export path; `chooseLocation` or a first export asks where to save.
+   * Writes the engine version of the graph (no editor data, see `exportRuntimeGraph`) and, next to
+   * it, `localization/<language>.json` with the texts as they are in the editor (unsaved edits
+   * included). Re-exports go to the last export path; `chooseLocation` or a first export asks where.
    */
   async exportGraph(chooseLocation = false): Promise<void> {
     try {
@@ -390,14 +391,20 @@ export class Editor {
         return;
       }
       this.exportPath = saved.path;
+      const languages = this.state.languages;
+      const directory = saved.path ? saved.path.replace(/[^\\/]*$/, "") : "";
+      for (const language of languages) {
+        await this.files.writeFile(`${directory}${LOCALIZATION_DIR}/${language}.json`, this.localizationStore.serialize(language));
+      }
       const count = Object.keys(graph.nodes).length;
+      const texts = languages.length > 0 ? ` and localization (${languages.join(", ")})` : "";
       this.update({
         warnings,
         statusKind: warnings.length === 0 ? "info" : "warning",
         status:
           warnings.length === 0
-            ? `Exported ${count} node(s) to ${saved.name}.`
-            : `Exported ${count} node(s) to ${saved.name} with ${warnings.length} warning(s).`,
+            ? `Exported ${count} node(s)${texts} to ${saved.name}.`
+            : `Exported ${count} node(s)${texts} to ${saved.name} with ${warnings.length} warning(s).`,
       });
     } catch (error) {
       this.setStatus(`Export failed: ${errorMessage(error)}`, "error");

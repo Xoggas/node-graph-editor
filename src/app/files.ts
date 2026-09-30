@@ -32,6 +32,8 @@ export interface GraphFileSystem {
   readResource(path: string): Promise<Blob>;
   /** Writes a file inside a pack folder (e.g. localization); not available in a plain browser. */
   writePackFile(packDir: string, relativePath: string, contents: string): Promise<void>;
+  /** Writes a file at a path derived from one the user chose (e.g. next to an export); downloads it in a browser. */
+  writeFile(path: string, contents: string): Promise<void>;
 }
 
 const FILTERS = [{ name: "JSON graph", extensions: ["json"] }];
@@ -91,6 +93,10 @@ class TauriFileSystem implements GraphFileSystem {
   async writePackFile(packDir: string, relativePath: string, contents: string): Promise<void> {
     await invoke("write_pack_file", { packDir, relativePath, contents });
   }
+
+  async writeFile(path: string, contents: string): Promise<void> {
+    await invoke("write_graph_file", { path, contents });
+  }
 }
 
 /** Fallback for running the frontend in a regular browser (`npm run dev`). */
@@ -140,6 +146,10 @@ class BrowserFileSystem implements GraphFileSystem {
 
   async writePackFile(): Promise<void> {
     throw new Error("saving pack files (localization) needs the desktop app");
+  }
+
+  async writeFile(path: string, contents: string): Promise<void> {
+    await this.save(contents, path, false);
   }
 
   /** Served by the Vite dev server (see `server.fs.allow` in vite.config.ts). */

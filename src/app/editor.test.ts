@@ -32,6 +32,9 @@ class FakeFiles implements Partial<GraphFileSystem> {
   async writePackFile(packDir: string, path: string, contents: string) {
     this.written.set(`${packDir}|${path}`, contents);
   }
+  async writeFile(path: string, contents: string) {
+    this.written.set(path, contents);
+  }
   async readPackFolder() {
     return packFiles;
   }
@@ -137,9 +140,14 @@ describe("export", () => {
     expect(first.text).not.toContain("\n");
     const runtime = JSON.parse(first.text);
     expect(runtime.nodes[id]).toEqual({ type: "line", data: { text: "1.1" } });
-    expect(editor.getSnapshot().status).toContain("Exported 1 node(s) to g.runtime.json");
-
+    expect(editor.getSnapshot().status).toContain("Exported 1 node(s) and localization (ru, en) to g.runtime.json");
+    // Texts go next to the export as they are in the editor, unsaved edits included.
+    expect(JSON.parse(files.written.get("C:/graphs/localization/en.json")!)).toEqual({ "1.1": "Hello" });
+    editor.setTexts("1.1", { en: "Hi" });
     await editor.exportGraph();
+    expect(JSON.parse(files.written.get("C:/graphs/localization/en.json")!)).toEqual({ "1.1": "Hi" });
+    expect(files.written.has("C:/graphs/localization/ru.json")).toBe(true);
+
     expect(files.saves[files.saves.length - 1]).toMatchObject({ current: "C:/graphs/g.runtime.json", choose: false });
     await editor.exportGraph(true);
     expect(files.saves[files.saves.length - 1]).toMatchObject({ choose: true });

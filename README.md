@@ -206,7 +206,7 @@ new file.
 }
 ```
 
-Texts stay in the pack's `localization/<language>.json` files. Problems (no start node, deleted
+Next to the export the editor writes `localization/<language>.json` — the texts as they are in the editor, unsaved edits included (the pack's own files are updated by Save). Problems (no start node, deleted
 references, texts without a key, nodes without a schema) are reported as warnings and do not stop the
 export.
 
