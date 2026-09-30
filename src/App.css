@@ -718,13 +718,13 @@ body,
 }
 
 .help-dialog {
-  width: min(1375px, calc(100vw - 32px));
+  width: min(1031px, calc(100vw - 32px));
   max-height: calc(100vh - 32px);
   overflow-y: auto;
-  font-size: 20px;
+  font-size: 15px;
   background: #1c1d21;
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: 8px;
   box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
 }
 
@@ -732,21 +732,21 @@ body,
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 15px 22px;
-  font-size: 21px;
+  padding: 11px 16px;
+  font-size: 16px;
   font-weight: 700;
   border-bottom: 1px solid var(--border);
 }
 
 .help-close {
-  width: 40px;
-  height: 40px;
+  width: 30px;
+  height: 30px;
   color: #e5e7eb;
-  font-size: 27px;
+  font-size: 20px;
   line-height: 1;
   background: none;
   border: none;
-  border-radius: 4px;
+  border-radius: 3px;
   cursor: pointer;
 }
 
@@ -756,23 +756,23 @@ body,
 
 .help-columns {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(400px, 1fr));
-  gap: 19px;
-  padding: 22px;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 14px;
+  padding: 16px;
 }
 
 .help-columns section {
-  padding: 15px 19px 12px;
+  padding: 11px 14px 9px;
   background: #26282d;
   border: 1px solid #3a3d44;
-  border-radius: 8px;
+  border-radius: 6px;
 }
 
 .help-columns h3 {
-  margin: 0 0 12px;
-  padding-bottom: 10px;
+  margin: 0 0 9px;
+  padding-bottom: 8px;
   color: var(--muted);
-  font-size: 16px;
+  font-size: 12px;
   font-weight: 700;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -783,28 +783,28 @@ body,
   display: flex;
   align-items: baseline;
   justify-content: space-between;
-  gap: 19px;
-  padding: 5px 0;
+  gap: 14px;
+  padding: 4px 0;
 }
 
 .help-keys {
   display: flex;
   flex-wrap: wrap;
   justify-content: flex-end;
-  gap: 6px;
+  gap: 4px;
 }
 
 kbd {
-  padding: 1px 10px;
+  padding: 1px 8px;
   color: #eceef2;
   font-family: inherit;
-  font-size: 17px;
+  font-size: 13px;
   line-height: 1.6;
   white-space: nowrap;
   background: #393c43;
   border: 1px solid #5b5f68;
   border-bottom-width: 2px;
-  border-radius: 5px;
+  border-radius: 4px;
 }
 
 .ng-inline-editor.multiline {
