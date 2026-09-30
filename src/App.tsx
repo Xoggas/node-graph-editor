@@ -23,6 +23,8 @@ const DROP_OFFSET = { x: 110, y: 48 };
 
 const STATUS_VISIBLE_MS = 4000;
 const TOAST_VISIBLE_MS = 5000;
+/** How long a toast fades out before it is removed (matches `toast-out` in App.css). */
+const TOAST_LEAVE_MS = 200;
 const MAX_TOASTS = 3;
 /** "true" when the status bar shows frame time and drawn nodes. */
 const SHOW_DEBUG_KEY = "node-graph-editor.showDebug";
@@ -42,6 +44,8 @@ const LOCALIZATION_TAB = "@localization";
 
 interface Toast extends Notice {
   id: number;
+  /** Fading out, about to be removed. */
+  leaving?: boolean;
 }
 
 let nextToastId = 1;
@@ -214,7 +218,10 @@ export default function App() {
   }, [snapshot.statusId, snapshot.status]);
   // Warnings and errors also pop up over the canvas, where they are hard to miss.
   const [toasts, setToasts] = useState<Toast[]>([]);
-  const dismissToast = useCallback((id: number) => setToasts((current) => current.filter((toast) => toast.id !== id)), []);
+  const dismissToast = useCallback((id: number) => {
+    setToasts((current) => current.map((toast) => (toast.id === id ? { ...toast, leaving: true } : toast)));
+    window.setTimeout(() => setToasts((current) => current.filter((toast) => toast.id !== id)), TOAST_LEAVE_MS);
+  }, []);
   useEffect(
     () =>
       editor.onNotice((notice) => {
@@ -301,7 +308,7 @@ export default function App() {
           {toasts.length > 0 && (
             <div className="toasts" role="status" aria-live="polite">
               {toasts.map((toast) => (
-                <div key={toast.id} className={`toast toast-${toast.kind}`} onClick={() => dismissToast(toast.id)} title={t("Click to dismiss")}>
+                <div key={toast.id} className={`toast toast-${toast.kind}${toast.leaving ? " leaving" : ""}`} onClick={() => dismissToast(toast.id)} title={t("Click to dismiss")}>
                   <span className="toast-icon">{toast.kind === "error" ? "✕" : toast.kind === "success" ? "✓" : "⚠"}</span>
                   <span className="toast-message">{toast.message}</span>
                 </div>

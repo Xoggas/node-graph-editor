@@ -1825,3 +1825,124 @@ kbd {
   color: var(--muted);
   font-size: 13px;
 }
+
+/* --- Motion -------------------------------------------------------------------------------------
+   Short entrances for everything that appears, and eased color changes on hover. Every value lives
+   here, so the whole feel can be tuned in one place. */
+
+:root {
+  --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --duration-quick: 0.12s;
+  --duration-enter: 0.18s;
+}
+
+@keyframes ui-fade-in {
+  from {
+    opacity: 0;
+  }
+}
+
+/* Rises a little and grows from 97%: dialogs, menus, popups. */
+@keyframes ui-pop-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.97);
+  }
+}
+
+@keyframes ui-slide-in-left {
+  from {
+    opacity: 0;
+    transform: translateX(-16px);
+  }
+}
+
+@keyframes ui-slide-down {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+}
+
+.dialog-backdrop,
+.help-backdrop {
+  animation: ui-fade-in var(--duration-enter) ease-out;
+}
+
+.dialog,
+.help-dialog {
+  animation: ui-pop-in var(--duration-enter) var(--ease-out);
+}
+
+.context-menu,
+.ng-inline-list {
+  transform-origin: top left;
+  animation: ui-pop-in var(--duration-quick) var(--ease-out);
+}
+
+.ng-node-tooltip {
+  animation: ui-pop-in var(--duration-quick) var(--ease-out);
+}
+
+.problems-panel {
+  animation: ui-slide-in-left var(--duration-enter) var(--ease-out);
+}
+
+.search-panel {
+  animation: ui-slide-down var(--duration-enter) var(--ease-out);
+}
+
+/* Switching to a resource list or the localization table. */
+.resource-browser {
+  animation: ui-fade-in var(--duration-enter) ease-out;
+}
+
+.palette-ghost {
+  animation: ui-fade-in var(--duration-quick) ease-out;
+}
+
+/* Hover and press colors ease instead of jumping. */
+button,
+select,
+.tab,
+.palette-item,
+.context-menu-item,
+.problems-row,
+.search-result,
+.resource-list tbody tr,
+.localization-text,
+.resource-uses,
+.settings-select,
+.palette-filter,
+.resource-filter {
+  transition:
+    background-color var(--duration-quick) ease-out,
+    border-color var(--duration-quick) ease-out,
+    color var(--duration-quick) ease-out,
+    box-shadow var(--duration-quick) ease-out;
+}
+
+.context-menu-swatch {
+  transition: transform var(--duration-quick) var(--ease-out), border-color var(--duration-quick) ease-out;
+}
+
+@keyframes toast-out {
+  to {
+    opacity: 0;
+    transform: translateX(12px);
+  }
+}
+
+.toast.leaving {
+  animation: toast-out 0.2s ease-in forwards;
+}
+
+/* People who asked their system for less motion get none. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
