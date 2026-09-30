@@ -80,23 +80,61 @@ body,
   background: var(--border);
 }
 
+/* A toggle in the toolbar, sized like the buttons: a custom box instead of the native checkbox. */
 .toolbar-check {
   display: flex;
   align-items: center;
-  gap: 5px;
-  margin-left: 2px;
-  color: var(--muted);
-  cursor: pointer;
-}
-
-.toolbar-check input {
-  margin: 0;
-  accent-color: #7aa2e8;
+  gap: 7px;
+  min-height: 26px;
+  padding: 3px 10px 3px 8px;
+  color: #e5e7eb;
+  background: var(--button);
+  border: 1px solid var(--button-border);
+  border-radius: 3px;
   cursor: pointer;
 }
 
 .toolbar-check:hover {
-  color: #e5e7eb;
+  background: var(--button-hover);
+  border-color: #999da6;
+}
+
+.toolbar-check input {
+  display: grid;
+  place-content: center;
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  background: #25272c;
+  border: 1px solid #8a8f99;
+  border-radius: 3px;
+  cursor: pointer;
+  appearance: none;
+}
+
+.toolbar-check input::after {
+  width: 8px;
+  height: 5px;
+  margin-top: -2px;
+  border: solid #fff;
+  border-width: 0 0 2px 2px;
+  transform: rotate(-45deg);
+  content: "";
+  visibility: hidden;
+}
+
+.toolbar-check input:checked {
+  background: #4a78c0;
+  border-color: #6f9be0;
+}
+
+.toolbar-check input:checked::after {
+  visibility: visible;
+}
+
+.toolbar-check input:focus-visible {
+  outline: 2px solid #8ab4ff;
+  outline-offset: 1px;
 }
 
 .toolbar-spacer {
