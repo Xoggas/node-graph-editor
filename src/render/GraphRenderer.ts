@@ -1,7 +1,8 @@
 import { Application, Container, Graphics } from "pixi.js";
 import type { Editor, GraphReplacedOptions } from "../app/editor";
 import type { GraphChange, GraphModel } from "../graph/graph";
-import { clampZoom, type Connection, MAX_ZOOM, type Port, type Vec2, type Viewport } from "../graph/types";
+import { clampZoom, type Connection, type Port, type Vec2, type Viewport } from "../graph/types";
+import { DotGrid } from "./DotGrid";
 import { EdgeView, traceEdgePath } from "./EdgeView";
 import { type Bounds, computeEdgePath, hitTestEdge, rectsIntersect } from "./geometry";
 import { formatNumber, type NodeHit, NodeView, type PortHighlight, type WidgetLayout } from "./NodeView";
@@ -45,7 +46,7 @@ export interface RendererStats {
 
 export class GraphRenderer {
   private readonly app = new Application();
-  private readonly grid = new Graphics();
+  private readonly grid = new DotGrid();
   private readonly world = new Container();
   private readonly edgeLayer = new Container();
   private readonly nodeLayer = new Container();
@@ -70,6 +71,8 @@ export class GraphRenderer {
   private edgeScale = 1;
   private applyingViewport = false;
   private spaceDown = false;
+  private pointer: Vec2 = { x: 0, y: 0 };
+  private pointerInside = false;
 
   private readonly dirtyEdges = new Set<string>();
   private readonly restyleEdges = new Set<string>();
@@ -113,7 +116,7 @@ export class GraphRenderer {
     const stage = this.app.stage;
     stage.eventMode = "none";
     stage.interactiveChildren = false;
-    stage.addChild(this.grid, this.world, this.overlay);
+    stage.addChild(this.grid.sprite, this.world, this.overlay);
     this.world.addChild(this.edgeLayer, this.nodeLayer, this.preview);
 
     const canvas = this.app.canvas;
@@ -152,6 +155,7 @@ export class GraphRenderer {
     window.removeEventListener("keydown", this.onKeyDown);
     window.removeEventListener("keyup", this.onKeyUp);
     window.removeEventListener("blur", this.onWindowBlur);
+    this.grid.destroy();
     this.app.destroy(true, { children: true });
   }
 
@@ -179,20 +183,33 @@ export class GraphRenderer {
   }
 
   frameAll(): void {
-    if (this.nodeViews.size === 0) {
-      this.setViewport({ x: this.screen.width / 2, y: this.screen.height / 2, zoom: 1 });
-      return;
-    }
+    this.frameNodes(this.nodeViews.keys());
+  }
+
+  /** Frames the selection, or the whole graph when nothing is selected. */
+  frameSelection(): void {
+    this.frameNodes(this.selection.size > 0 ? this.selection : this.nodeViews.keys());
+  }
+
+  private frameNodes(nodeIds: Iterable<string>): void {
     let minX = Infinity;
     let minY = Infinity;
     let maxX = -Infinity;
     let maxY = -Infinity;
-    for (const view of this.nodeViews.values()) {
+    for (const id of nodeIds) {
+      const view = this.nodeViews.get(id);
+      if (!view) {
+        continue;
+      }
       const { x, y, width, height } = view.rect;
       minX = Math.min(minX, x);
       minY = Math.min(minY, y);
       maxX = Math.max(maxX, x + width);
       maxY = Math.max(maxY, y + height);
+    }
+    if (minX === Infinity) {
+      this.setViewport({ x: this.screen.width / 2, y: this.screen.height / 2, zoom: 1 });
+      return;
     }
     const padding = 48;
     const zoom = clampZoom(
@@ -209,8 +226,66 @@ export class GraphRenderer {
     });
   }
 
+  /** Zooms around the pointer when it is over the canvas, otherwise around the view center. */
+  zoomBy(factor: number): void {
+    const anchor = this.pointerInside ? this.pointer : { x: this.screen.width / 2, y: this.screen.height / 2 };
+    this.zoomAround(anchor, this.viewport.zoom * factor);
+  }
+
+  resetZoom(): void {
+    this.zoomAround({ x: this.screen.width / 2, y: this.screen.height / 2 }, 1);
+  }
+
+  private zoomAround(anchor: Vec2, targetZoom: number): void {
+    const zoom = clampZoom(targetZoom);
+    if (zoom === this.viewport.zoom) {
+      return;
+    }
+    const ratio = zoom / this.viewport.zoom;
+    this.setViewport({
+      x: anchor.x - (anchor.x - this.viewport.x) * ratio,
+      y: anchor.y - (anchor.y - this.viewport.y) * ratio,
+      zoom,
+    });
+  }
+
+  /** True while a mouse gesture (drag, connect, pan, box select) is in progress. */
+  isInteracting(): boolean {
+    return this.interaction.kind !== "none";
+  }
+
+  /** Graph position of the pointer when it is over the canvas. */
+  pointerPosition(): Vec2 | null {
+    return this.pointerInside ? this.screenToWorld(this.pointer) : null;
+  }
+
+  selectedNodeIds(): string[] {
+    return [...this.selection];
+  }
+
+  selectNodes(nodeIds: Iterable<string>): void {
+    this.selectEdge(null);
+    const ids = new Set([...nodeIds].filter((id) => this.nodeViews.has(id)));
+    this.setSelection(ids);
+    this.bringToFront(ids);
+  }
+
   selectAll(): void {
-    this.setSelection(new Set(this.nodeViews.keys()));
+    this.selectNodes(this.nodeViews.keys());
+  }
+
+  clearSelection(): void {
+    this.setSelection(new Set());
+    this.selectEdge(null);
+  }
+
+  nudgeSelection(dx: number, dy: number): void {
+    for (const id of this.selection) {
+      const node = this.graph.getNode(id);
+      if (node) {
+        this.graph.moveNode(id, { x: node.position.x + dx, y: node.position.y + dy });
+      }
+    }
   }
 
   deleteSelection(): void {
@@ -231,6 +306,9 @@ export class GraphRenderer {
     this.unsubscribeGraph();
     this.graph = graph;
     this.unsubscribeGraph = graph.subscribe(this.onGraphChange);
+    if (this.interaction.kind === "drag") {
+      this.editor.endInteraction();
+    }
     this.interaction = { kind: "none" };
     this.rebuildAll();
     if (options.frameAll) {
@@ -475,28 +553,7 @@ export class GraphRenderer {
   }
 
   private drawGrid(): void {
-    const g = this.grid;
-    g.clear();
-    const { width, height } = this.screen;
-    let spacing = 32 * this.viewport.zoom;
-    while (spacing < 14) {
-      spacing *= 5;
-    }
-    const major = spacing * 5;
-    const lines = (step: number) => {
-      for (let x = mod(this.viewport.x, step); x <= width; x += step) {
-        const px = Math.round(x) + 0.5;
-        g.moveTo(px, 0).lineTo(px, height);
-      }
-      for (let y = mod(this.viewport.y, step); y <= height; y += step) {
-        const py = Math.round(y) + 0.5;
-        g.moveTo(0, py).lineTo(width, py);
-      }
-    };
-    lines(spacing);
-    g.stroke({ width: 1, ...theme.gridMinor });
-    lines(major);
-    g.stroke({ width: 1, ...theme.gridMajor });
+    this.grid.update(this.viewport);
   }
 
   private drawPreview(): void {
@@ -537,6 +594,7 @@ export class GraphRenderer {
     const height = Math.max(1, this.host.clientHeight);
     this.screen = { width, height };
     this.app.renderer.resize(width, height);
+    this.grid.resize(width, height);
     this.gridDirty = true;
     this.requestFrame();
   }
@@ -815,6 +873,7 @@ export class GraphRenderer {
           }
         }
         this.translatingEdges = internalEdges;
+        this.editor.beginInteraction();
         this.interaction = {
           kind: "drag",
           pointerId: event.pointerId,
@@ -852,6 +911,8 @@ export class GraphRenderer {
 
   private readonly onPointerMove = (event: PointerEvent): void => {
     const point = this.localPoint(event);
+    this.pointer = point;
+    this.pointerInside = true;
     const world = this.screenToWorld(point);
     const interaction = this.interaction;
 
@@ -949,6 +1010,7 @@ export class GraphRenderer {
         break;
       case "drag":
         this.translatingEdges = new Set();
+        this.editor.endInteraction();
         break;
       case "button": {
         const { view, widget } = interaction;
@@ -966,6 +1028,7 @@ export class GraphRenderer {
   };
 
   private readonly onPointerLeave = (): void => {
+    this.pointerInside = false;
     if (this.interaction.kind === "none" && this.hovered) {
       this.setHovered(null, null, null);
       this.app.canvas.style.cursor = "";
@@ -976,16 +1039,7 @@ export class GraphRenderer {
     event.preventDefault();
     const point = this.localPoint(event);
     const delta = event.deltaMode === 1 ? event.deltaY * 16 : event.deltaMode === 2 ? event.deltaY * 400 : event.deltaY;
-    const zoom = clampZoom(this.viewport.zoom * Math.exp(-delta * 0.0015));
-    if (zoom === this.viewport.zoom) {
-      return;
-    }
-    const ratio = zoom / this.viewport.zoom;
-    this.setViewport({
-      x: point.x - (point.x - this.viewport.x) * ratio,
-      y: point.y - (point.y - this.viewport.y) * ratio,
-      zoom: Math.min(MAX_ZOOM, zoom),
-    });
+    this.zoomAround(point, this.viewport.zoom * Math.exp(-delta * 0.0015));
   };
 
   private updateHover(world: Vec2): void {
@@ -1029,23 +1083,9 @@ export class GraphRenderer {
 
   // --- Keyboard ------------------------------------------------------------------------
 
+  /** Only Space (hold to pan) lives here; all other shortcuts are dispatched by the app keymap. */
   private readonly onKeyDown = (event: KeyboardEvent): void => {
-    if (isEditableTarget(event.target)) {
-      return;
-    }
-    const ctrl = event.ctrlKey || event.metaKey;
-    if (event.key === "Delete" || event.key === "Backspace") {
-      event.preventDefault();
-      this.deleteSelection();
-    } else if (ctrl && event.key.toLowerCase() === "a") {
-      event.preventDefault();
-      this.selectAll();
-    } else if (!ctrl && (event.key === "f" || event.key === "F" || event.key === "Home")) {
-      this.frameAll();
-    } else if (event.key === "Escape") {
-      this.setSelection(new Set());
-      this.selectEdge(null);
-    } else if (event.key === " " && !this.spaceDown) {
+    if (event.code === "Space" && !this.spaceDown && !isEditableTarget(event.target)) {
       this.spaceDown = true;
       if (this.interaction.kind === "none") {
         this.app.canvas.style.cursor = "grab";
@@ -1055,7 +1095,7 @@ export class GraphRenderer {
   };
 
   private readonly onKeyUp = (event: KeyboardEvent): void => {
-    if (event.key === " ") {
+    if (event.code === "Space") {
       this.spaceDown = false;
       if (this.interaction.kind === "none") {
         this.app.canvas.style.cursor = "";
@@ -1124,10 +1164,6 @@ export class GraphRenderer {
     }
     input.element.remove();
   }
-}
-
-function mod(value: number, step: number): number {
-  return ((value % step) + step) % step;
 }
 
 function preventDefault(event: Event): void {

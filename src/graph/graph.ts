@@ -18,9 +18,9 @@ import {
 export type GraphChange =
   | { kind: "nodeAdded"; node: NodeModel }
   | { kind: "nodeRemoved"; node: NodeModel }
-  | { kind: "nodeMoved"; node: NodeModel }
-  | { kind: "nodeStateChanged"; node: NodeModel }
-  | { kind: "nodePortsChanged"; node: NodeModel }
+  | { kind: "nodeMoved"; node: NodeModel; previous: Vec2 }
+  | { kind: "nodeStateChanged"; node: NodeModel; previous: unknown }
+  | { kind: "nodePortsChanged"; node: NodeModel; previous: readonly Port[] }
   | { kind: "connectionAdded"; connection: Connection }
   | { kind: "connectionRemoved"; connection: Connection }
   | { kind: "viewportChanged" }
@@ -188,8 +188,9 @@ export class GraphModel {
       return false;
     }
     if (node.position.x !== position.x || node.position.y !== position.y) {
+      const previous = node.position;
       node.position = { x: position.x, y: position.y };
-      this.emit({ kind: "nodeMoved", node });
+      this.emit({ kind: "nodeMoved", node, previous });
     }
     return true;
   }
@@ -199,8 +200,9 @@ export class GraphModel {
     if (!node || node.isPlaceholder) {
       return false;
     }
+    const previous = node.state;
     node.state = state;
-    this.emit({ kind: "nodeStateChanged", node });
+    this.emit({ kind: "nodeStateChanged", node, previous });
     return true;
   }
 
@@ -214,9 +216,10 @@ export class GraphModel {
     }
     this.registry.dataTypes.resolve(definition.typeId);
     const port = makePort(node.id, definition, true);
+    const previous = node.ports;
     node.ports = [...node.ports, port];
     this.portMap.set(port.id, port);
-    this.emit({ kind: "nodePortsChanged", node });
+    this.emit({ kind: "nodePortsChanged", node, previous });
     return port;
   }
 
@@ -226,10 +229,46 @@ export class GraphModel {
     if (!port || !node || !port.isDynamic || this.hasConnections(portId)) {
       return false;
     }
+    const previous = node.ports;
     node.ports = node.ports.filter((candidate) => candidate.id !== portId);
     this.portMap.delete(portId);
-    this.emit({ kind: "nodePortsChanged", node });
+    this.emit({ kind: "nodePortsChanged", node, previous });
     return true;
+  }
+
+  /**
+   * Replaces a node's port list, e.g. to undo a dynamic port change.
+   * Ports that disappear must not have connections.
+   */
+  setNodePorts(nodeId: string, ports: readonly Port[]): void {
+    const node = this.nodeMap.get(nodeId);
+    if (!node) {
+      throw new RegistryError(`Node '${nodeId}' is not part of this graph.`);
+    }
+    const nextIds = new Set(ports.map((port) => port.id));
+    for (const port of node.ports) {
+      if (!nextIds.has(port.id) && this.hasConnections(port.id)) {
+        throw new RegistryError(`Port '${port.key}' still has connections.`);
+      }
+    }
+    for (const port of ports) {
+      const existing = this.portMap.get(port.id);
+      if (port.nodeId !== nodeId || (existing && existing.nodeId !== nodeId)) {
+        throw new RegistryError(`Port id '${port.id}' is already used in this graph.`);
+      }
+    }
+    const previous = node.ports;
+    for (const port of previous) {
+      if (!nextIds.has(port.id)) {
+        this.portMap.delete(port.id);
+        this.connectionsByPort.delete(port.id);
+      }
+    }
+    node.ports = [...ports];
+    for (const port of node.ports) {
+      this.portMap.set(port.id, port);
+    }
+    this.emit({ kind: "nodePortsChanged", node, previous });
   }
 
   /** Checks whether a connection is allowed without creating it. */

@@ -1,20 +1,32 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { Editor } from "./app/editor";
+import { findShortcut, isEditableTarget } from "./app/shortcuts";
 import type { GraphRenderer, RendererStats } from "./render/GraphRenderer";
 import { GraphCanvas } from "./ui/GraphCanvas";
 import { NodePalette } from "./ui/NodePalette";
+import { ShortcutHelp } from "./ui/ShortcutHelp";
 import "./App.css";
 
 /** Default node size offset so a dropped node is centered under the cursor. */
 const DROP_OFFSET = { x: 110, y: 48 };
 
+const STATUS_VISIBLE_MS = 4000;
+
 const editor = new Editor();
+
+if (import.meta.env.DEV) {
+  // Console access for manual checks, e.g. `__editor.generateStressGraph(1000)`.
+  (window as unknown as { __editor: Editor }).__editor = editor;
+}
 
 export default function App() {
   const snapshot = useSyncExternalStore(editor.subscribe, editor.getSnapshot);
   const rendererRef = useRef<GraphRenderer | null>(null);
   const [stats, setStats] = useState<RendererStats | null>(null);
   const descriptors = useMemo(() => editor.registry.nodes.descriptors(), []);
+  const [helpOpen, setHelpOpen] = useState(false);
+  const helpOpenRef = useRef(helpOpen);
+  helpOpenRef.current = helpOpen;
 
   const onRenderer = useCallback((renderer: GraphRenderer | null) => {
     rendererRef.current = renderer;
@@ -50,24 +62,35 @@ export default function App() {
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      if (!(event.ctrlKey || event.metaKey)) return;
-      const key = event.key.toLowerCase();
-      if (key === "s") {
+      if (helpOpenRef.current && event.code === "Escape") {
         event.preventDefault();
-        void editor.save(event.shiftKey);
-      } else if (key === "o") {
-        event.preventDefault();
-        void editor.open();
-      } else if (key === "n") {
-        event.preventDefault();
-        void editor.newGraph();
+        setHelpOpen(false);
+        return;
       }
+      const shortcut = findShortcut(event);
+      if (!shortcut || (!shortcut.global && isEditableTarget(event.target))) {
+        return;
+      }
+      event.preventDefault();
+      shortcut.run({ editor, renderer: rendererRef.current, toggleHelp: () => setHelpOpen((open) => !open) }, event);
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
 
-  const title = `${snapshot.fileName ?? "Untitled"}${snapshot.dirty ? " *" : ""}`;
+  const documentName = snapshot.fileName ?? "Untitled";
+
+  // Status messages are transient: shown for a few seconds after each change.
+  const [statusVisible, setStatusVisible] = useState(false);
+  useEffect(() => {
+    if (snapshot.statusId === 0 || !snapshot.status) {
+      return;
+    }
+    setStatusVisible(true);
+    const timer = window.setTimeout(() => setStatusVisible(false), STATUS_VISIBLE_MS);
+    return () => window.clearTimeout(timer);
+  }, [snapshot.statusId, snapshot.status]);
+  const title = `${documentName}${snapshot.dirty ? " *" : ""}`;
   useEffect(() => {
     document.title = `${title} — Node Graph Editor`;
   }, [title]);
@@ -80,11 +103,16 @@ export default function App() {
         <button onClick={() => void editor.save()} title="Ctrl+S">Save</button>
         <button onClick={() => void editor.save(true)} title="Ctrl+Shift+S">Save As</button>
         <span className="toolbar-separator" />
-        <button onClick={() => rendererRef.current?.frameAll()} title="F">Frame All</button>
-        <button onClick={() => void editor.generateStressGraph(1000)} title="Replace the graph with 1000 generated nodes">
-          Stress 1000
+        <button onClick={() => editor.undo()} disabled={!snapshot.canUndo} title="Ctrl+Z">
+          Undo
         </button>
-        <span className="toolbar-title">{title}</span>
+        <button onClick={() => editor.redo()} disabled={!snapshot.canRedo} title="Ctrl+Y">
+          Redo
+        </button>
+        <span className="toolbar-spacer" />
+        <button onClick={() => setHelpOpen(true)} title="Keyboard shortcuts (F1)">
+          ?
+        </button>
       </header>
 
       <main className="workspace">
@@ -93,7 +121,15 @@ export default function App() {
       </main>
 
       <footer className="statusbar">
-        <span className="status-message">{snapshot.status}</span>
+        <span className="status-document" title={snapshot.dirty ? "Unsaved changes" : "All changes saved"}>
+          <span className="status-document-label">Graph:</span>
+          <span className="status-document-name">{documentName}</span>
+          {snapshot.dirty && <span className="status-document-dirty">● unsaved</span>}
+        </span>
+        <span className="status-path" title={snapshot.filePath ?? undefined}>
+          <bdi>{snapshot.filePath ?? (snapshot.fileName ? `${snapshot.fileName} (not on disk)` : "Not saved yet")}</bdi>
+        </span>
+        <span className={`status-message${statusVisible ? " visible" : ""}`}>{snapshot.status}</span>
         {snapshot.warnings.length > 0 && (
           <span className="status-warnings" title={snapshot.warnings.join("\n")}>
             ⚠ {snapshot.warnings.length} warning(s)
@@ -109,6 +145,8 @@ export default function App() {
           </span>
         )}
       </footer>
+
+      {helpOpen && <ShortcutHelp onClose={() => setHelpOpen(false)} />}
     </div>
   );
 }

@@ -1,4 +1,6 @@
+import { type ClipboardData, copyNodes, pasteNodes } from "../graph/clipboard";
 import { GraphModel, type GraphChange } from "../graph/graph";
+import { GraphHistory } from "../graph/history";
 import type { NodeGraphRegistry } from "../graph/registry";
 import { createSampleRegistry, type NumberState } from "../graph/samples";
 import { GraphJsonSerializer } from "../graph/serializer";
@@ -7,13 +9,24 @@ import { createFileSystem, type GraphFileSystem } from "./files";
 
 export interface EditorSnapshot {
   status: string;
+  /** Incremented on every status message, so repeated identical messages are still noticed. */
+  statusId: number;
   dirty: boolean;
   fileName: string | null;
+  /** Full path of the document on disk; null until saved (always null in a plain browser). */
+  filePath: string | null;
   nodeCount: number;
   connectionCount: number;
   selectionCount: number;
   warnings: readonly string[];
+  canUndo: boolean;
+  canRedo: boolean;
+  canPaste: boolean;
 }
+
+/** Approximate node size, used to center pasted nodes on the cursor. */
+const NODE_SIZE_ESTIMATE = { width: 220, height: 110 };
+const PASTE_STEP = 32;
 
 export interface GraphReplacedOptions {
   /** Fit the whole graph into view instead of restoring the saved viewport. */
@@ -33,6 +46,11 @@ export class Editor {
   private filePath: string | null = null;
   private state: EditorSnapshot;
   private notifyScheduled = false;
+  private readonly history = new GraphHistory(() =>
+    this.update({ canUndo: this.history.canUndo, canRedo: this.history.canRedo }),
+  );
+  private clipboard: ClipboardData | null = null;
+  private pasteCount = 0;
 
   constructor(options: { registry?: NodeGraphRegistry; files?: GraphFileSystem } = {}) {
     this.registry = options.registry ?? createSampleRegistry();
@@ -40,13 +58,18 @@ export class Editor {
     this.files = options.files ?? createFileSystem();
     this.currentGraph = new GraphModel(this.registry);
     this.state = {
-      status: "Ready.",
+      status: "",
+      statusId: 0,
       dirty: false,
       fileName: null,
+      filePath: null,
       nodeCount: 0,
       connectionCount: 0,
       selectionCount: 0,
       warnings: [],
+      canUndo: false,
+      canRedo: false,
+      canPaste: false,
     };
     this.attach(this.currentGraph);
   }
@@ -103,7 +126,7 @@ export class Editor {
         return;
       }
       this.filePath = saved.path;
-      this.update({ dirty: false, fileName: saved.name, status: `Saved: ${saved.name}` });
+      this.update({ dirty: false, fileName: saved.name, filePath: saved.path, status: `Saved: ${saved.name}` });
     } catch (error) {
       this.setStatus(`Save failed: ${errorMessage(error)}`);
     }
@@ -167,6 +190,86 @@ export class Editor {
       widget.action(node, this.graph);
     } catch (error) {
       this.setStatus(`${widget.label} failed: ${errorMessage(error)}`);
+    }
+  }
+
+  // --- History ------------------------------------------------------------------
+
+  undo(): void {
+    this.setStatus(this.history.undo() ? "Undo." : "Nothing to undo.");
+  }
+
+  redo(): void {
+    this.setStatus(this.history.redo() ? "Redo." : "Nothing to redo.");
+  }
+
+  /** Groups every change until `endInteraction()` into one undo step (e.g. a drag). */
+  beginInteraction(): void {
+    this.history.begin();
+  }
+
+  endInteraction(): void {
+    this.history.end();
+  }
+
+  // --- Clipboard ----------------------------------------------------------------
+
+  copy(nodeIds: Iterable<string>): boolean {
+    const data = copyNodes(this.graph, nodeIds);
+    if (!data) {
+      return false;
+    }
+    this.clipboard = data;
+    this.pasteCount = 0;
+    this.update({ canPaste: true, status: `Copied ${data.nodes.length} node(s).` });
+    return true;
+  }
+
+  cut(nodeIds: Iterable<string>): boolean {
+    const ids = [...nodeIds];
+    if (!this.copy(ids)) {
+      return false;
+    }
+    this.deleteElements(ids, []);
+    this.setStatus(`Cut ${ids.length} node(s).`);
+    return true;
+  }
+
+  /**
+   * Pastes the clipboard centered at `center` (graph coordinates), or offset from the
+   * original position when no center is given. Returns the ids of the new nodes.
+   */
+  paste(center?: Vec2): string[] {
+    const data = this.clipboard;
+    if (!data) {
+      return [];
+    }
+    let offset: Vec2;
+    if (center) {
+      offset = {
+        x: center.x - (data.bounds.minX + data.bounds.maxX + NODE_SIZE_ESTIMATE.width) / 2,
+        y: center.y - (data.bounds.minY + data.bounds.maxY + NODE_SIZE_ESTIMATE.height) / 2,
+      };
+    } else {
+      this.pasteCount++;
+      offset = { x: PASTE_STEP * this.pasteCount, y: PASTE_STEP * this.pasteCount };
+    }
+    return this.insert(data, offset, "Pasted");
+  }
+
+  duplicate(nodeIds: Iterable<string>): string[] {
+    const data = copyNodes(this.graph, nodeIds);
+    return data ? this.insert(data, { x: PASTE_STEP, y: PASTE_STEP }, "Duplicated") : [];
+  }
+
+  private insert(data: ClipboardData, offset: Vec2, verb: string): string[] {
+    try {
+      const ids = pasteNodes(this.graph, data, offset);
+      this.setStatus(`${verb} ${ids.length} node(s).`);
+      return ids;
+    } catch (error) {
+      this.setStatus(`${verb} failed: ${errorMessage(error)}`);
+      return [];
     }
   }
 
@@ -246,7 +349,7 @@ export class Editor {
   ): void {
     this.attach(graph);
     this.filePath = filePath;
-    this.update({ status, warnings, dirty: false, fileName: null, selectionCount: 0 });
+    this.update({ status, warnings, dirty: false, fileName: null, filePath, selectionCount: 0 });
     for (const listener of this.graphReplacedListeners) {
       listener(graph, { frameAll });
     }
@@ -256,6 +359,7 @@ export class Editor {
     this.unsubscribeGraph();
     this.currentGraph = graph;
     this.unsubscribeGraph = graph.subscribe((change) => this.onGraphChanged(change));
+    this.history.attach(graph);
     this.syncCounts();
   }
 
@@ -276,7 +380,8 @@ export class Editor {
   }
 
   private update(patch: Partial<EditorSnapshot>): void {
-    this.state = { ...this.state, ...patch };
+    const statusId = patch.status !== undefined ? this.state.statusId + 1 : this.state.statusId;
+    this.state = { ...this.state, ...patch, statusId };
     // Bulk graph edits can produce thousands of changes in one task; notify React once.
     if (!this.notifyScheduled) {
       this.notifyScheduled = true;

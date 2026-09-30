@@ -24,13 +24,22 @@ Requires Node.js and a Rust toolchain ([Tauri prerequisites](https://tauri.app/s
 | Select | Click; Shift adds, Ctrl toggles; drag on empty space for box selection |
 | Move | Drag selected nodes |
 | Connect | Drag from a port to a compatible port (compatible ports are highlighted) |
+| Undo / Redo | Ctrl+Z / Ctrl+Y (Ctrl+Shift+Z) |
+| Copy / Cut / Paste / Duplicate | Ctrl+C / Ctrl+X / Ctrl+V (at the cursor) / Ctrl+D |
 | Delete | Delete / Backspace (selected nodes or connection) |
-| Select all / Frame all | Ctrl+A / F |
+| Nudge selection | Arrows (Shift: further) |
+| Select all / Clear selection | Ctrl+A / Esc |
+| Frame selection / Frame all | F / Shift+F or Home |
+| Zoom in / out / 100% | Ctrl+= / Ctrl+- / Ctrl+0 |
 | New / Open / Save / Save As | Ctrl+N / Ctrl+O / Ctrl+S / Ctrl+Shift+S |
+| Shortcut reference | F1 |
 | Add node | Drag from the palette, or click an item to add it at the view center |
 
-**Stress 1000** in the toolbar replaces the document with 1000 generated nodes and ~1900 connections.
-The status bar shows the CPU time per rendered frame and how many nodes survive culling.
+Keyboard shortcuts use physical keys, so they work with any layout (e.g. Russian).
+All shortcuts are defined in `src/app/shortcuts.ts`, which also feeds the F1 overlay.
+
+In a dev build, `__editor.generateStressGraph(1000)` in the devtools console replaces the document with
+1000 generated nodes and ~1900 connections for performance checks. The status bar shows the CPU time per rendered frame and how many nodes survive culling.
 
 ## Structure
 

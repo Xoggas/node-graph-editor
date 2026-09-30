@@ -1,7 +1,7 @@
 export const theme = {
   canvasBackground: 0x18191d,
-  gridMinor: { color: 0x33363b, alpha: 0.55 },
-  gridMajor: { color: 0x43464d, alpha: 0.7 },
+  dotMinor: { color: 0x575c66, alpha: 0.9, radius: 1.15 },
+  dotMajor: { color: 0x7a808c, alpha: 1, radius: 1.7 },
 
   nodeBackground: 0x333539,
   nodeHeader: 0x45484f,
