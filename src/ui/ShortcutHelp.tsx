@@ -5,7 +5,8 @@ interface ShortcutHelpProps {
   onClose: () => void;
 }
 
-const GROUPS: Shortcut["group"][] = ["File", "Edit", "Selection", "View", "Help"];
+/** Four columns side by side; "mouse" is the list of mouse gestures. */
+const COLUMNS: (Shortcut["group"] | "mouse")[][] = [["File", "View"], ["Edit"], ["Selection", "Help"], ["mouse"]];
 
 export function ShortcutHelp({ onClose }: ShortcutHelpProps) {
   return (
@@ -18,23 +19,34 @@ export function ShortcutHelp({ onClose }: ShortcutHelpProps) {
           </button>
         </div>
         <div className="help-columns">
-          {GROUPS.map((group) => (
-            <section key={group}>
-              <h3>{t(group)}</h3>
-              {shortcuts
-                .filter((shortcut) => shortcut.group === group)
-                .map((shortcut) => (
-                  // Key names (Delete, Home…) stay as printed on the keyboard; only "Arrows" is a word.
-                  <Row key={shortcut.description} description={shortcut.description} keys={shortcut.keys.map((key) => (key.includes("Arrows") ? t(key) : key))} />
-                ))}
-            </section>
+          {COLUMNS.map((groups) => (
+            <div key={groups.join()} className="help-column">
+              {groups.map((group) =>
+                group === "mouse" ? (
+                  <section key={group}>
+                    <h3>{t("Mouse")}</h3>
+                    {mouseControls.map((control) => (
+                      <Row key={control.description} description={control.description} keys={control.keys.map((key) => t(key))} />
+                    ))}
+                  </section>
+                ) : (
+                  <section key={group}>
+                    <h3>{t(group)}</h3>
+                    {shortcuts
+                      .filter((shortcut) => shortcut.group === group)
+                      .map((shortcut) => (
+                        // Key names (Delete, Home…) stay as printed on the keyboard; only "Arrows" is a word.
+                        <Row
+                          key={shortcut.description}
+                          description={shortcut.description}
+                          keys={shortcut.keys.map((key) => (key.includes("Arrows") ? t(key) : key))}
+                        />
+                      ))}
+                  </section>
+                ),
+              )}
+            </div>
           ))}
-          <section>
-            <h3>{t("Mouse")}</h3>
-            {mouseControls.map((control) => (
-              <Row key={control.description} description={control.description} keys={control.keys.map((key) => t(key))} />
-            ))}
-          </section>
         </div>
       </div>
     </div>

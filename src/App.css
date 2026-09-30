@@ -1084,7 +1084,7 @@ body,
 }
 
 .help-dialog {
-  width: min(1031px, calc(100vw - 32px));
+  width: min(1320px, calc(100vw - 32px));
   max-height: calc(100vh - 32px);
   overflow-y: auto;
   font-size: 15px;
@@ -1120,11 +1120,19 @@ body,
   background: var(--button-hover);
 }
 
+/* Four columns in one row; a column may stack two groups. */
 .help-columns {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  align-items: start;
   gap: 14px;
   padding: 16px;
+}
+
+.help-column {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
 }
 
 .help-columns section {
@@ -1153,11 +1161,23 @@ body,
   padding: 4px 0;
 }
 
+/* The description keeps at least 40% of the row; long key captions wrap instead of overflowing. */
+.help-row > span:first-child {
+  flex: 1 0 40%;
+}
+
 .help-keys {
   display: flex;
+  flex: 0 1 auto;
   flex-wrap: wrap;
   justify-content: flex-end;
+  min-width: 0;
   gap: 4px;
+}
+
+.help-keys kbd {
+  white-space: normal;
+  text-align: center;
 }
 
 kbd {
