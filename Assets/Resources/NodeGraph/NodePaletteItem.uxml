@@ -1,6 +1,0 @@
-<ui:UXML xmlns:ui="UnityEngine.UIElements">
-    <ui:VisualElement name="palette-item-root">
-        <ui:Label name="palette-item-title" class="node-palette-item-title" />
-        <ui:Label name="palette-item-type" class="node-palette-item-type" />
-    </ui:VisualElement>
-</ui:UXML>

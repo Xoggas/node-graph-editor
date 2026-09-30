@@ -1,5 +1,0 @@
-<ui:UXML xmlns:ui="UnityEngine.UIElements">
-    <ui:VisualElement name="number-body" class="number-body">
-        <ui:FloatField name="value-field" label="Value" />
-    </ui:VisualElement>
-</ui:UXML>

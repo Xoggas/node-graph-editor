@@ -1,3 +1,0 @@
-<ui:UXML xmlns:ui="UnityEngine.UIElements">
-    <ui:Label name="placeholder-label" class="placeholder-description" />
-</ui:UXML>

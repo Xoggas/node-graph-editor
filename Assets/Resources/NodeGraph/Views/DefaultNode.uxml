@@ -1,3 +1,0 @@
-<ui:UXML xmlns:ui="UnityEngine.UIElements">
-    <ui:Label name="type-label" class="sample-description" />
-</ui:UXML>

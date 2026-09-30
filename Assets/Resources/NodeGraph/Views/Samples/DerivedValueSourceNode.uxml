@@ -1,3 +1,0 @@
-<ui:UXML xmlns:ui="UnityEngine.UIElements">
-    <ui:Label name="description" class="sample-description" text="DerivedValue output." />
-</ui:UXML>

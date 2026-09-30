@@ -1,3 +1,0 @@
-<ui:UXML xmlns:ui="UnityEngine.UIElements">
-    <ui:Button name="add-output-button" text="Add output" />
-</ui:UXML>
