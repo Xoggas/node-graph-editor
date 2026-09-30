@@ -1417,6 +1417,14 @@ kbd {
   border-left-color: #f0b45a;
 }
 
+.toast-success {
+  border-left-color: #5fbf7a;
+}
+
+.toast-success .toast-icon {
+  color: #5fbf7a;
+}
+
 .toast-icon {
   flex-shrink: 0;
   font-weight: 700;

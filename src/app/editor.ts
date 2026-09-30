@@ -36,8 +36,8 @@ export interface PasteModeQuestion {
   types: string[];
 }
 
-/** `info` goes to the status bar; warnings and errors also pop up as toasts. */
-export type StatusKind = "info" | "warning" | "error";
+/** `info` goes to the status bar; successes (saved, exported), warnings and errors pop up as toasts. */
+export type StatusKind = "info" | "success" | "warning" | "error";
 
 /** A warning or error, delivered to toast listeners one by one (snapshots only keep the last status). */
 export interface Notice {
@@ -434,9 +434,11 @@ export class Editor {
       const status = savedLanguages
         ? t("Saved: {file} and localization ({languages})", { file: saved.name, languages: savedLanguages })
         : t("Saved: {file}", { file: saved.name });
-      this.update({ dirty: false, fileName: saved.name, filePath: saved.path, status });
-      // Only a graph on disk: the export goes next to it without asking.
-      if (this.state.autoExport && saved.path) {
+      // Only a graph on disk is exported after saving (next to it, without asking); that export then
+      // reports both in one message.
+      const exportNext = this.state.autoExport && saved.path !== null;
+      this.update({ dirty: false, fileName: saved.name, filePath: saved.path, ...(exportNext ? {} : { status, statusKind: "success" as const }) });
+      if (exportNext) {
         await this.exportGraph(false, status);
       }
     } catch (error) {
@@ -484,7 +486,7 @@ export class Editor {
             : t("Exported {count} node(s) to {file}", { count, file: saved.name });
       this.update({
         warnings,
-        statusKind: warnings.length === 0 ? "info" : "warning",
+        statusKind: warnings.length === 0 ? "success" : "warning",
         status: warnings.length === 0 ? `${exported}.` : t("{message} with {count} warning(s).", { message: exported, count: warnings.length }),
       });
     } catch (error) {

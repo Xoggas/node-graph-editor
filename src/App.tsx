@@ -302,7 +302,7 @@ export default function App() {
             <div className="toasts" role="status" aria-live="polite">
               {toasts.map((toast) => (
                 <div key={toast.id} className={`toast toast-${toast.kind}`} onClick={() => dismissToast(toast.id)} title={t("Click to dismiss")}>
-                  <span className="toast-icon">{toast.kind === "error" ? "✕" : "⚠"}</span>
+                  <span className="toast-icon">{toast.kind === "error" ? "✕" : toast.kind === "success" ? "✓" : "⚠"}</span>
                   <span className="toast-message">{toast.message}</span>
                 </div>
               ))}
