@@ -194,6 +194,10 @@ export default function App() {
         >
           Export
         </button>
+        <label className="toolbar-check" title="Every save also exports the graph (next to it the first time, then to the last export path)">
+          <input type="checkbox" checked={snapshot.autoExport} onChange={(event) => editor.setAutoExport(event.target.checked)} />
+          on save
+        </label>
         <span className="toolbar-separator" />
         <button onClick={() => editor.undo()} disabled={!snapshot.canUndo} title="Ctrl+Z">
           Undo

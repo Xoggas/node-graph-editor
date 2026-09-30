@@ -150,7 +150,8 @@ describe("last graph", () => {
   it("reopens the last saved graph on start and forgets a missing one", async () => {
     const id = editor.addNode("line", { x: 0, y: 0 })!;
     await editor.save();
-    files.disk.set("C:/graphs/g.json", files.saves[files.saves.length - 1].text);
+    // The graph itself, not the runtime file exported after it.
+    files.disk.set("C:/graphs/g.json", files.saves[0].text);
 
     const next = new Editor({ files: files as unknown as GraphFileSystem });
     await next.start();
@@ -168,6 +169,7 @@ describe("last graph", () => {
 
 describe("export", () => {
   it("writes a compact runtime file next to the graph and re-exports without asking", async () => {
+    editor.setAutoExport(false);
     const id = editor.addNode("line", { x: 0, y: 0 })!;
     await editor.save();
     expect(editor.getSnapshot().fileName).toBe("g.json");
@@ -189,5 +191,25 @@ describe("export", () => {
     expect(files.saves[files.saves.length - 1]).toMatchObject({ current: "C:/graphs/g.runtime.json", choose: false });
     await editor.exportGraph(true);
     expect(files.saves[files.saves.length - 1]).toMatchObject({ choose: true });
+  });
+
+  it("exports next to the graph on every save while auto export is on", async () => {
+    expect(editor.getSnapshot().autoExport).toBe(true);
+    editor.addNode("line", { x: 0, y: 0 });
+    await editor.save();
+    expect(files.saves.map(({ current, choose }) => [current, choose])).toEqual([
+      [null, false],
+      ["C:/graphs/g.runtime.json", false],
+    ]);
+    expect(files.written.has("C:/graphs/localization/ru.json")).toBe(true);
+    expect(editor.getSnapshot().status).toBe("Saved: g.json; exported to g.runtime.json.");
+
+    await editor.save();
+    expect(files.saves[files.saves.length - 1]).toMatchObject({ current: "C:/graphs/g.runtime.json", choose: false });
+
+    editor.setAutoExport(false);
+    const count = files.saves.length;
+    await editor.save();
+    expect(files.saves).toHaveLength(count + 1);
   });
 });

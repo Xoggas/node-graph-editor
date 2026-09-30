@@ -226,6 +226,10 @@ data (positions, names, viewport, schema versions, connection ids). The first ex
 (`<graph>.runtime.json` next to the graph by default); later exports overwrite it, Ctrl+Shift+E picks a
 new file.
 
+With **on save** checked next to Export (the default, remembered between sessions), every save of a graph
+on disk also exports it without asking: to the last export path, or `<graph>.runtime.json` next to the
+graph the first time.
+
 ```jsonc
 {
   "format": "node-graph-runtime", "version": 1,

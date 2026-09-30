@@ -61,6 +61,8 @@ export interface EditorSnapshot {
   canUndo: boolean;
   canRedo: boolean;
   canPaste: boolean;
+  /** Every save of a graph on disk also exports it (see `exportGraph`). */
+  autoExport: boolean;
 }
 
 /** Approximate node size, used to center pasted nodes on the cursor. */
@@ -73,6 +75,8 @@ const PACK_FOLDER_KEY = "node-graph-editor.packFolder";
 const VALIDATION_DELAY_MS = 250;
 /** Path of the last opened or saved graph, reopened on start. */
 const LAST_GRAPH_KEY = "node-graph-editor.lastGraph";
+/** "false" when saving should not also export; on by default. */
+const AUTO_EXPORT_KEY = "node-graph-editor.autoExport";
 
 export interface GraphReplacedOptions {
   /** Fit the whole graph into view instead of restoring the saved viewport. */
@@ -130,6 +134,7 @@ export class Editor {
       canUndo: false,
       canRedo: false,
       canPaste: false,
+      autoExport: readStored(AUTO_EXPORT_KEY) !== "false",
     };
     this.attach(this.currentGraph);
   }
@@ -404,23 +409,36 @@ export class Editor {
       this.filePath = saved.path;
       if (saved.path) writeStored(LAST_GRAPH_KEY, saved.path);
       const localizationNote = savedLanguages ? ` and localization (${savedLanguages})` : "";
-      this.update({ dirty: false, fileName: saved.name, filePath: saved.path, status: `Saved: ${saved.name}${localizationNote}` });
+      const status = `Saved: ${saved.name}${localizationNote}`;
+      this.update({ dirty: false, fileName: saved.name, filePath: saved.path, status });
+      // Only a graph on disk: the export goes next to it without asking.
+      if (this.state.autoExport && saved.path) {
+        await this.exportGraph(false, status);
+      }
     } catch (error) {
       this.setStatus(`Save failed: ${errorMessage(error)}`, "error");
     }
+  }
+
+  setAutoExport(on: boolean): void {
+    writeStored(AUTO_EXPORT_KEY, String(on));
+    this.update({ autoExport: on });
   }
 
   /**
    * Writes the engine version of the graph (no editor data, see `exportRuntimeGraph`) and, next to
    * it, `localization/<language>.json` with the texts as they are in the editor (unsaved edits
    * included). Re-exports go to the last export path; `chooseLocation` or a first export asks where.
+   * An export after a save (`afterSave` is the save's status) never asks: the first one goes next to
+   * the graph.
    */
-  async exportGraph(chooseLocation = false): Promise<void> {
+  async exportGraph(chooseLocation = false, afterSave: string | null = null): Promise<void> {
     try {
       const { graph, warnings } = exportRuntimeGraph(this.graph);
       const baseName = (this.state.fileName ?? "graph").replace(/\.json$/i, "");
       const defaultPath = this.filePath ? this.filePath.replace(/[^\\/]*$/, `${baseName}.runtime.json`) : `${baseName}.runtime.json`;
-      const saved = await this.files.save(JSON.stringify(graph), this.exportPath, chooseLocation || !this.exportPath, {
+      const target = this.exportPath ?? (afterSave !== null ? defaultPath : null);
+      const saved = await this.files.save(JSON.stringify(graph), target, afterSave === null && (chooseLocation || !target), {
         title: "Export runtime graph",
         defaultPath,
       });
@@ -435,13 +453,14 @@ export class Editor {
       }
       const count = Object.keys(graph.nodes).length;
       const texts = languages.length > 0 ? ` and localization (${languages.join(", ")})` : "";
+      const exported =
+        afterSave !== null
+          ? `${afterSave}; exported to ${saved.name}`
+          : `Exported ${count} node(s)${texts} to ${saved.name}`;
       this.update({
         warnings,
         statusKind: warnings.length === 0 ? "info" : "warning",
-        status:
-          warnings.length === 0
-            ? `Exported ${count} node(s)${texts} to ${saved.name}.`
-            : `Exported ${count} node(s)${texts} to ${saved.name} with ${warnings.length} warning(s).`,
+        status: warnings.length === 0 ? `${exported}.` : `${exported} with ${warnings.length} warning(s).`,
       });
     } catch (error) {
       this.setStatus(`Export failed: ${errorMessage(error)}`, "error");

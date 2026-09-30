@@ -80,6 +80,25 @@ body,
   background: var(--border);
 }
 
+.toolbar-check {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-left: 2px;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.toolbar-check input {
+  margin: 0;
+  accent-color: #7aa2e8;
+  cursor: pointer;
+}
+
+.toolbar-check:hover {
+  color: #e5e7eb;
+}
+
 .toolbar-spacer {
   flex: 1;
 }
