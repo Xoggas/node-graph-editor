@@ -1,0 +1,1142 @@
+import { Application, Container, Graphics } from "pixi.js";
+import type { Editor, GraphReplacedOptions } from "../app/editor";
+import type { GraphChange, GraphModel } from "../graph/graph";
+import { clampZoom, type Connection, MAX_ZOOM, type Port, type Vec2, type Viewport } from "../graph/types";
+import { EdgeView, traceEdgePath } from "./EdgeView";
+import { type Bounds, computeEdgePath, hitTestEdge, rectsIntersect } from "./geometry";
+import { formatNumber, type NodeHit, NodeView, type PortHighlight, type WidgetLayout } from "./NodeView";
+import { installFonts } from "./text";
+import { theme, typeColor } from "./theme";
+
+/** Below this zoom texts are hidden: they are unreadable anyway and dominate the draw cost. */
+const DETAIL_ZOOM = 0.4;
+/** Edges keep at least this on-screen width (px) when zoomed out. */
+const MIN_EDGE_SCREEN_WIDTH = 1.3;
+const EDGE_BASE_WIDTH = 2.25;
+const BOX_SELECT_THRESHOLD = 4;
+/** Max CPU time per frame spent re-stroking edges after a zoom step; the rest continues next frame. */
+const EDGE_RESTYLE_BUDGET_MS = 6;
+
+type Hit =
+  | { kind: "node"; view: NodeView; hit: NodeHit }
+  | { kind: "edge"; view: EdgeView };
+
+type Interaction =
+  | { kind: "none" }
+  | { kind: "pan"; pointerId: number; start: Vec2; startViewport: Viewport }
+  | {
+      kind: "drag";
+      pointerId: number;
+      start: Vec2;
+      origins: Map<string, Vec2>;
+      /** Edges with both ends inside the dragged group: translated instead of rebuilt. */
+      internalEdges: Set<string>;
+      applied: Vec2;
+    }
+  | { kind: "connect"; pointerId: number; from: Port; cursor: Vec2; target: Port | null }
+  | { kind: "box"; pointerId: number; start: Vec2; current: Vec2; mode: "replace" | "add" | "toggle"; initial: Set<string> }
+  | { kind: "button"; pointerId: number; view: NodeView; widget: WidgetLayout };
+
+export interface RendererStats {
+  frameMs: number;
+  visibleNodes: number;
+  visibleEdges: number;
+}
+
+export class GraphRenderer {
+  private readonly app = new Application();
+  private readonly grid = new Graphics();
+  private readonly world = new Container();
+  private readonly edgeLayer = new Container();
+  private readonly nodeLayer = new Container();
+  private readonly preview = new Graphics();
+  private readonly overlay = new Graphics();
+
+  private graph!: GraphModel;
+  private unsubscribeGraph: () => void = () => {};
+  private unsubscribeEditor: () => void = () => {};
+  private readonly nodeViews = new Map<string, NodeView>();
+  private readonly viewsByContainer = new Map<Container, NodeView>();
+  private readonly edgeViews = new Map<string, EdgeView>();
+  private readonly selection = new Set<string>();
+  private selectedEdge: EdgeView | null = null;
+  private hovered: NodeView | null = null;
+  private interaction: Interaction = { kind: "none" };
+  private highlightCache = new Map<string, PortHighlight>();
+
+  private viewport: Viewport = { x: 0, y: 0, zoom: 1 };
+  private screen = { width: 1, height: 1 };
+  private detailVisible = true;
+  private edgeScale = 1;
+  private applyingViewport = false;
+  private spaceDown = false;
+
+  private readonly dirtyEdges = new Set<string>();
+  private readonly restyleEdges = new Set<string>();
+  private translatingEdges: ReadonlySet<string> = new Set();
+  private allEdgesDirty = false;
+  private gridDirty = true;
+  private overlayDirty = false;
+  private frameRequested = false;
+  private initialized = false;
+  private destroyed = false;
+  private resizeObserver: ResizeObserver | null = null;
+  private numberInput: { element: HTMLInputElement; view: NodeView; widget: WidgetLayout } | null = null;
+  private readonly frameTimes: number[] = [];
+  private visibleNodes = 0;
+  private visibleEdges = 0;
+
+  constructor(
+    private readonly host: HTMLElement,
+    private readonly editor: Editor,
+  ) {}
+
+  async init(): Promise<void> {
+    await this.app.init({
+      background: theme.canvasBackground,
+      antialias: true,
+      autoStart: false,
+      sharedTicker: false,
+      autoDensity: true,
+      resolution: window.devicePixelRatio || 1,
+      width: Math.max(1, this.host.clientWidth),
+      height: Math.max(1, this.host.clientHeight),
+      preference: "webgl",
+    });
+    if (this.destroyed) {
+      this.app.destroy(true, { children: true });
+      return;
+    }
+    this.app.ticker?.stop();
+    installFonts();
+
+    const stage = this.app.stage;
+    stage.eventMode = "none";
+    stage.interactiveChildren = false;
+    stage.addChild(this.grid, this.world, this.overlay);
+    this.world.addChild(this.edgeLayer, this.nodeLayer, this.preview);
+
+    const canvas = this.app.canvas;
+    canvas.style.display = "block";
+    canvas.style.touchAction = "none";
+    this.host.appendChild(canvas);
+    canvas.addEventListener("pointerdown", this.onPointerDown);
+    canvas.addEventListener("pointermove", this.onPointerMove);
+    canvas.addEventListener("pointerup", this.onPointerUp);
+    canvas.addEventListener("pointercancel", this.onPointerUp);
+    canvas.addEventListener("pointerleave", this.onPointerLeave);
+    canvas.addEventListener("wheel", this.onWheel, { passive: false });
+    canvas.addEventListener("contextmenu", preventDefault);
+    window.addEventListener("keydown", this.onKeyDown);
+    window.addEventListener("keyup", this.onKeyUp);
+    window.addEventListener("blur", this.onWindowBlur);
+
+    this.resizeObserver = new ResizeObserver(() => this.resize());
+    this.resizeObserver.observe(this.host);
+    this.resize();
+
+    this.initialized = true;
+    this.setGraph(this.editor.graph, { frameAll: false });
+    this.unsubscribeEditor = this.editor.onGraphReplaced((graph, options) => this.setGraph(graph, options));
+  }
+
+  destroy(): void {
+    this.destroyed = true;
+    if (!this.initialized) {
+      return;
+    }
+    this.closeNumberEditor(false);
+    this.unsubscribeGraph();
+    this.unsubscribeEditor();
+    this.resizeObserver?.disconnect();
+    window.removeEventListener("keydown", this.onKeyDown);
+    window.removeEventListener("keyup", this.onKeyUp);
+    window.removeEventListener("blur", this.onWindowBlur);
+    this.app.destroy(true, { children: true });
+  }
+
+  getStats(): RendererStats {
+    const frameMs = this.frameTimes.length === 0 ? 0 : this.frameTimes.reduce((a, b) => a + b, 0) / this.frameTimes.length;
+    return { frameMs, visibleNodes: this.visibleNodes, visibleEdges: this.visibleEdges };
+  }
+
+  /** Converts a client (window) position to graph coordinates, or null when outside the canvas. */
+  clientToGraph(clientX: number, clientY: number): Vec2 | null {
+    if (!this.initialized) {
+      return null;
+    }
+    const rect = this.app.canvas.getBoundingClientRect();
+    const x = clientX - rect.left;
+    const y = clientY - rect.top;
+    if (x < 0 || y < 0 || x > rect.width || y > rect.height) {
+      return null;
+    }
+    return this.screenToWorld({ x, y });
+  }
+
+  viewCenter(): Vec2 {
+    return this.screenToWorld({ x: this.screen.width / 2, y: this.screen.height / 2 });
+  }
+
+  frameAll(): void {
+    if (this.nodeViews.size === 0) {
+      this.setViewport({ x: this.screen.width / 2, y: this.screen.height / 2, zoom: 1 });
+      return;
+    }
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+    for (const view of this.nodeViews.values()) {
+      const { x, y, width, height } = view.rect;
+      minX = Math.min(minX, x);
+      minY = Math.min(minY, y);
+      maxX = Math.max(maxX, x + width);
+      maxY = Math.max(maxY, y + height);
+    }
+    const padding = 48;
+    const zoom = clampZoom(
+      Math.min(
+        (this.screen.width - padding * 2) / Math.max(1, maxX - minX),
+        (this.screen.height - padding * 2) / Math.max(1, maxY - minY),
+        1,
+      ),
+    );
+    this.setViewport({
+      x: (this.screen.width - (maxX - minX) * zoom) / 2 - minX * zoom,
+      y: (this.screen.height - (maxY - minY) * zoom) / 2 - minY * zoom,
+      zoom,
+    });
+  }
+
+  selectAll(): void {
+    this.setSelection(new Set(this.nodeViews.keys()));
+  }
+
+  deleteSelection(): void {
+    const nodeIds = [...this.selection];
+    const connectionIds = this.selectedEdge ? [this.selectedEdge.connection.id] : [];
+    if (nodeIds.length === 0 && connectionIds.length === 0) {
+      return;
+    }
+    this.setSelection(new Set());
+    this.selectEdge(null);
+    this.editor.deleteElements(nodeIds, connectionIds);
+  }
+
+  // --- Graph binding -----------------------------------------------------------
+
+  private setGraph(graph: GraphModel, options: GraphReplacedOptions): void {
+    this.closeNumberEditor(false);
+    this.unsubscribeGraph();
+    this.graph = graph;
+    this.unsubscribeGraph = graph.subscribe(this.onGraphChange);
+    this.interaction = { kind: "none" };
+    this.rebuildAll();
+    if (options.frameAll) {
+      this.frameAll();
+    } else {
+      this.viewport = { ...graph.viewport };
+      this.applyViewport(false);
+    }
+  }
+
+  private rebuildAll(): void {
+    for (const view of this.nodeViews.values()) {
+      view.destroy();
+    }
+    for (const view of this.edgeViews.values()) {
+      view.destroy();
+    }
+    this.nodeViews.clear();
+    this.viewsByContainer.clear();
+    this.edgeViews.clear();
+    this.dirtyEdges.clear();
+    this.restyleEdges.clear();
+    this.translatingEdges = new Set();
+    this.selection.clear();
+    this.selectedEdge = null;
+    this.hovered = null;
+    for (const node of this.graph.nodes) {
+      this.addNodeView(node.id);
+    }
+    for (const connection of this.graph.connections) {
+      this.addEdgeView(connection);
+    }
+    this.allEdgesDirty = true;
+    this.editor.setSelectionCount(0);
+    this.requestFrame();
+  }
+
+  private readonly onGraphChange = (change: GraphChange): void => {
+    switch (change.kind) {
+      case "nodeAdded":
+        this.addNodeView(change.node.id);
+        break;
+      case "nodeRemoved":
+        this.removeNodeView(change.node.id);
+        break;
+      case "nodeMoved": {
+        this.nodeViews.get(change.node.id)?.syncPosition();
+        this.markNodeEdgesDirty(change.node.id);
+        break;
+      }
+      case "nodeStateChanged":
+        this.nodeViews.get(change.node.id)?.refreshState();
+        break;
+      case "nodePortsChanged":
+        this.nodeViews.get(change.node.id)?.rebuild();
+        this.markNodeEdgesDirty(change.node.id);
+        break;
+      case "connectionAdded":
+        this.addEdgeView(change.connection);
+        this.redrawNodes(change.connection);
+        break;
+      case "connectionRemoved": {
+        const view = this.edgeViews.get(change.connection.id);
+        if (view) {
+          if (this.selectedEdge === view) {
+            this.selectedEdge = null;
+          }
+          view.destroy();
+          this.edgeViews.delete(change.connection.id);
+          this.dirtyEdges.delete(change.connection.id);
+          this.restyleEdges.delete(change.connection.id);
+        }
+        this.redrawNodes(change.connection);
+        break;
+      }
+      case "viewportChanged":
+        if (!this.applyingViewport) {
+          this.viewport = { ...this.graph.viewport };
+          this.applyViewport(false);
+        }
+        break;
+      case "reset":
+        this.rebuildAll();
+        break;
+    }
+    this.requestFrame();
+  };
+
+  private addNodeView(nodeId: string): void {
+    const node = this.graph.getNode(nodeId);
+    if (!node || this.nodeViews.has(nodeId)) {
+      return;
+    }
+    const view = new NodeView(node, {
+      isPortConnected: (portId) => this.graph.hasConnections(portId),
+      portHighlight: (port) => this.portHighlight(port),
+    });
+    view.setDetailVisible(this.detailVisible);
+    this.nodeViews.set(nodeId, view);
+    this.viewsByContainer.set(view.container, view);
+    this.nodeLayer.addChild(view.container);
+  }
+
+  private removeNodeView(nodeId: string): void {
+    const view = this.nodeViews.get(nodeId);
+    if (!view) {
+      return;
+    }
+    if (this.hovered === view) {
+      this.hovered = null;
+    }
+    if (this.numberInput?.view === view) {
+      this.closeNumberEditor(false);
+    }
+    if (this.selection.delete(nodeId)) {
+      this.editor.setSelectionCount(this.selection.size);
+    }
+    this.viewsByContainer.delete(view.container);
+    this.nodeViews.delete(nodeId);
+    view.destroy();
+  }
+
+  private addEdgeView(connection: Connection): void {
+    const output = this.graph.getPort(connection.outputPortId);
+    const view = new EdgeView(connection, output ? typeColor(output.typeId) : theme.connection);
+    this.edgeViews.set(connection.id, view);
+    this.edgeLayer.addChild(view.graphics);
+    this.dirtyEdges.add(connection.id);
+  }
+
+  private markNodeEdgesDirty(nodeId: string): void {
+    for (const connection of this.graph.getNodeConnections(nodeId)) {
+      if (!this.translatingEdges.has(connection.id)) {
+        this.dirtyEdges.add(connection.id);
+      }
+    }
+  }
+
+  private redrawNodes(connection: Connection): void {
+    this.nodeViews.get(connection.outputNodeId)?.redraw();
+    this.nodeViews.get(connection.inputNodeId)?.redraw();
+  }
+
+  private refreshEdge(view: EdgeView): void {
+    const { connection } = view;
+    const source = this.nodeViews.get(connection.outputNodeId);
+    const target = this.nodeViews.get(connection.inputNodeId);
+    const start = source?.portWorldPosition(connection.outputPortId);
+    const end = target?.portWorldPosition(connection.inputPortId);
+    view.update(start && end ? computeEdgePath(start, end, source!.rect, target!.rect) : null, this.edgeScale);
+  }
+
+  // --- Frame loop ----------------------------------------------------------------
+
+  private requestFrame(): void {
+    if (this.frameRequested || !this.initialized || this.destroyed) {
+      return;
+    }
+    this.frameRequested = true;
+    requestAnimationFrame(this.frame);
+  }
+
+  /** Renders on demand: nothing is redrawn while the graph and the view are idle. */
+  private readonly frame = (): void => {
+    this.frameRequested = false;
+    if (this.destroyed) {
+      return;
+    }
+    const started = performance.now();
+
+    if (this.allEdgesDirty) {
+      this.allEdgesDirty = false;
+      this.dirtyEdges.clear();
+      this.edgeViews.forEach((view) => this.refreshEdge(view));
+    } else if (this.dirtyEdges.size > 0) {
+      for (const id of this.dirtyEdges) {
+        const view = this.edgeViews.get(id);
+        if (view) {
+          this.refreshEdge(view);
+        }
+      }
+      this.dirtyEdges.clear();
+    }
+    if (this.restyleEdges.size > 0) {
+      this.restyleEdgesWithinBudget(started);
+    }
+    this.cull();
+    if (this.gridDirty) {
+      this.gridDirty = false;
+      this.drawGrid();
+    }
+    this.drawPreview();
+    if (this.overlayDirty) {
+      this.overlayDirty = false;
+      this.drawOverlay();
+    }
+    this.app.render();
+
+    this.frameTimes.push(performance.now() - started);
+    if (this.frameTimes.length > 30) {
+      this.frameTimes.shift();
+    }
+  };
+
+  private restyleEdgesWithinBudget(started: number): void {
+    let processed = 0;
+    for (const id of this.restyleEdges) {
+      this.restyleEdges.delete(id);
+      this.edgeViews.get(id)?.redraw(this.edgeScale);
+      if (++processed % 32 === 0 && performance.now() - started > EDGE_RESTYLE_BUDGET_MS) {
+        break;
+      }
+    }
+    if (this.restyleEdges.size > 0) {
+      this.requestFrame();
+    }
+  }
+
+  private cull(): void {
+    const view = this.visibleWorldBounds(24);
+    let visibleNodes = 0;
+    for (const nodeView of this.nodeViews.values()) {
+      const { x, y, width, height } = nodeView.rect;
+      const visible = rectsIntersect({ minX: x, minY: y, maxX: x + width, maxY: y + height }, view);
+      nodeView.container.visible = visible;
+      if (visible) {
+        visibleNodes++;
+        if (nodeView.stale) {
+          nodeView.stale = false;
+          nodeView.redraw();
+        }
+      }
+    }
+    let visibleEdges = 0;
+    for (const edgeView of this.edgeViews.values()) {
+      const visible = rectsIntersect(edgeView.bounds, view);
+      edgeView.graphics.visible = visible;
+      visibleEdges += visible ? 1 : 0;
+    }
+    this.visibleNodes = visibleNodes;
+    this.visibleEdges = visibleEdges;
+  }
+
+  private drawGrid(): void {
+    const g = this.grid;
+    g.clear();
+    const { width, height } = this.screen;
+    let spacing = 32 * this.viewport.zoom;
+    while (spacing < 14) {
+      spacing *= 5;
+    }
+    const major = spacing * 5;
+    const lines = (step: number) => {
+      for (let x = mod(this.viewport.x, step); x <= width; x += step) {
+        const px = Math.round(x) + 0.5;
+        g.moveTo(px, 0).lineTo(px, height);
+      }
+      for (let y = mod(this.viewport.y, step); y <= height; y += step) {
+        const py = Math.round(y) + 0.5;
+        g.moveTo(0, py).lineTo(width, py);
+      }
+    };
+    lines(spacing);
+    g.stroke({ width: 1, ...theme.gridMinor });
+    lines(major);
+    g.stroke({ width: 1, ...theme.gridMajor });
+  }
+
+  private drawPreview(): void {
+    const g = this.preview;
+    g.clear();
+    if (this.interaction.kind !== "connect") {
+      return;
+    }
+    const { from, cursor, target } = this.interaction;
+    const fromPosition = this.nodeViews.get(from.nodeId)?.portWorldPosition(from.id);
+    if (!fromPosition) {
+      return;
+    }
+    const other = (target && this.nodeViews.get(target.nodeId)?.portWorldPosition(target.id)) || cursor;
+    const [start, end] = from.direction === "Output" ? [fromPosition, other] : [other, fromPosition];
+    traceEdgePath(g, computeEdgePath(start, end));
+    g.stroke({ width: 2.5 * this.edgeScale, color: typeColor(from.typeId), alpha: target ? 1 : 0.75, cap: "round" });
+  }
+
+  private drawOverlay(): void {
+    const g = this.overlay;
+    g.clear();
+    if (this.interaction.kind !== "box") {
+      return;
+    }
+    const { start, current } = this.interaction;
+    const x = Math.min(start.x, current.x);
+    const y = Math.min(start.y, current.y);
+    g.rect(x, y, Math.abs(current.x - start.x), Math.abs(current.y - start.y))
+      .fill(theme.selectionFill)
+      .stroke({ width: 1, ...theme.selectionStroke });
+  }
+
+  // --- Viewport ------------------------------------------------------------------
+
+  private resize(): void {
+    const width = Math.max(1, this.host.clientWidth);
+    const height = Math.max(1, this.host.clientHeight);
+    this.screen = { width, height };
+    this.app.renderer.resize(width, height);
+    this.gridDirty = true;
+    this.requestFrame();
+  }
+
+  private setViewport(viewport: Viewport): void {
+    this.viewport = { x: viewport.x, y: viewport.y, zoom: clampZoom(viewport.zoom) };
+    this.applyViewport(true);
+  }
+
+  private applyViewport(commit: boolean): void {
+    const { x, y, zoom } = this.viewport;
+    this.world.position.set(x, y);
+    this.world.scale.set(zoom);
+    this.gridDirty = true;
+    this.closeNumberEditor(true);
+
+    const detailVisible = zoom >= DETAIL_ZOOM;
+    if (detailVisible !== this.detailVisible) {
+      this.detailVisible = detailVisible;
+      this.nodeViews.forEach((view) => view.setDetailVisible(detailVisible));
+    }
+
+    // Keep edges readable when zoomed out; quantized so edges are only rebuilt on a few zoom steps.
+    const wanted = Math.max(1, MIN_EDGE_SCREEN_WIDTH / (EDGE_BASE_WIDTH * zoom));
+    const edgeScale = wanted <= 1 ? 1 : Math.pow(1.3, Math.ceil(Math.log(wanted) / Math.log(1.3)));
+    if (edgeScale !== this.edgeScale) {
+      this.edgeScale = edgeScale;
+      this.edgeViews.forEach((_, id) => this.restyleEdges.add(id));
+    }
+
+    if (commit) {
+      this.applyingViewport = true;
+      try {
+        this.graph.setViewport(this.viewport);
+      } finally {
+        this.applyingViewport = false;
+      }
+    }
+    this.requestFrame();
+  }
+
+  private screenToWorld(point: Vec2): Vec2 {
+    return {
+      x: (point.x - this.viewport.x) / this.viewport.zoom,
+      y: (point.y - this.viewport.y) / this.viewport.zoom,
+    };
+  }
+
+  private visibleWorldBounds(paddingPx: number): Bounds {
+    const { x, y, zoom } = this.viewport;
+    return {
+      minX: (-paddingPx - x) / zoom,
+      minY: (-paddingPx - y) / zoom,
+      maxX: (this.screen.width + paddingPx - x) / zoom,
+      maxY: (this.screen.height + paddingPx - y) / zoom,
+    };
+  }
+
+  // --- Selection -------------------------------------------------------------------
+
+  private setSelection(next: Set<string>): void {
+    for (const id of this.selection) {
+      if (!next.has(id)) {
+        this.setNodeSelected(id, false);
+      }
+    }
+    for (const id of next) {
+      if (!this.selection.has(id)) {
+        this.setNodeSelected(id, true);
+      }
+    }
+    this.selection.clear();
+    next.forEach((id) => this.selection.add(id));
+    this.editor.setSelectionCount(this.selection.size);
+    this.requestFrame();
+  }
+
+  private setNodeSelected(nodeId: string, selected: boolean): void {
+    const view = this.nodeViews.get(nodeId);
+    if (view && view.selected !== selected) {
+      view.selected = selected;
+      view.redraw();
+    }
+  }
+
+  private selectEdge(view: EdgeView | null): void {
+    if (this.selectedEdge === view) {
+      return;
+    }
+    if (this.selectedEdge) {
+      this.selectedEdge.selected = false;
+      this.selectedEdge.redraw(this.edgeScale);
+    }
+    this.selectedEdge = view;
+    if (view) {
+      view.selected = true;
+      view.redraw(this.edgeScale);
+      this.edgeLayer.addChild(view.graphics);
+    }
+    this.requestFrame();
+  }
+
+  private bringToFront(nodeIds: Iterable<string>): void {
+    for (const id of nodeIds) {
+      const view = this.nodeViews.get(id);
+      if (view) {
+        this.nodeLayer.addChild(view.container);
+      }
+    }
+  }
+
+  // --- Hit testing -----------------------------------------------------------------
+
+  private hitTest(world: Vec2, includeEdges = true): Hit | null {
+    const portRadius = Math.max(9, 7 / this.viewport.zoom);
+    const children = this.nodeLayer.children;
+    for (let i = children.length - 1; i >= 0; i--) {
+      const view = this.viewsByContainer.get(children[i]);
+      if (!view) {
+        continue;
+      }
+      const { x, y, width, height } = view.rect;
+      if (world.x < x - portRadius || world.y < y || world.x > x + width + portRadius || world.y > y + height) {
+        continue;
+      }
+      const hit = view.hitTest(world.x - x, world.y - y, portRadius);
+      if (hit) {
+        return { kind: "node", view, hit };
+      }
+    }
+    if (!includeEdges) {
+      return null;
+    }
+    const tolerance = 6 / this.viewport.zoom;
+    const views = [...this.edgeViews.values()];
+    for (let i = views.length - 1; i >= 0; i--) {
+      const view = views[i];
+      const b = view.bounds;
+      if (view.path && world.x >= b.minX && world.x <= b.maxX && world.y >= b.minY && world.y <= b.maxY) {
+        if (hitTestEdge(view.path, world, tolerance)) {
+          return { kind: "edge", view };
+        }
+      }
+    }
+    return null;
+  }
+
+  private portHighlight(port: Port): PortHighlight {
+    if (this.interaction.kind !== "connect") {
+      return "normal";
+    }
+    let highlight = this.highlightCache.get(port.id);
+    if (highlight === undefined) {
+      const from = this.interaction.from;
+      if (port.id === from.id) {
+        highlight = "compatible";
+      } else if (port.direction === from.direction) {
+        highlight = "incompatible";
+      } else {
+        const [output, input] = from.direction === "Output" ? [from, port] : [port, from];
+        highlight = this.graph.canConnect(output.id, input.id) === null ? "compatible" : "incompatible";
+      }
+      this.highlightCache.set(port.id, highlight);
+    }
+    return highlight;
+  }
+
+  /** Redraws visible nodes now and marks the rest to redraw once they scroll into view. */
+  private invalidateAllNodes(): void {
+    this.highlightCache.clear();
+    for (const view of this.nodeViews.values()) {
+      if (view.container.visible) {
+        view.redraw();
+      } else {
+        view.stale = true;
+      }
+    }
+    this.requestFrame();
+  }
+
+  private setHovered(view: NodeView | null, portId: string | null, widgetIndex: number | null): void {
+    if (this.hovered && this.hovered !== view) {
+      const previous = this.hovered;
+      previous.hovered = false;
+      previous.hoveredPortId = null;
+      previous.hoveredWidget = null;
+      previous.redraw();
+    }
+    this.hovered = view;
+    if (view && (!view.hovered || view.hoveredPortId !== portId || view.hoveredWidget !== widgetIndex)) {
+      view.hovered = true;
+      view.hoveredPortId = portId;
+      view.hoveredWidget = widgetIndex;
+      view.redraw();
+    }
+    this.requestFrame();
+  }
+
+  // --- Pointer input ---------------------------------------------------------------
+
+  private localPoint(event: PointerEvent | WheelEvent): Vec2 {
+    const rect = this.app.canvas.getBoundingClientRect();
+    return { x: event.clientX - rect.left, y: event.clientY - rect.top };
+  }
+
+  private readonly onPointerDown = (event: PointerEvent): void => {
+    if (this.interaction.kind !== "none") {
+      return;
+    }
+    const point = this.localPoint(event);
+    const world = this.screenToWorld(point);
+    const canvas = this.app.canvas;
+    // Suppress the compatibility mousedown, which would move focus away from an inline editor we open below.
+    event.preventDefault();
+    if (document.activeElement instanceof HTMLElement && document.activeElement !== document.body) {
+      document.activeElement.blur();
+    }
+
+    if (event.button === 1 || event.button === 2 || (event.button === 0 && this.spaceDown)) {
+      event.preventDefault();
+      this.interaction = { kind: "pan", pointerId: event.pointerId, start: point, startViewport: { ...this.viewport } };
+      canvas.setPointerCapture(event.pointerId);
+      canvas.style.cursor = "grabbing";
+      return;
+    }
+    if (event.button !== 0) {
+      return;
+    }
+
+    const hit = this.hitTest(world);
+    const additive = event.shiftKey;
+    const toggle = event.ctrlKey || event.metaKey;
+
+    if (hit?.kind === "node" && hit.hit.kind === "port") {
+      this.selectEdge(null);
+      this.interaction = { kind: "connect", pointerId: event.pointerId, from: hit.hit.port, cursor: world, target: null };
+      this.invalidateAllNodes();
+      this.editor.setStatus(`Connecting from ${hit.hit.port.displayName}...`);
+    } else if (hit?.kind === "node") {
+      const nodeId = hit.view.node.id;
+      this.selectEdge(null);
+      if (toggle) {
+        const next = new Set(this.selection);
+        if (!next.delete(nodeId)) {
+          next.add(nodeId);
+        }
+        this.setSelection(next);
+      } else if (additive) {
+        this.setSelection(new Set([...this.selection, nodeId]));
+      } else if (!this.selection.has(nodeId)) {
+        this.setSelection(new Set([nodeId]));
+      }
+
+      if (hit.hit.kind === "widget") {
+        const { widget } = hit.hit;
+        if (widget.widget.kind === "number") {
+          this.openNumberEditor(hit.view, widget);
+          return;
+        }
+        hit.view.pressedWidget = widget.index;
+        hit.view.redraw();
+        this.interaction = { kind: "button", pointerId: event.pointerId, view: hit.view, widget };
+      } else if (this.selection.has(nodeId)) {
+        this.bringToFront(this.selection);
+        const origins = new Map<string, Vec2>();
+        const internalEdges = new Set<string>();
+        for (const id of this.selection) {
+          const node = this.graph.getNode(id);
+          if (node) {
+            origins.set(id, { ...node.position });
+            for (const connection of this.graph.getNodeConnections(id)) {
+              if (this.selection.has(connection.outputNodeId) && this.selection.has(connection.inputNodeId)) {
+                internalEdges.add(connection.id);
+              }
+            }
+          }
+        }
+        this.translatingEdges = internalEdges;
+        this.interaction = {
+          kind: "drag",
+          pointerId: event.pointerId,
+          start: world,
+          origins,
+          internalEdges,
+          applied: { x: 0, y: 0 },
+        };
+      }
+    } else if (hit?.kind === "edge") {
+      this.setSelection(new Set());
+      this.selectEdge(hit.view);
+      this.editor.setStatus("Connection selected.");
+    } else {
+      this.selectEdge(null);
+      const mode = toggle ? "toggle" : additive ? "add" : "replace";
+      if (mode === "replace") {
+        this.setSelection(new Set());
+      }
+      this.interaction = {
+        kind: "box",
+        pointerId: event.pointerId,
+        start: point,
+        current: point,
+        mode,
+        initial: new Set(this.selection),
+      };
+    }
+
+    if (this.interaction.kind !== "none") {
+      canvas.setPointerCapture(event.pointerId);
+    }
+    this.requestFrame();
+  };
+
+  private readonly onPointerMove = (event: PointerEvent): void => {
+    const point = this.localPoint(event);
+    const world = this.screenToWorld(point);
+    const interaction = this.interaction;
+
+    switch (interaction.kind) {
+      case "none":
+        this.updateHover(world);
+        return;
+      case "pan":
+        if (event.pointerId === interaction.pointerId) {
+          this.setViewport({
+            x: interaction.startViewport.x + point.x - interaction.start.x,
+            y: interaction.startViewport.y + point.y - interaction.start.y,
+            zoom: interaction.startViewport.zoom,
+          });
+        }
+        return;
+      case "drag": {
+        if (event.pointerId !== interaction.pointerId) {
+          return;
+        }
+        const dx = world.x - interaction.start.x;
+        const dy = world.y - interaction.start.y;
+        for (const [id, origin] of interaction.origins) {
+          this.graph.moveNode(id, { x: origin.x + dx, y: origin.y + dy });
+        }
+        const stepX = dx - interaction.applied.x;
+        const stepY = dy - interaction.applied.y;
+        interaction.applied = { x: dx, y: dy };
+        for (const id of interaction.internalEdges) {
+          this.edgeViews.get(id)?.translate(stepX, stepY);
+        }
+        return;
+      }
+      case "connect": {
+        if (event.pointerId !== interaction.pointerId) {
+          return;
+        }
+        interaction.cursor = world;
+        const hit = this.hitTest(world, false);
+        const port = hit?.kind === "node" && hit.hit.kind === "port" ? hit.hit.port : null;
+        interaction.target = port && this.portHighlight(port) === "compatible" && port.id !== interaction.from.id ? port : null;
+        this.requestFrame();
+        return;
+      }
+      case "box":
+        if (event.pointerId === interaction.pointerId) {
+          interaction.current = point;
+          this.overlayDirty = true;
+          this.updateBoxSelection(interaction);
+        }
+        return;
+      case "button": {
+        const hit = this.hitTest(world, false);
+        const over = hit?.kind === "node" && hit.view === interaction.view && hit.hit.kind === "widget" && hit.hit.widget.index === interaction.widget.index;
+        const pressed = over ? interaction.widget.index : null;
+        if (interaction.view.pressedWidget !== pressed) {
+          interaction.view.pressedWidget = pressed;
+          interaction.view.redraw();
+          this.requestFrame();
+        }
+        return;
+      }
+    }
+  };
+
+  private readonly onPointerUp = (event: PointerEvent): void => {
+    const interaction = this.interaction;
+    if (interaction.kind === "none" || event.pointerId !== interaction.pointerId) {
+      return;
+    }
+    this.interaction = { kind: "none" };
+    const canvas = this.app.canvas;
+    if (canvas.hasPointerCapture(event.pointerId)) {
+      canvas.releasePointerCapture(event.pointerId);
+    }
+    canvas.style.cursor = "";
+
+    switch (interaction.kind) {
+      case "connect":
+        if (interaction.target) {
+          this.editor.connectPorts(interaction.from.id, interaction.target.id);
+        } else {
+          const hit = this.hitTest(this.screenToWorld(this.localPoint(event)), false);
+          if (hit?.kind === "node" && hit.hit.kind === "port" && hit.hit.port.id !== interaction.from.id) {
+            // Let the editor report why the connection is not allowed.
+            this.editor.connectPorts(interaction.from.id, hit.hit.port.id);
+          } else {
+            this.editor.setStatus("Connection cancelled.");
+          }
+        }
+        this.invalidateAllNodes();
+        break;
+      case "box":
+        this.overlayDirty = true;
+        break;
+      case "drag":
+        this.translatingEdges = new Set();
+        break;
+      case "button": {
+        const { view, widget } = interaction;
+        const clicked = view.pressedWidget === widget.index;
+        view.pressedWidget = null;
+        view.redraw();
+        if (clicked) {
+          this.editor.runWidgetAction(view.node.id, widget.index);
+        }
+        break;
+      }
+    }
+    this.updateHover(this.screenToWorld(this.localPoint(event)));
+    this.requestFrame();
+  };
+
+  private readonly onPointerLeave = (): void => {
+    if (this.interaction.kind === "none" && this.hovered) {
+      this.setHovered(null, null, null);
+      this.app.canvas.style.cursor = "";
+    }
+  };
+
+  private readonly onWheel = (event: WheelEvent): void => {
+    event.preventDefault();
+    const point = this.localPoint(event);
+    const delta = event.deltaMode === 1 ? event.deltaY * 16 : event.deltaMode === 2 ? event.deltaY * 400 : event.deltaY;
+    const zoom = clampZoom(this.viewport.zoom * Math.exp(-delta * 0.0015));
+    if (zoom === this.viewport.zoom) {
+      return;
+    }
+    const ratio = zoom / this.viewport.zoom;
+    this.setViewport({
+      x: point.x - (point.x - this.viewport.x) * ratio,
+      y: point.y - (point.y - this.viewport.y) * ratio,
+      zoom: Math.min(MAX_ZOOM, zoom),
+    });
+  };
+
+  private updateHover(world: Vec2): void {
+    const hit = this.hitTest(world, false);
+    const canvas = this.app.canvas;
+    if (hit?.kind !== "node") {
+      if (this.hovered) {
+        this.setHovered(null, null, null);
+      }
+      canvas.style.cursor = this.spaceDown ? "grab" : "";
+      return;
+    }
+    const portId = hit.hit.kind === "port" ? hit.hit.port.id : null;
+    const widget = hit.hit.kind === "widget" ? hit.hit.widget.index : null;
+    this.setHovered(hit.view, portId, widget);
+    canvas.style.cursor = portId ? "crosshair" : widget !== null ? "pointer" : "move";
+  }
+
+  private updateBoxSelection(box: Extract<Interaction, { kind: "box" }>): void {
+    if (Math.abs(box.current.x - box.start.x) < BOX_SELECT_THRESHOLD && Math.abs(box.current.y - box.start.y) < BOX_SELECT_THRESHOLD) {
+      return;
+    }
+    const a = this.screenToWorld(box.start);
+    const b = this.screenToWorld(box.current);
+    const area: Bounds = { minX: Math.min(a.x, b.x), minY: Math.min(a.y, b.y), maxX: Math.max(a.x, b.x), maxY: Math.max(a.y, b.y) };
+    const next = box.mode === "replace" ? new Set<string>() : new Set(box.initial);
+    for (const view of this.nodeViews.values()) {
+      const { x, y, width, height } = view.rect;
+      if (!rectsIntersect({ minX: x, minY: y, maxX: x + width, maxY: y + height }, area)) {
+        continue;
+      }
+      const id = view.node.id;
+      if (box.mode === "toggle" && box.initial.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+    }
+    this.setSelection(next);
+  }
+
+  // --- Keyboard ------------------------------------------------------------------------
+
+  private readonly onKeyDown = (event: KeyboardEvent): void => {
+    if (isEditableTarget(event.target)) {
+      return;
+    }
+    const ctrl = event.ctrlKey || event.metaKey;
+    if (event.key === "Delete" || event.key === "Backspace") {
+      event.preventDefault();
+      this.deleteSelection();
+    } else if (ctrl && event.key.toLowerCase() === "a") {
+      event.preventDefault();
+      this.selectAll();
+    } else if (!ctrl && (event.key === "f" || event.key === "F" || event.key === "Home")) {
+      this.frameAll();
+    } else if (event.key === "Escape") {
+      this.setSelection(new Set());
+      this.selectEdge(null);
+    } else if (event.key === " " && !this.spaceDown) {
+      this.spaceDown = true;
+      if (this.interaction.kind === "none") {
+        this.app.canvas.style.cursor = "grab";
+      }
+      event.preventDefault();
+    }
+  };
+
+  private readonly onKeyUp = (event: KeyboardEvent): void => {
+    if (event.key === " ") {
+      this.spaceDown = false;
+      if (this.interaction.kind === "none") {
+        this.app.canvas.style.cursor = "";
+      }
+    }
+  };
+
+  private readonly onWindowBlur = (): void => {
+    this.spaceDown = false;
+  };
+
+  // --- Number editing overlay ------------------------------------------------------------
+
+  private openNumberEditor(view: NodeView, widget: WidgetLayout): void {
+    this.closeNumberEditor(true);
+    if (widget.widget.kind !== "number") {
+      return;
+    }
+    const { zoom } = this.viewport;
+    const rect = widget.hitRect;
+    const screen = {
+      x: this.viewport.x + (view.node.position.x + rect.x) * zoom,
+      y: this.viewport.y + (view.node.position.y + rect.y) * zoom,
+    };
+    const element = document.createElement("input");
+    element.className = "ng-number-input";
+    element.type = "text";
+    element.inputMode = "decimal";
+    element.spellcheck = false;
+    element.value = formatNumber(widget.widget.get(view.node.state));
+    Object.assign(element.style, {
+      left: `${screen.x}px`,
+      top: `${screen.y}px`,
+      width: `${rect.width * zoom}px`,
+      height: `${rect.height * zoom}px`,
+      fontSize: `${12 * zoom}px`,
+    });
+    element.addEventListener("keydown", (event) => {
+      event.stopPropagation();
+      if (event.key === "Enter") {
+        this.closeNumberEditor(true);
+      } else if (event.key === "Escape") {
+        this.closeNumberEditor(false);
+      }
+    });
+    element.addEventListener("blur", () => this.closeNumberEditor(true));
+    this.host.appendChild(element);
+    this.numberInput = { element, view, widget };
+    element.focus();
+    element.select();
+  }
+
+  private closeNumberEditor(commit: boolean): void {
+    const input = this.numberInput;
+    if (!input) {
+      return;
+    }
+    this.numberInput = null;
+    if (commit) {
+      const value = Number(input.element.value.trim().replace(",", "."));
+      if (input.element.value.trim() !== "" && Number.isFinite(value)) {
+        this.editor.setNumberWidget(input.view.node.id, input.widget.index, value);
+      } else {
+        this.editor.setStatus("Invalid number.");
+      }
+    }
+    input.element.remove();
+  }
+}
+
+function mod(value: number, step: number): number {
+  return ((value % step) + step) % step;
+}
+
+function preventDefault(event: Event): void {
+  event.preventDefault();
+}
+
+function isEditableTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) {
+    return false;
+  }
+  return target.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName);
+}
