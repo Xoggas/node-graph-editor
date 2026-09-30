@@ -270,7 +270,6 @@ export default function App() {
           <LocalizationTable
             editor={editor}
             languages={snapshot.languages}
-            languageSelect={languageSelect || null}
             focusRequest={resourceFocusRequest}
             onShowUses={showUses}
           />

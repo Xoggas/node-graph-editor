@@ -1,12 +1,10 @@
-import { type ReactNode, useEffect, useReducer, useRef, useState } from "react";
+import { useEffect, useReducer, useRef, useState } from "react";
 import type { Editor } from "../app/editor";
 import { localizationUsage } from "../graph/localization";
 
 interface LocalizationTableProps {
   editor: Editor;
   languages: readonly string[];
-  /** The language switch, shown next to the filter. */
-  languageSelect: ReactNode;
   /** Bumped to focus the filter (Ctrl+F on this tab). */
   focusRequest: number;
   /** Shows the nodes that use a key on the graph tab. */
@@ -18,12 +16,28 @@ type Show = "all" | "missing" | "unused";
 const SHOW_LABELS: Record<Show, string> = { all: "All", missing: "Missing text", unused: "Unused" };
 /** Rows rendered at once; the rest follow when scrolled near the end. */
 const PAGE = 200;
+/** The chosen left and right languages, e.g. "ru|en". */
+const COLUMNS_KEY = "node-graph-editor.localizationColumns";
 
 /**
- * The pack's localization tables side by side: one row per key, one column per language. Texts are
- * edited in place (undoable, saved with Save); keys the graph uses link to their nodes.
+ * Two localization tables side by side (left and right language are chosen in the column headers):
+ * one row per key. Texts are edited in place (undoable, saved with Save); keys the graph uses link to
+ * their nodes.
  */
-export function LocalizationTable({ editor, languages, languageSelect, focusRequest, onShowUses }: LocalizationTableProps) {
+export function LocalizationTable({ editor, languages, focusRequest, onShowUses }: LocalizationTableProps) {
+  const [columns, setColumns] = useState<[string, string]>(() => initialColumns());
+  // Fall back to the pack's first languages when a remembered one is not in this pack.
+  const left = languages.includes(columns[0]) ? columns[0] : languages[0];
+  const right = languages.includes(columns[1]) ? columns[1] : (languages.find((language) => language !== left) ?? left);
+  const shown = left === right ? [left] : [left, right];
+  const choose = (next: [string, string]) => {
+    setColumns(next);
+    try {
+      localStorage.setItem(COLUMNS_KEY, next.join("|"));
+    } catch {
+      // Only a convenience.
+    }
+  };
   const [query, setQuery] = useState("");
   const [show, setShow] = useState<Show>("all");
   const [limit, setLimit] = useState(PAGE);
@@ -47,13 +61,13 @@ export function LocalizationTable({ editor, languages, languageSelect, focusRequ
   const store = editor.localization;
   const usage = localizationUsage(editor.graph.nodes);
   const keys = [...new Set([...store.keys(), ...usage.keys()])].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
-  const missing = (key: string) => languages.some((language) => !store.get(language, key)?.trim());
+  const missing = (key: string) => shown.some((language) => !store.get(language, key)?.trim());
 
   const needle = normalize(query.trim());
   const rows = keys.filter((key) => {
     if (show === "missing" && !missing(key)) return false;
     if (show === "unused" && usage.has(key)) return false;
-    return !needle || normalize(key).includes(needle) || languages.some((language) => normalize(store.get(language, key) ?? "").includes(needle));
+    return !needle || normalize(key).includes(needle) || shown.some((language) => normalize(store.get(language, key) ?? "").includes(needle));
   });
   const counts = { all: keys.length, missing: keys.filter(missing).length, unused: keys.filter((key) => !usage.has(key)).length };
 
@@ -92,7 +106,6 @@ export function LocalizationTable({ editor, languages, languageSelect, focusRequ
             }
           }}
         />
-        {languageSelect}
       </div>
       {languages.length === 0 ? (
         <div className="resource-empty">The schema pack has no languages.</div>
@@ -111,9 +124,21 @@ export function LocalizationTable({ editor, languages, languageSelect, focusRequ
             <thead>
               <tr>
                 <th className="localization-col-key">Key</th>
-                {languages.map((language) => (
-                  <th key={language}>{language.toUpperCase()}</th>
-                ))}
+                <th>
+                  <div className="localization-column">
+                    <LanguagePicker languages={languages} value={left} onChange={(language) => choose(language === right ? [right, left] : [language, right])} />
+                    {languages.length > 1 && (
+                      <button className="localization-swap" title="Swap the languages" onClick={() => choose([right, left])}>
+                        ⇄
+                      </button>
+                    )}
+                  </div>
+                </th>
+                {left !== right && (
+                  <th>
+                    <LanguagePicker languages={languages} value={right} onChange={(language) => choose(language === left ? [right, left] : [left, language])} />
+                  </th>
+                )}
                 <th className="resource-col-uses">Used</th>
               </tr>
             </thead>
@@ -125,7 +150,7 @@ export function LocalizationTable({ editor, languages, languageSelect, focusRequ
                     <td className="localization-col-key">
                       <span className="localization-key">{key}</span>
                     </td>
-                    {languages.map((language) => (
+                    {shown.map((language) => (
                       <td key={language} className="localization-cell">
                         <TextCell
                           value={store.get(language, key)}
@@ -154,6 +179,27 @@ export function LocalizationTable({ editor, languages, languageSelect, focusRequ
       )}
     </div>
   );
+}
+
+function LanguagePicker({ languages, value, onChange }: { languages: readonly string[]; value: string; onChange: (language: string) => void }) {
+  return (
+    <select className="localization-language" value={value} onChange={(event) => onChange(event.target.value)} title="Language of this column">
+      {languages.map((language) => (
+        <option key={language} value={language}>
+          {language.toUpperCase()}
+        </option>
+      ))}
+    </select>
+  );
+}
+
+function initialColumns(): [string, string] {
+  try {
+    const [left = "", right = ""] = (localStorage.getItem(COLUMNS_KEY) ?? "").split("|");
+    return [left, right];
+  } catch {
+    return ["", ""];
+  }
 }
 
 /** A text shown as-is; a click turns it into a text area (Ctrl+Enter or leaving it saves, Esc cancels). */

@@ -540,6 +540,49 @@ body,
   width: 110px;
 }
 
+.localization-column {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+/* Column header pickers: look like the header text until hovered. */
+.localization-language {
+  padding: 2px 4px;
+  color: #e5e7eb;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  background: #2b2e35;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  cursor: pointer;
+}
+
+.localization-language:hover {
+  border-color: #999da6;
+}
+
+.localization-swap {
+  padding: 0 7px;
+  color: var(--muted);
+  font: inherit;
+  font-size: 14px;
+  line-height: 20px;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  cursor: pointer;
+}
+
+.localization-swap:hover {
+  color: #e5e7eb;
+  background: #2e3036;
+  border-color: var(--border);
+}
+
 .localization-key {
   color: #c8ccd4;
   font: 12px Consolas, "Cascadia Mono", monospace;
