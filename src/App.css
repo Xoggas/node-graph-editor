@@ -548,13 +548,15 @@ body,
 
 /* Between the pack and the node list: things that are not node types. */
 .palette-extras {
-  padding: 0 8px 10px;
+  /* The same gap above (the pack's margin) and below the item. */
+  padding: 0 8px 8px;
   margin-bottom: 8px;
   border-bottom: 1px solid var(--border);
 }
 
 .palette-item.palette-note {
   display: flex;
+  margin-bottom: 0;
   align-items: center;
   gap: 8px;
   border-left-color: #ebd583;
