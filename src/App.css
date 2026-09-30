@@ -1514,6 +1514,11 @@ kbd {
   border-radius: 4px;
 }
 
+/* Zebra stripes, so long wrapped messages are easy to tell apart. */
+.problems-row:nth-child(even) {
+  background: #272a30;
+}
+
 .problems-row.linked {
   cursor: pointer;
 }
