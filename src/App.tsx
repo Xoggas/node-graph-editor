@@ -9,6 +9,7 @@ import { buildContextMenu } from "./ui/contextMenuItems";
 import { GraphCanvas } from "./ui/GraphCanvas";
 import { NodePalette } from "./ui/NodePalette";
 import { ProblemsPanel, summary } from "./ui/ProblemsPanel";
+import { LocalizationTable } from "./ui/LocalizationTable";
 import { ResourceBrowser } from "./ui/ResourceBrowser";
 import { SearchPanel } from "./ui/SearchPanel";
 import { ShortcutHelp } from "./ui/ShortcutHelp";
@@ -20,8 +21,10 @@ const DROP_OFFSET = { x: 110, y: 48 };
 const STATUS_VISIBLE_MS = 4000;
 const TOAST_VISIBLE_MS = 5000;
 const MAX_TOASTS = 3;
-/** The tab with the graph; the others are resource types of the pack. */
+/** The tab with the graph; the others are the localization table and resource types of the pack. */
 const GRAPH_TAB = "graph";
+/** Not a valid resource type id, so it cannot clash with one. */
+const LOCALIZATION_TAB = "@localization";
 
 interface Toast extends Notice {
   id: number;
@@ -57,7 +60,8 @@ export default function App() {
   const resourceTypes = useMemo(() => (library ? [...library.types.values()] : []), [library]);
   const [tab, setTab] = useState(GRAPH_TAB);
   const resourceType = tab === GRAPH_TAB ? undefined : resourceTypes.find((type) => type.id === tab);
-  const activeTab = resourceType ? tab : GRAPH_TAB;
+  const hasLocalization = snapshot.languages.length > 0;
+  const activeTab = resourceType || (tab === LOCALIZATION_TAB && hasLocalization) ? tab : GRAPH_TAB;
   const activeTabRef = useRef(activeTab);
   activeTabRef.current = activeTab;
   const [resourceFocusRequest, setResourceFocusRequest] = useState(0);
@@ -128,7 +132,7 @@ export default function App() {
       }
       // Graph commands do nothing on a resource tab, where the graph is hidden.
       const onGraph = activeTabRef.current === GRAPH_TAB;
-      if (!onGraph && !shortcut.global) {
+      if (!onGraph && !shortcut.global && !shortcut.anyTab) {
         return;
       }
       event.preventDefault();
@@ -262,6 +266,15 @@ export default function App() {
           onChoosePack={() => void editor.choosePackFolder()}
           onReloadPack={() => void editor.reloadPack()}
         />
+        {activeTab === LOCALIZATION_TAB && (
+          <LocalizationTable
+            editor={editor}
+            languages={snapshot.languages}
+            languageSelect={languageSelect || null}
+            focusRequest={resourceFocusRequest}
+            onShowUses={showUses}
+          />
+        )}
         {resourceType && library && (
           <ResourceBrowser
             editor={editor}
@@ -276,12 +289,23 @@ export default function App() {
       </main>
 
       {/* At the bottom, away from the toolbar buttons. */}
-      {resourceTypes.length > 0 && (
+      {(resourceTypes.length > 0 || hasLocalization) && (
         <nav className="tabs" role="tablist">
           <button role="tab" aria-selected={activeTab === GRAPH_TAB} className={`tab${activeTab === GRAPH_TAB ? " active" : ""}`} onClick={() => setTab(GRAPH_TAB)}>
             Graph
           </button>
-          <span className="tabs-separator" />
+          {hasLocalization && (
+            <button
+              role="tab"
+              aria-selected={activeTab === LOCALIZATION_TAB}
+              className={`tab${activeTab === LOCALIZATION_TAB ? " active" : ""}`}
+              onClick={() => setTab(LOCALIZATION_TAB)}
+              title="Localization tables of the pack"
+            >
+              Localization
+            </button>
+          )}
+          {resourceTypes.length > 0 && <span className="tabs-separator" />}
           {resourceTypes.map((type) => (
             <button
               key={type.id}

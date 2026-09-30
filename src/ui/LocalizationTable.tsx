@@ -1,0 +1,215 @@
+import { type ReactNode, useEffect, useReducer, useRef, useState } from "react";
+import type { Editor } from "../app/editor";
+import { localizationUsage } from "../graph/localization";
+
+interface LocalizationTableProps {
+  editor: Editor;
+  languages: readonly string[];
+  /** The language switch, shown next to the filter. */
+  languageSelect: ReactNode;
+  /** Bumped to focus the filter (Ctrl+F on this tab). */
+  focusRequest: number;
+  /** Shows the nodes that use a key on the graph tab. */
+  onShowUses: (nodeIds: string[]) => void;
+}
+
+type Show = "all" | "missing" | "unused";
+
+const SHOW_LABELS: Record<Show, string> = { all: "All", missing: "Missing text", unused: "Unused" };
+/** Rows rendered at once; the rest follow when scrolled near the end. */
+const PAGE = 200;
+
+/**
+ * The pack's localization tables side by side: one row per key, one column per language. Texts are
+ * edited in place (undoable, saved with Save); keys the graph uses link to their nodes.
+ */
+export function LocalizationTable({ editor, languages, languageSelect, focusRequest, onShowUses }: LocalizationTableProps) {
+  const [query, setQuery] = useState("");
+  const [show, setShow] = useState<Show>("all");
+  const [limit, setLimit] = useState(PAGE);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
+  // Texts live in the editor's store; re-render when they change.
+  const [, refresh] = useReducer((count: number) => count + 1, 0);
+  useEffect(() => editor.onLocalizationChanged(refresh), [editor]);
+
+  useEffect(() => {
+    if (focusRequest > 0) {
+      inputRef.current?.focus();
+      inputRef.current?.select();
+    }
+  }, [focusRequest]);
+  useEffect(() => {
+    setLimit(PAGE);
+    listRef.current?.scrollTo({ top: 0 });
+  }, [query, show]);
+
+  const store = editor.localization;
+  const usage = localizationUsage(editor.graph.nodes);
+  const keys = [...new Set([...store.keys(), ...usage.keys()])].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+  const missing = (key: string) => languages.some((language) => !store.get(language, key)?.trim());
+
+  const needle = normalize(query.trim());
+  const rows = keys.filter((key) => {
+    if (show === "missing" && !missing(key)) return false;
+    if (show === "unused" && usage.has(key)) return false;
+    return !needle || normalize(key).includes(needle) || languages.some((language) => normalize(store.get(language, key) ?? "").includes(needle));
+  });
+  const counts = { all: keys.length, missing: keys.filter(missing).length, unused: keys.filter((key) => !usage.has(key)).length };
+
+  return (
+    <div className="resource-browser localization-table">
+      <div className="resource-header">
+        <h2>Localization</h2>
+        <span className="resource-count">
+          {rows.length === keys.length ? keys.length : `${rows.length} of ${keys.length}`} keys
+        </span>
+        <div className="localization-show" role="radiogroup">
+          {(Object.keys(SHOW_LABELS) as Show[]).map((option) => (
+            <button
+              key={option}
+              role="radio"
+              aria-checked={show === option}
+              className={show === option ? "active" : ""}
+              onClick={() => setShow(option)}
+            >
+              {SHOW_LABELS[option]}
+              <span className="tab-count">{counts[option]}</span>
+            </button>
+          ))}
+        </div>
+        <input
+          ref={inputRef}
+          className="resource-filter"
+          value={query}
+          placeholder="Filter by key or text…"
+          spellCheck={false}
+          onChange={(event) => setQuery(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Escape") {
+              event.stopPropagation();
+              setQuery("");
+            }
+          }}
+        />
+        {languageSelect}
+      </div>
+      {languages.length === 0 ? (
+        <div className="resource-empty">The schema pack has no languages.</div>
+      ) : rows.length === 0 ? (
+        <div className="resource-empty">{keys.length === 0 ? "There are no texts yet." : "Nothing matches."}</div>
+      ) : (
+        <div
+          ref={listRef}
+          className="resource-list"
+          onScroll={(event) => {
+            const list = event.currentTarget;
+            if (limit < rows.length && list.scrollTop + list.clientHeight > list.scrollHeight - 600) setLimit(limit + PAGE);
+          }}
+        >
+          <table>
+            <thead>
+              <tr>
+                <th className="localization-col-key">Key</th>
+                {languages.map((language) => (
+                  <th key={language}>{language.toUpperCase()}</th>
+                ))}
+                <th className="resource-col-uses">Used</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.slice(0, limit).map((key) => {
+                const uses = usage.get(key) ?? [];
+                return (
+                  <tr key={key}>
+                    <td className="localization-col-key">
+                      <span className="localization-key">{key}</span>
+                    </td>
+                    {languages.map((language) => (
+                      <td key={language} className="localization-cell">
+                        <TextCell
+                          value={store.get(language, key)}
+                          language={language}
+                          onCommit={(text) => editor.setTexts(key, { [language]: text })}
+                        />
+                      </td>
+                    ))}
+                    <td className="resource-col-uses">
+                      {uses.length > 0 ? (
+                        <button className="resource-uses" onClick={() => onShowUses(uses)} title="Select these nodes on the graph">
+                          {uses.length} {uses.length === 1 ? "node" : "nodes"}
+                        </button>
+                      ) : (
+                        <span className="resource-none" title="No node of the graph uses this key">
+                          unused
+                        </span>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** A text shown as-is; a click turns it into a text area (Ctrl+Enter or leaving it saves, Esc cancels). */
+function TextCell({ value, language, onCommit }: { value: string | undefined; language: string; onCommit: (text: string) => void }) {
+  const [editing, setEditing] = useState(false);
+  const areaRef = useRef<HTMLTextAreaElement>(null);
+  const cancelled = useRef(false);
+
+  useEffect(() => {
+    const area = areaRef.current;
+    if (!editing || !area) return;
+    area.focus();
+    area.setSelectionRange(area.value.length, area.value.length);
+    fit(area);
+  }, [editing]);
+
+  if (editing) {
+    return (
+      <textarea
+        ref={areaRef}
+        className="localization-editor"
+        defaultValue={value ?? ""}
+        lang={language}
+        spellCheck
+        onInput={(event) => fit(event.currentTarget)}
+        onKeyDown={(event) => {
+          event.stopPropagation();
+          if (event.key === "Escape") {
+            cancelled.current = true;
+            event.currentTarget.blur();
+          } else if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) {
+            event.currentTarget.blur();
+          }
+        }}
+        onBlur={(event) => {
+          const text = event.currentTarget.value;
+          if (!cancelled.current && text !== (value ?? "")) onCommit(text);
+          cancelled.current = false;
+          setEditing(false);
+        }}
+      />
+    );
+  }
+  const empty = !value?.trim();
+  return (
+    <button className={`localization-text${empty ? " missing" : ""}`} onClick={() => setEditing(true)} title="Click to edit">
+      {empty ? "missing" : value}
+    </button>
+  );
+}
+
+function fit(area: HTMLTextAreaElement): void {
+  area.style.height = "auto";
+  area.style.height = `${area.scrollHeight + 2}px`;
+}
+
+function normalize(text: string): string {
+  return text.toLowerCase().replace(/ё/g, "е");
+}

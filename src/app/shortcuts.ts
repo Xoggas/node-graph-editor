@@ -44,6 +44,8 @@ export interface Shortcut {
   bindings: KeyBinding[];
   /** Also fire while a text field has focus (file commands). */
   global?: boolean;
+  /** Also work on the other tabs (localization, resources), where the graph is hidden. */
+  anyTab?: boolean;
   run: (context: ShortcutContext, event: KeyboardEvent) => void;
 }
 
@@ -130,7 +132,10 @@ export const shortcuts: Shortcut[] = [
     description: "Undo",
     keys: ["Ctrl+Z"],
     bindings: [{ code: "KeyZ", ctrl: true }],
-    run: whenIdle((_, { editor }) => editor.undo()),
+    anyTab: true,
+    run: ({ editor, renderer }) => {
+      if (!renderer?.isInteracting()) editor.undo();
+    },
   },
   {
     group: "Edit",
@@ -141,7 +146,10 @@ export const shortcuts: Shortcut[] = [
       { code: "KeyY", ctrl: true },
       { code: "KeyZ", ctrl: true, shift: true },
     ],
-    run: whenIdle((_, { editor }) => editor.redo()),
+    anyTab: true,
+    run: ({ editor, renderer }) => {
+      if (!renderer?.isInteracting()) editor.redo();
+    },
   },
   {
     group: "Edit",

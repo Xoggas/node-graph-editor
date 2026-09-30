@@ -493,6 +493,111 @@ body,
   color: #6c717b;
 }
 
+/* Localization table */
+
+.localization-show {
+  display: flex;
+  align-self: center;
+  gap: 2px;
+  padding: 2px;
+  background: #25272c;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+}
+
+.localization-show button {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 9px;
+  color: var(--muted);
+  font: inherit;
+  background: none;
+  border: none;
+  border-radius: 3px;
+  cursor: pointer;
+}
+
+.localization-show button:hover {
+  color: #e5e7eb;
+  background: #2e3036;
+}
+
+.localization-show button.active {
+  color: #fafafa;
+  background: #3d4049;
+}
+
+.localization-table .resource-list table {
+  table-layout: fixed;
+}
+
+.localization-col-key {
+  width: 180px;
+}
+
+.localization-table .resource-col-uses {
+  width: 110px;
+}
+
+.localization-key {
+  color: #c8ccd4;
+  font: 12px Consolas, "Cascadia Mono", monospace;
+  overflow-wrap: anywhere;
+}
+
+.localization-table td {
+  vertical-align: top;
+}
+
+.localization-table td.resource-col-uses {
+  vertical-align: middle;
+}
+
+.localization-cell {
+  padding: 4px 6px !important;
+}
+
+/* Same box for the text and its editor, so a click does not move anything. */
+.localization-text,
+.localization-editor {
+  display: block;
+  width: 100%;
+  min-height: 30px;
+  padding: 5px 8px;
+  color: #e5e7eb;
+  font: inherit;
+  line-height: 1.45;
+  text-align: left;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  border: 1px solid transparent;
+  border-radius: 4px;
+}
+
+.localization-text {
+  background: none;
+  cursor: text;
+}
+
+.localization-text:hover {
+  background: #25272c;
+  border-color: #3a3d45;
+}
+
+.localization-text.missing {
+  color: #e0a93a;
+  font-style: italic;
+}
+
+.localization-editor {
+  resize: none;
+  overflow: hidden;
+  background: #1b1c20;
+  border-color: #8ab4ff;
+  outline: none;
+}
+
 .canvas-host {
   position: relative;
   flex: 1;

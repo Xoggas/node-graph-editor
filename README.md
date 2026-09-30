@@ -144,6 +144,11 @@ packs/pumpkin-quest/
 of the pack. Renaming a node moves its texts to the new key (one undo step with the rename), duplicating
 a node copies them, and **Save** writes the changed language files together with the graph.
 
+The **Localization** tab (next to Graph at the bottom) shows the tables side by side: a row per key, a
+column per language. A click edits a text in place (Ctrl+Enter or leaving the cell keeps it, Esc cancels;
+Ctrl+Z undoes it), **Missing text** lists keys without a text in some language, **Unused** keys no node
+of the open graph uses, and the "N nodes" button selects the nodes that use a key on the graph.
+
 ### Resource library
 
 `pack.json` declares resource types; every resource is its own file under `resources/` (by convention

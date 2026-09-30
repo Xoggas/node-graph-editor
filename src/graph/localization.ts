@@ -71,6 +71,13 @@ export class LocalizationStore {
     return this.tables.get(language)?.get(key);
   }
 
+  /** Every key that has a text in any language. */
+  keys(): Set<string> {
+    const keys = new Set<string>();
+    for (const table of this.tables.values()) for (const key of table.keys()) keys.add(key);
+    return keys;
+  }
+
   hasKey(key: string): boolean {
     return [...this.tables.values()].some((table) => table.has(key));
   }
@@ -162,4 +169,18 @@ export function localizedEntries(node: { name: string; schema: NodeSchema | null
     }
   }
   return entries;
+}
+
+/** For each localization key the graph uses, the ids of the nodes whose texts use it. */
+export function localizationUsage(nodes: Iterable<{ id: string; name: string; schema: NodeSchema | null; data: NodeData }>): Map<string, string[]> {
+  const usage = new Map<string, string[]>();
+  for (const node of nodes) {
+    for (const { key } of localizedEntries(node)) {
+      if (!key) continue;
+      const ids = usage.get(key);
+      if (!ids) usage.set(key, [node.id]);
+      else if (!ids.includes(node.id)) ids.push(node.id);
+    }
+  }
+  return usage;
 }
