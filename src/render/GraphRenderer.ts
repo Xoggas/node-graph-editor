@@ -6,6 +6,8 @@ import { DotGrid } from "./DotGrid";
 import { EdgeView, traceEdgePath } from "./EdgeView";
 import { type Bounds, computeEdgePath, hitTestEdge, rectsIntersect } from "./geometry";
 import { clampNumber } from "../graph/schema";
+import { resourcesOfType } from "../graph/resources";
+import { ImageCache } from "./ImageCache";
 import { InlineEditor } from "./InlineEditor";
 import { getIn, itemRefCandidates, itemRefLabel, nodeRefCandidates } from "../graph/dataOps";
 import { type Control, formatNumber, type NodeHit, NodeView, type PortHighlight } from "./NodeView";
@@ -89,6 +91,17 @@ export class GraphRenderer {
   private destroyed = false;
   private resizeObserver: ResizeObserver | null = null;
   private inlineEditor!: InlineEditor;
+  private readonly images = new ImageCache<NodeView>(
+    (path) => this.editor.readResource(path),
+    (views) => {
+      for (const view of views) {
+        if (!this.nodeViews.has(view.node.id)) continue;
+        if (view.container.visible) view.rebuild();
+        else view.staleLayout = true;
+      }
+      this.requestFrame();
+    },
+  );
   /** Node being edited inline, so the editor closes if the node disappears. */
   private editedNode: NodeView | null = null;
   private readonly frameTimes: number[] = [];
@@ -311,6 +324,10 @@ export class GraphRenderer {
 
   private setGraph(graph: GraphModel, options: GraphReplacedOptions): void {
     this.inlineEditor.close(false);
+    if (graph.registry !== this.graph?.registry) {
+      // A new pack may have different files behind the same paths.
+      this.images.clear();
+    }
     this.unsubscribeGraph();
     this.graph = graph;
     this.unsubscribeGraph = graph.subscribe(this.onGraphChange);
@@ -419,6 +436,8 @@ export class GraphRenderer {
       isPortConnected: (portId) => this.graph.hasConnections(portId),
       portHighlight: (port) => this.portHighlight(port),
       portColor: (typeId) => this.portColor(typeId),
+      resources: () => this.graph.registry.pack?.resources ?? null,
+      image: (path, view) => this.images.get(path, view),
       referenceLabel: (field, id) =>
         field.type === "nodeRef" ? (this.graph.getNode(id)?.displayName ?? null) : itemRefLabel(this.graph, id),
     });
@@ -1201,6 +1220,31 @@ export class GraphRenderer {
         searchable: true,
         emptyText: field.type === "itemRef" ? "No matching elements." : "No matching nodes.",
         onPick: (picked) => this.editor.setValue(nodeId, path, picked || null),
+      });
+    } else if (field.type === "resource") {
+      const library = this.graph.registry.pack?.resources;
+      const items = library ? resourcesOfType(library, field.resourceType) : [];
+      this.inlineEditor.pick({
+        rect,
+        fontSize: Math.max(11, fontSize),
+        options: [{ value: "", label: "None" }, ...items.map((item) => ({ value: item.id, label: item.name }))],
+        current: typeof value === "string" ? value : "",
+        searchable: items.length > 8,
+        emptyText: `No ${library?.types.get(field.resourceType)?.label ?? "resources"} found.`,
+        onPick: (picked) => this.editor.setValue(nodeId, path, picked || null),
+      });
+    } else if (field.type === "resourceVariant") {
+      const source = view.node.data[field.source];
+      const item = typeof source === "string" ? this.graph.registry.pack?.resources.items.get(source) : undefined;
+      const variants = item?.variants.get(field.collection) ?? [];
+      this.inlineEditor.pick({
+        rect,
+        fontSize: Math.max(11, fontSize),
+        options: variants.map((variant) => ({ value: variant.id, label: variant.label })),
+        current: typeof value === "string" ? value : null,
+        searchable: variants.length > 8,
+        emptyText: "This resource has no variants.",
+        onPick: (picked) => this.editor.setValue(nodeId, path, picked),
       });
     } else if (field.type === "int" || field.type === "float") {
       this.inlineEditor.editText({

@@ -158,7 +158,8 @@
         "id": "character",
         "type": "resource",
         "resourceType": "character",
-        "label": "Character"
+        "label": "Character",
+        "previewHeight": 200
       },
       {
         "id": "comparison",

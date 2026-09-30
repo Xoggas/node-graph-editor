@@ -1,3 +1,4 @@
+import { parseLibraries, parseResourceTypes, type ResourceLibrary } from "./resources";
 import { newId, type PortCapacity, type PortDirection } from "./types";
 
 // ---------------------------------------------------------------------------------------------
@@ -83,6 +84,21 @@ export interface ItemRefField extends FieldBase {
   list: string;
 }
 
+/** Reference to an item of the pack's resource library (by the resource id). */
+export interface ResourceField extends FieldBase {
+  type: "resource";
+  resourceType: string;
+  /** Height of the image preview under the field; 0 hides it. */
+  previewHeight: number;
+}
+
+/** One variant (e.g. an emotion) of the resource chosen in the `source` field. */
+export interface ResourceVariantField extends FieldBase {
+  type: "resourceVariant";
+  source: string;
+  collection: string;
+}
+
 /** Reference to another node of the given schema (by the node GUID). */
 export interface NodeRefField extends FieldBase {
   type: "nodeRef";
@@ -116,6 +132,8 @@ export type FieldSchema =
   | ListField
   | ItemRefField
   | NodeRefField
+  | ResourceField
+  | ResourceVariantField
   | MatrixField
   | UnsupportedField;
 
@@ -151,6 +169,7 @@ export interface SchemaPack {
   languages: string[];
   portTypes: Map<string, PortTypeSchema>;
   nodes: Map<string, NodeSchema>;
+  resources: ResourceLibrary;
   /** Problems that did not prevent loading (e.g. an invalid node schema that was skipped). */
   warnings: string[];
 }
@@ -163,15 +182,32 @@ export interface PackFile {
 
 export class SchemaError extends Error {}
 
-const FIELD_TYPES = new Set(["int", "float", "string", "bool", "enum", "record", "list", "itemRef", "nodeRef", "matrix"]);
+const FIELD_TYPES = new Set([
+  "int",
+  "float",
+  "string",
+  "bool",
+  "enum",
+  "record",
+  "list",
+  "itemRef",
+  "nodeRef",
+  "resource",
+  "resourceVariant",
+  "matrix",
+]);
 const ID_PATTERN = /^[A-Za-z_][A-Za-z0-9_.-]*$/;
 
 // ---------------------------------------------------------------------------------------------
 // Parsing
 // ---------------------------------------------------------------------------------------------
 
-/** Builds a pack from `pack.json` plus any `nodes/**.json` files (one schema or an array per file). */
-export function parseSchemaPack(files: PackFile[]): SchemaPack {
+/**
+ * Builds a pack from `pack.json`, `nodes/**.json` (one schema or an array per file) and
+ * `resources/**.json` (resource libraries). `packDir` is the absolute pack folder used to resolve
+ * resource files; without it resources load but have no images.
+ */
+export function parseSchemaPack(files: PackFile[], packDir: string | null = null): SchemaPack {
   const manifestFile = files.find((file) => file.path === "pack.json");
   if (!manifestFile) {
     throw new SchemaError("pack.json is missing in the pack folder.");
@@ -186,8 +222,10 @@ export function parseSchemaPack(files: PackFile[]): SchemaPack {
     languages: reader.stringArray(root, "languages", []),
     portTypes: new Map(),
     nodes: new Map(),
+    resources: { types: new Map(), items: new Map(), roots: [] },
     warnings: [],
   };
+  const resourceTypes = parseResourceTypes(root.resourceTypes, pack.warnings);
 
   const portTypes = reader.optionalObject(root, "portTypes") ?? {};
   for (const [id, raw] of Object.entries(portTypes)) {
@@ -214,6 +252,13 @@ export function parseSchemaPack(files: PackFile[]): SchemaPack {
   if (reader.errors.length > 0) {
     throw new SchemaError(reader.errors.join("\n"));
   }
+
+  pack.resources = parseLibraries(
+    files.filter((file) => file.path.startsWith("resources/") && file.path.endsWith(".json")),
+    resourceTypes,
+    packDir,
+    pack.warnings,
+  );
 
   for (const file of files) {
     if (!file.path.startsWith("nodes/") || !file.path.endsWith(".json")) {
@@ -242,6 +287,19 @@ export function parseSchemaPack(files: PackFile[]): SchemaPack {
     });
   }
   for (const schema of pack.nodes.values()) {
+    for (const field of collectFields(schema.fields, "resource") as ResourceField[]) {
+      if (!resourceTypes.has(field.resourceType)) {
+        pack.warnings.push(`${schema.id} → ${field.id}: unknown resource type '${field.resourceType}'.`);
+      }
+    }
+    for (const field of collectFields(schema.fields, "resourceVariant") as ResourceVariantField[]) {
+      const source = schema.fields.find((candidate) => candidate.id === field.source);
+      if (source?.type !== "resource") {
+        pack.warnings.push(`${schema.id} → ${field.id}: 'source' must name a resource field of the same node.`);
+      } else if (!resourceTypes.get(source.resourceType)?.variants.has(field.collection)) {
+        pack.warnings.push(`${schema.id} → ${field.id}: resource type '${source.resourceType}' has no variants '${field.collection}'.`);
+      }
+    }
     for (const ref of collectFields(schema.fields, "nodeRef") as NodeRefField[]) {
       if (!pack.nodes.has(ref.schema)) {
         pack.warnings.push(`${schema.id} → ${ref.id}: referenced schema '${ref.schema}' does not exist.`);
@@ -440,6 +498,22 @@ function parseField(reader: Reader, raw: unknown, path: string, requireId = true
       return { id, label, type, schema: reader.string(field, "schema", "", path), list: reader.string(field, "list", "", path) };
     case "nodeRef":
       return { id, label, type, schema: reader.string(field, "schema", "", path) };
+    case "resource":
+      return {
+        id,
+        label,
+        type,
+        resourceType: reader.string(field, "resourceType", "", path),
+        previewHeight: Math.max(0, reader.number(field, "previewHeight", 140, path)),
+      };
+    case "resourceVariant":
+      return {
+        id,
+        label,
+        type,
+        source: reader.string(field, "source", "", path),
+        collection: reader.string(field, "collection", "", path),
+      };
     case "matrix":
       return {
         id,
@@ -479,6 +553,8 @@ export function defaultValue(field: FieldSchema): unknown {
       return Array.from({ length: field.minItems }, () => defaultValue(field.item));
     case "itemRef":
     case "nodeRef":
+    case "resource":
+    case "resourceVariant":
     case "unsupported":
       return null;
     case "matrix":
@@ -599,6 +675,8 @@ export function normalizeValue(field: FieldSchema, value: unknown, path: string,
     }
     case "itemRef":
     case "nodeRef":
+    case "resource":
+    case "resourceVariant":
       return value === null || typeof value === "string" ? value ?? null : fallback("expected an id");
     case "matrix":
       return isRecord(value) ? value : fallback("expected an object");

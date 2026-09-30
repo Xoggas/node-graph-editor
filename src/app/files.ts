@@ -21,6 +21,9 @@ export interface GraphFileSystem {
   /** Resolves null when the user cancels. */
   pickPackFolder(): Promise<string | null>;
   readPackFolder(path: string): Promise<PackFile[]>;
+  /** Restricts resource reads to these folders (the loaded pack's library roots). */
+  setResourceRoots(roots: string[]): Promise<void>;
+  readResource(path: string): Promise<Blob>;
 }
 
 const FILTERS = [{ name: "JSON graph", extensions: ["json"] }];
@@ -62,6 +65,15 @@ class TauriFileSystem implements GraphFileSystem {
 
   readPackFolder(path: string): Promise<PackFile[]> {
     return invoke<PackFile[]>("read_schema_pack", { path });
+  }
+
+  async setResourceRoots(roots: string[]): Promise<void> {
+    await invoke("set_resource_roots", { roots });
+  }
+
+  async readResource(path: string): Promise<Blob> {
+    const bytes = await invoke<ArrayBuffer>("read_resource_file", { path });
+    return new Blob([bytes]);
   }
 }
 
@@ -106,6 +118,17 @@ class BrowserFileSystem implements GraphFileSystem {
 
   async readPackFolder(path: string): Promise<PackFile[]> {
     throw new Error(`Reading pack folders is only available in the desktop app ('${path}').`);
+  }
+
+  async setResourceRoots(): Promise<void> {}
+
+  /** Served by the Vite dev server (see `server.fs.allow` in vite.config.ts). */
+  async readResource(path: string): Promise<Blob> {
+    const response = await fetch(`/@fs/${path.replace(/^\//, "")}`);
+    if (!response.ok) {
+      throw new Error(`Could not load '${path}' (${response.status}).`);
+    }
+    return response.blob();
   }
 }
 

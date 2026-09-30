@@ -1,5 +1,11 @@
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::Mutex;
+
+/// Folders the frontend may read resource files (images, audio) from: the roots of the loaded pack's
+/// resource libraries. Anything outside them is refused.
+#[derive(Default)]
+struct ResourceRoots(Mutex<Vec<PathBuf>>);
 
 /// Limits keep a mistakenly chosen folder (e.g. a drive root) from hanging the app.
 const MAX_PACK_FILES: usize = 2000;
@@ -75,11 +81,38 @@ fn collect_json(root: &Path, directory: &Path, depth: usize, files: &mut Vec<Pac
     Ok(())
 }
 
+#[tauri::command]
+fn set_resource_roots(roots: Vec<PathBuf>, state: tauri::State<ResourceRoots>) {
+    let canonical = roots.iter().filter_map(|root| root.canonicalize().ok()).collect();
+    *state.0.lock().expect("resource roots lock") = canonical;
+}
+
+#[tauri::command]
+fn read_resource_file(path: PathBuf, state: tauri::State<ResourceRoots>) -> Result<tauri::ipc::Response, String> {
+    let roots = state.0.lock().expect("resource roots lock").clone();
+    read_within_roots(&path, &roots).map(tauri::ipc::Response::new)
+}
+
+fn read_within_roots(path: &Path, roots: &[PathBuf]) -> Result<Vec<u8>, String> {
+    let canonical = path.canonicalize().map_err(|error| format!("Could not open '{}': {error}", path.display()))?;
+    if !roots.iter().any(|root| canonical.starts_with(root)) {
+        return Err(format!("'{}' is outside the resource folders of the loaded pack.", path.display()));
+    }
+    fs::read(&canonical).map_err(|error| format!("Could not read '{}': {error}", path.display()))
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
-        .invoke_handler(tauri::generate_handler![read_graph_file, write_graph_file, read_schema_pack])
+        .manage(ResourceRoots::default())
+        .invoke_handler(tauri::generate_handler![
+            read_graph_file,
+            write_graph_file,
+            read_schema_pack,
+            set_resource_roots,
+            read_resource_file
+        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
@@ -98,6 +131,18 @@ mod tests {
         let paths: Vec<_> = files.iter().map(|file| file.path.as_str()).collect();
         assert_eq!(paths, ["nodes/a.json", "pack.json"]);
         assert!(read_schema_pack(directory.join("nodes")).is_err());
+        fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn reads_resources_only_inside_roots() {
+        let directory = std::env::temp_dir().join(format!("node-graph-editor-res-{}", std::process::id()));
+        write_atomically(&directory.join("art").join("hero.png"), b"png").unwrap();
+        write_atomically(&directory.join("secret.txt"), b"no").unwrap();
+        let roots = vec![directory.join("art").canonicalize().unwrap()];
+        assert_eq!(read_within_roots(&directory.join("art").join("hero.png"), &roots).unwrap(), b"png");
+        assert!(read_within_roots(&directory.join("secret.txt"), &roots).is_err());
+        assert!(read_within_roots(&directory.join("art").join("..").join("secret.txt"), &roots).is_err());
         fs::remove_dir_all(directory).unwrap();
     }
 

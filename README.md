@@ -102,12 +102,43 @@ re-reads it from disk (the open graph keeps its data). The last folder is rememb
   `columnLabel`; stored as `{ rowKey: { columnKey: bool } }`, keys are element GUIDs or indices).
   Fields of other types are shown as "not supported yet" and their data is kept.
 - References to deleted nodes/elements are not cleared; they show "missing" and resolve again after undo.
+- **Resources:** `resource` (`resourceType`, `previewHeight`) picks an item of the pack's resource
+  library and shows its image under the field; `resourceVariant` (`source`: a resource field,
+  `collection`) picks one of its variants, e.g. an emotion. Changing the resource resets a variant the
+  new resource does not have to the collection default.
 - **Ports:** `repeat: { list }` creates one port per list element, keyed `<port>:<element GUID>` and
   drawn on the element's row, so reordering elements keeps connections; `repeat: { count }` creates one
   per number of an int field.
   Capacity defaults come from the port type.
 - **Naming:** `editable`, `unique`, `pattern`. `singleton: true` allows one node per graph.
 - Problems in a node schema skip that node and are listed under ⚠ in the palette.
+
+### Resource library
+
+`pack.json` declares resource types; `resources/*.json` list the items. Images are not copied: a
+library's `root` (relative to the library file, or absolute) points at the folder the paths are
+relative to, and the editor loads and downscales images on demand. Only files inside library roots can
+be read.
+
+```jsonc
+// pack.json
+"resourceTypes": {
+  "character": { "label": "Characters", "variants": { "emotions": { "label": "Emotion", "default": "Idle" } } },
+  "background": { "label": "Backgrounds" },
+  "music": { "label": "Music", "media": "audio" }
+}
+// resources/library.json
+{
+  "root": "../../../../pumpkin-quest/PumpkinQuest/Assets",
+  "items": [
+    { "id": "ec497a02-…", "type": "character", "name": "Arleen", "image": "Sprites/Characters/Arleen.png",
+      "variants": { "emotions": [{ "id": "Arleen_Laughter", "label": "Laughter", "image": "Sprites/Emotions/Arleen/Arleen_Laughter.png" }] } }
+  ]
+}
+```
+
+`tools/import-unity-resources.mjs <UnityProject/Assets>` regenerates the Pumpkin Quest library from the
+Unity project (characters with emotions, backgrounds, music, sfx, diary entries), keeping the asset ids.
 
 See `docs/schema-design.md` for the full design, including the planned resource library,
 localization and the remaining field types.

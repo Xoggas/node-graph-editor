@@ -1,7 +1,18 @@
-import { type BitmapText, Container, Graphics } from "pixi.js";
+import { type BitmapText, Container, Graphics, Sprite, type Texture } from "pixi.js";
 import { type DataPath, getIn } from "../graph/dataOps";
 import type { NodeModel } from "../graph/node";
-import { dimensionKeys, type EnumField, type FieldSchema, formatLabel, isRecord, type ListField, type MatrixField } from "../graph/schema";
+import type { ResourceLibrary } from "../graph/resources";
+import {
+  dimensionKeys,
+  type EnumField,
+  type FieldSchema,
+  formatLabel,
+  isRecord,
+  type ListField,
+  type MatrixField,
+  type ResourceField,
+  type ResourceVariantField,
+} from "../graph/schema";
 import type { Port, Vec2 } from "../graph/types";
 import type { Rect } from "./geometry";
 import { fitText, makeText, measureText } from "./text";
@@ -41,7 +52,17 @@ export interface PortLayout {
   y: number;
 }
 
-export type FieldKind = "number" | "text" | "multiline" | "bool" | "dropdown" | "segmented" | "reference" | "readonly";
+export type FieldKind =
+  | "number"
+  | "text"
+  | "multiline"
+  | "bool"
+  | "dropdown"
+  | "segmented"
+  | "reference"
+  | "resource"
+  | "variant"
+  | "readonly";
 
 export type ListAction =
   | { type: "add"; path: DataPath }
@@ -68,6 +89,9 @@ export interface NodeViewContext {
   portColor(typeId: string): number;
   /** Display label of a referenced list element or node, or null when it does not exist. */
   referenceLabel(field: FieldSchema, id: string): string | null;
+  resources(): ResourceLibrary | null;
+  /** A preview texture; while loading, the view is rebuilt once it is ready. */
+  image(path: string, view: NodeView): Texture | "loading" | "error";
 }
 
 export class NodeView {
@@ -94,6 +118,7 @@ export class NodeView {
   private readonly portsById = new Map<string, PortLayout>();
   private portsBottom = HEADER_HEIGHT;
   private itemRects: Rect[] = [];
+  private previewRects: Rect[] = [];
 
   constructor(
     readonly node: NodeModel,
@@ -133,6 +158,7 @@ export class NodeView {
     this.portsById.clear();
     this.controls = [];
     this.itemRects = [];
+    this.previewRects = [];
     this.hasReferences = false;
     this.staleLayout = false;
 
@@ -168,8 +194,15 @@ export class NodeView {
     } else if (fields.length > 0) {
       y += BODY_PADDING;
       const labelWidth = scalarLabelWidth(fields);
+      const contentWidth = width - BODY_PADDING * 2;
       for (const field of fields) {
-        y += this.layoutField([field.id], field, BODY_PADDING, y, width - BODY_PADDING * 2, labelWidth, rowCenters) + FIELD_GAP;
+        // A variant (e.g. an emotion) is only offered once its resource is chosen.
+        if (field.type === "resourceVariant" && typeof node.data[field.source] !== "string") continue;
+        y += this.layoutField([field.id], field, BODY_PADDING, y, contentWidth, labelWidth, rowCenters) + FIELD_GAP;
+        const preview = previewFor(field, fields, node.data, this.context.resources());
+        if (preview) {
+          y += this.layoutPreview(preview.resource, preview.variant, BODY_PADDING, y, contentWidth) + FIELD_GAP;
+        }
       }
       y += BODY_PADDING - FIELD_GAP;
     }
@@ -204,6 +237,9 @@ export class NodeView {
     }
     for (const rect of this.itemRects) {
       g.roundRect(rect.x, rect.y, rect.width, rect.height, 4).fill(theme.listItemBackground);
+    }
+    for (const rect of this.previewRects) {
+      g.roundRect(rect.x, rect.y, rect.width, rect.height, 4).fill(theme.previewBackground);
     }
 
     for (const control of this.controls) {
@@ -464,6 +500,41 @@ export class NodeView {
     return cursor - CELL_GAP - y;
   }
 
+  /** Image of the chosen resource (or of its chosen variant); returns the block height. */
+  private layoutPreview(resource: ResourceField, variant: ResourceVariantField | null, x: number, y: number, width: number): number {
+    const library = this.context.resources();
+    const value = this.node.data[resource.id];
+    const item = typeof value === "string" ? library?.items.get(value) : undefined;
+    const note = (message: string, color: number = theme.textMuted, height = FIELD_HEIGHT) => {
+      const text = this.detail.addChild(makeText(fitText(message, width - 16, SMALL_SIZE), SMALL_SIZE, color));
+      text.position.set(Math.round(x + (width - text.width) / 2), Math.round(y + (height - text.height) / 2));
+      return height;
+    };
+    if (!item) {
+      return note(`${resource.label} is not selected`);
+    }
+    const variantId = variant ? this.node.data[variant.id] : null;
+    const variantImage = variant ? item.variants.get(variant.collection)?.find((entry) => entry.id === variantId)?.image : null;
+    const path = variantImage ?? item.image;
+    const height = resource.previewHeight;
+    this.previewRects.push({ x, y, width, height });
+    if (!path) {
+      return note("No image", theme.textMuted, height);
+    }
+    const texture = this.context.image(path, this);
+    if (texture === "loading") {
+      return note("Loading…", theme.textMuted, height);
+    }
+    if (texture === "error") {
+      return note("⚠ Image not found", theme.textWarning, height);
+    }
+    const sprite = this.detail.addChild(new Sprite(texture));
+    const scale = Math.min((width - 8) / texture.width, (height - 8) / texture.height);
+    sprite.scale.set(scale);
+    sprite.position.set(Math.round(x + (width - texture.width * scale) / 2), Math.round(y + (height - texture.height * scale) / 2));
+    return height;
+  }
+
   private dimensionLabel(field: MatrixField, dimension: "rows" | "columns", index: number): string {
     const source = this.node.data[field[dimension]];
     const item = Array.isArray(source) ? source[index] : null;
@@ -521,6 +592,25 @@ export class NodeView {
         const content = missing ? `⚠ missing ${field.type === "nodeRef" ? "node" : "element"}` : label ?? "None";
         const color = missing ? theme.textWarning : label ? theme.textPrimary : theme.textMuted;
         const text = makeText(fitText(content, inner - 12, VALUE_SIZE), VALUE_SIZE, color);
+        text.position.set(box.x + 8, centerY(text));
+        return [text, this.arrow(box)];
+      }
+      case "resource": {
+        const item = typeof value === "string" ? this.context.resources()?.items.get(value) : undefined;
+        const missing = typeof value === "string" && !item;
+        const content = missing ? "⚠ missing resource" : item?.name ?? "None";
+        const color = missing ? theme.textWarning : item ? theme.textPrimary : theme.textMuted;
+        const text = makeText(fitText(content, inner - 12, VALUE_SIZE), VALUE_SIZE, color);
+        text.position.set(box.x + 8, centerY(text));
+        return [text, this.arrow(box)];
+      }
+      case "variant": {
+        const variantField = field as ResourceVariantField;
+        const source = this.node.data[variantField.source];
+        const item = typeof source === "string" ? this.context.resources()?.items.get(source) : undefined;
+        const variant = item?.variants.get(variantField.collection)?.find((entry) => entry.id === value);
+        const content = variant?.label ?? (typeof value === "string" ? value : "—");
+        const text = makeText(fitText(content, inner - 12, VALUE_SIZE), VALUE_SIZE, variant ? theme.textPrimary : theme.textMuted);
         text.position.set(box.x + 8, centerY(text));
         return [text, this.arrow(box)];
       }
@@ -612,6 +702,10 @@ export function fieldKind(field: FieldSchema): FieldKind {
     case "itemRef":
     case "nodeRef":
       return "reference";
+    case "resource":
+      return "resource";
+    case "resourceVariant":
+      return "variant";
     default:
       return "readonly";
   }
@@ -619,6 +713,30 @@ export function fieldKind(field: FieldSchema): FieldKind {
 
 export function formatNumber(value: unknown): string {
   return typeof value === "number" && Number.isFinite(value) ? String(Number(value.toFixed(4))) : "—";
+}
+
+/**
+ * Which resource preview (if any) follows `field`: after a resource field, or — when a variant field
+ * of that resource is shown — after the variant field, so the image reflects the chosen variant.
+ */
+function previewFor(
+  field: FieldSchema,
+  fields: FieldSchema[],
+  data: Record<string, unknown>,
+  library: ResourceLibrary | null,
+): { resource: ResourceField; variant: ResourceVariantField | null } | null {
+  const hasImages = (resource: ResourceField) =>
+    resource.previewHeight > 0 && (library?.types.get(resource.resourceType)?.media ?? "image") === "image";
+  if (field.type === "resource") {
+    if (!hasImages(field)) return null;
+    const variantShown = typeof data[field.id] === "string" && fields.some((other) => other.type === "resourceVariant" && other.source === field.id);
+    return variantShown ? null : { resource: field, variant: null };
+  }
+  if (field.type === "resourceVariant") {
+    const source = fields.find((other) => other.id === field.source);
+    return source?.type === "resource" && hasImages(source) ? { resource: source, variant: field } : null;
+  }
+  return null;
 }
 
 /** Width of the widest label among fields shown as "label: value" rows. */

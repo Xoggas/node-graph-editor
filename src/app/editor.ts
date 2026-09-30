@@ -3,7 +3,8 @@ import { type GraphChange, GraphModel } from "../graph/graph";
 import { GraphHistory } from "../graph/history";
 import { type NodeDescriptor, SchemaRegistry } from "../graph/registry";
 import { type DataPath, getIn, listAdd, listMove, listRemove, setIn } from "../graph/dataOps";
-import { type NodeData, type PackFile, parseSchemaPack, reconcileData } from "../graph/schema";
+import { defaultVariant } from "../graph/resources";
+import { type NodeData, type NodeSchema, type PackFile, parseSchemaPack, reconcileData } from "../graph/schema";
 import { GraphJsonSerializer } from "../graph/serializer";
 import type { Vec2 } from "../graph/types";
 import { bundledPack } from "./bundledPack";
@@ -16,6 +17,7 @@ export interface PackInfo {
   /** Folder path, or a label for the built-in pack. */
   source: string;
   nodeCount: number;
+  resourceCount: number;
 }
 
 export interface EditorSnapshot {
@@ -162,7 +164,8 @@ export class Editor {
 
   /** Switches to a new pack and rebinds the open graph to it; node data is preserved. */
   applyPack(files: PackFile[], source: NonNullable<Editor["packSource"]>): void {
-    const pack = parseSchemaPack(files);
+    const pack = parseSchemaPack(files, source.kind === "folder" ? source.path : bundledPack.dir);
+    this.files.setResourceRoots(pack.resources.roots).catch((error) => this.setStatus(`Resource folders: ${errorMessage(error)}`));
     const registry = new SchemaRegistry(pack);
     const json = new GraphJsonSerializer(this.currentRegistry).serialize(this.graph);
     const { graph, warnings } = new GraphJsonSerializer(registry).deserialize(json);
@@ -178,6 +181,7 @@ export class Editor {
         version: pack.version,
         source: source.kind === "folder" ? source.path : bundledPack.label,
         nodeCount: pack.nodes.size,
+        resourceCount: pack.resources.items.size,
       },
       packWarnings: pack.warnings,
       descriptors: registry.descriptors(),
@@ -287,6 +291,11 @@ export class Editor {
     this.updateData(nodeId, (data) => setIn(data, path, value));
   }
 
+  /** Reads a resource file (e.g. an image) of the loaded pack. */
+  readResource(path: string): Promise<Blob> {
+    return this.files.readResource(path);
+  }
+
   setField(nodeId: string, fieldId: string, value: unknown): void {
     this.setValue(nodeId, [fieldId], value);
   }
@@ -325,8 +334,35 @@ export class Editor {
     if (!next) {
       return false;
     }
-    this.graph.setNodeData(nodeId, reconcileData(node.schema, next));
+    this.graph.setNodeData(nodeId, reconcileData(node.schema, this.reconcileVariants(node.schema, next)));
     return true;
+  }
+
+  /** Keeps variant fields (e.g. emotions) valid for the resource currently chosen in their source field. */
+  private reconcileVariants(schema: NodeSchema, data: NodeData): NodeData {
+    const library = this.registry.pack?.resources;
+    if (!library) {
+      return data;
+    }
+    let result = data;
+    for (const field of schema.fields) {
+      if (field.type !== "resourceVariant") continue;
+      const source = data[field.source];
+      const item = typeof source === "string" ? library.items.get(source) : undefined;
+      const current = data[field.id];
+      let next: string | null;
+      if (!item) {
+        next = null;
+      } else if (typeof current === "string" && (item.variants.get(field.collection) ?? []).some((variant) => variant.id === current)) {
+        next = current;
+      } else {
+        next = defaultVariant(library, item, field.collection);
+      }
+      if (next !== current) {
+        result = { ...result, [field.id]: next };
+      }
+    }
+    return result;
   }
 
   /** Renames a node, enforcing the schema's naming rules. Returns false when the name was rejected. */

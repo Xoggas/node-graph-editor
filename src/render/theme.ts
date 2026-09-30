@@ -28,6 +28,7 @@ export const theme = {
   buttonPressed: 0x303237,
   buttonDisabled: 0x2f3136,
   listItemBackground: 0x2e3035,
+  previewBackground: 0x1f2024,
 
   connection: 0xb8bcc5,
   connectionSelected: 0xfad860,
