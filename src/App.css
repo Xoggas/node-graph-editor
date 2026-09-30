@@ -1227,14 +1227,12 @@ body,
   align-items: baseline;
   justify-content: space-between;
   gap: 14px;
-  /* Reaches the card edges, so the zebra stripes span the whole row. */
-  margin: 0 -8px;
-  padding: 4px 8px;
-  border-radius: 4px;
+  padding: 7px 0;
 }
 
-.help-row:nth-of-type(even) {
-  background: #2c2f35;
+/* A thin line between rows, so long wrapped descriptions are easy to tell apart. */
+.help-row + .help-row {
+  border-top: 1px solid #34373e;
 }
 
 /* The description keeps at least 40% of the row; long key captions wrap instead of overflowing. */
