@@ -58,7 +58,8 @@ describe("exportRuntimeGraph", () => {
 
     expect(warnings).toEqual([]);
     expect(runtime).toMatchObject({ format: "node-graph-runtime", version: 1, graph: graph.id, pack: "game", entry: start.id });
-    expect(runtime.types).toEqual({ start: { blocking: false }, line: { blocking: true, voice: "narrator" }, flag: { blocking: false } });
+    // Only meta goes to the export; flags like `blocking` stay in the schema.
+    expect(runtime.types).toEqual({ line: { voice: "narrator" } });
     expect(runtime.nodes[start.id]).toEqual({ type: "start", data: {}, outputs: { out: [line.id] } });
     expect(runtime.nodes[line.id]).toEqual({
       type: "line",

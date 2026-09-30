@@ -34,8 +34,11 @@ export interface RuntimeGraph {
   pack: string | null;
   /** The node execution starts from (the pack's `export.entry` schema), when present. */
   entry?: string;
-  /** Per node type: whether it blocks and the schema `meta`, written once instead of per node. */
-  types: Record<string, Record<string, unknown>>;
+  /**
+   * Schema `meta` per node type that has any, written once instead of per node; omitted when no type
+   * has meta. Flags such as `blocking` stay in the schema pack, which the game reads anyway.
+   */
+  types?: Record<string, Record<string, unknown>>;
   nodes: Record<string, RuntimeNode>;
   /** Linked copies by id; omitted when there are none. */
   aliases?: Record<string, RuntimeAlias>;
@@ -61,8 +64,8 @@ export function exportRuntimeGraph(graph: GraphModel): RuntimeExport {
     const label = node.name || node.schema?.title || node.schemaId;
     if (!node.schema) {
       warnings.push(`'${label}' has no schema ('${node.schemaId}') and is exported as-is.`);
-    } else {
-      types[node.schemaId] = { blocking: node.schema.blocking, ...node.schema.meta };
+    } else if (Object.keys(node.schema.meta).length > 0) {
+      types[node.schemaId] = node.schema.meta;
     }
     const runtime: RuntimeNode = { type: node.schemaId, data: node.schema ? exportData(graph, node, warnings) : node.data };
     Object.assign(runtime, viewConnections(graph, node, node.id));
@@ -73,7 +76,8 @@ export function exportRuntimeGraph(graph: GraphModel): RuntimeExport {
     aliases[alias.id] = { node: alias.nodeId, ...viewConnections(graph, graph.getNode(alias.nodeId)!, alias.id) };
   }
 
-  const result: RuntimeGraph = { format: RUNTIME_FORMAT, version: RUNTIME_FORMAT_VERSION, graph: graph.id, pack: pack?.id ?? null, types, nodes };
+  const result: RuntimeGraph = { format: RUNTIME_FORMAT, version: RUNTIME_FORMAT_VERSION, graph: graph.id, pack: pack?.id ?? null, nodes };
+  if (Object.keys(types).length > 0) result.types = types;
   if (Object.keys(aliases).length > 0) result.aliases = aliases;
   const entrySchema = pack?.exportEntry;
   if (entrySchema) {

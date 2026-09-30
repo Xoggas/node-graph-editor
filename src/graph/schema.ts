@@ -181,8 +181,8 @@ export interface NodeSchema {
   /** At most one node of this schema per graph. */
   singleton: boolean;
   /**
-   * The dialogue stops at this node until the player goes on (a line, a click-through). Exported
-   * per type; a flow loop without a blocking node is reported as endless.
+   * The dialogue stops at this node until the player goes on (a line, a click-through). Not exported:
+   * the game reads it from the pack. A flow loop without a blocking node is reported as endless.
    */
   blocking: boolean;
   /**

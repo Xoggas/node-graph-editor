@@ -88,7 +88,7 @@ re-reads it from disk (the open graph keeps its data). The last folder is rememb
   "menu": "Dialogue",
   "color": "#508cdc",
   "naming": { "unique": true, "pattern": "^[\\p{L}0-9 ,.']+$" },
-  "blocking": true,                               // the dialogue waits here for the player; exported per type
+  "blocking": true,                               // the dialogue waits here for the player (the game reads it from the pack)
   // "choice": true,                              // an answer option, shown by the blocking node before it
   "meta": { "voice": "narrator" },                // anything else for the game: stored and exported as-is
   "ports": [
@@ -235,7 +235,7 @@ graph the first time.
   "format": "node-graph-runtime", "version": 1,
   "graph": "<graph id>", "pack": "pumpkin-quest",
   "entry": "<start node id>",                        // node of the schema named by pack.json "export.entry"
-  "types": { "dialogue.line": { "blocking": true } },   // `blocking` + schema meta, once per type
+  "types": { "dialogue.line": { "voice": "narrator" } },  // schema meta, once per type; omitted when no type has any
   "nodes": {
     "<node id>": {
       "type": "dialogue.line",
