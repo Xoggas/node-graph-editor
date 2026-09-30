@@ -12,12 +12,18 @@ interface NodePaletteProps {
   onDrop: (schemaId: string, clientX: number, clientY: number) => void;
   /** Click without dragging. */
   onAdd: (schemaId: string) => void;
+  /** The same for the sticky note item. */
+  onDropNote: (clientX: number, clientY: number) => void;
+  onAddNote: () => void;
   onChoosePack: () => void;
   onReloadPack: () => void;
 }
 
+/** What is dragged: a node type, or a sticky note. */
+type PaletteEntry = { kind: "node"; descriptor: NodeDescriptor } | { kind: "note" };
+
 interface DragState {
-  descriptor: NodeDescriptor;
+  entry: PaletteEntry;
   pointerId: number;
   startX: number;
   startY: number;
@@ -28,7 +34,18 @@ interface DragState {
 
 const DRAG_THRESHOLD = 4;
 
-export function NodePalette({ descriptors, pack, packWarnings, languageSelect, onDrop, onAdd, onChoosePack, onReloadPack }: NodePaletteProps) {
+export function NodePalette({
+  descriptors,
+  pack,
+  packWarnings,
+  languageSelect,
+  onDrop,
+  onAdd,
+  onDropNote,
+  onAddNote,
+  onChoosePack,
+  onReloadPack,
+}: NodePaletteProps) {
   const [drag, setDrag] = useState<DragState | null>(null);
   const [filter, setFilter] = useState("");
 
@@ -44,10 +61,14 @@ export function NodePalette({ descriptors, pack, packWarnings, languageSelect, o
     const up = (event: PointerEvent) => {
       if (event.pointerId !== drag.pointerId) return;
       setDrag(null);
-      if (drag.moved) {
-        onDrop(drag.descriptor.schemaId, event.clientX, event.clientY);
+      const { entry } = drag;
+      if (entry.kind === "note") {
+        if (drag.moved) onDropNote(event.clientX, event.clientY);
+        else onAddNote();
+      } else if (drag.moved) {
+        onDrop(entry.descriptor.schemaId, event.clientX, event.clientY);
       } else {
-        onAdd(drag.descriptor.schemaId);
+        onAdd(entry.descriptor.schemaId);
       }
     };
     const cancel = () => setDrag(null);
@@ -59,7 +80,16 @@ export function NodePalette({ descriptors, pack, packWarnings, languageSelect, o
       window.removeEventListener("pointerup", up);
       window.removeEventListener("pointercancel", cancel);
     };
-  }, [drag, onDrop, onAdd]);
+  }, [drag, onDrop, onAdd, onDropNote, onAddNote]);
+
+  const startDrag = (entry: PaletteEntry, event: React.PointerEvent) => {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    setDrag({ entry, pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, x: event.clientX, y: event.clientY, moved: false });
+  };
+  const dragging = (entry: PaletteEntry) =>
+    drag !== null &&
+    (drag.entry.kind === "note" ? entry.kind === "note" : entry.kind === "node" && entry.descriptor === drag.entry.descriptor);
 
   const groups = useMemo(() => {
     const query = filter.trim().toLowerCase();
@@ -97,6 +127,16 @@ export function NodePalette({ descriptors, pack, packWarnings, languageSelect, o
           )}
         </div>
       </div>
+      <div className="palette-extras">
+        <div
+          className={`palette-item palette-note${drag?.entry.kind === "note" ? " dragging" : ""}`}
+          title={"A comment on the canvas, not part of the dialogue\nDrag onto the canvas, or click to add at the view center"}
+          onPointerDown={(event) => startDrag({ kind: "note" }, event)}
+        >
+          <span className="palette-note-icon" aria-hidden="true" />
+          <div className="palette-item-title">Sticky note</div>
+        </div>
+      </div>
       <input
         className="palette-filter"
         placeholder="Filter…"
@@ -110,22 +150,10 @@ export function NodePalette({ descriptors, pack, packWarnings, languageSelect, o
             {items.map((descriptor) => (
               <div
                 key={descriptor.schemaId}
-                className={`palette-item${drag?.descriptor === descriptor ? " dragging" : ""}`}
+                className={`palette-item${dragging({ kind: "node", descriptor }) ? " dragging" : ""}`}
                 style={descriptor.color !== null ? { borderLeftColor: toCss(descriptor.color) } : undefined}
                 title={`${descriptor.schemaId}\nDrag onto the canvas, or click to add at the view center`}
-                onPointerDown={(event) => {
-                  if (event.button !== 0) return;
-                  event.preventDefault();
-                  setDrag({
-                    descriptor,
-                    pointerId: event.pointerId,
-                    startX: event.clientX,
-                    startY: event.clientY,
-                    x: event.clientX,
-                    y: event.clientY,
-                    moved: false,
-                  });
-                }}
+                onPointerDown={(event) => startDrag({ kind: "node", descriptor }, event)}
               >
                 <div className="palette-item-title">{descriptor.title}</div>
               </div>
@@ -138,7 +166,7 @@ export function NodePalette({ descriptors, pack, packWarnings, languageSelect, o
       </div>
       {drag?.moved && (
         <div className="palette-ghost" style={{ left: drag.x, top: drag.y }}>
-          {drag.descriptor.title}
+          {drag.entry.kind === "note" ? "Sticky note" : drag.entry.descriptor.title}
         </div>
       )}
     </aside>

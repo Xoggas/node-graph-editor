@@ -39,6 +39,7 @@ Requires Node.js and a Rust toolchain ([Tauri prerequisites](https://tauri.app/s
 | Export for the engine / Export As | Ctrl+E / Ctrl+Shift+E |
 | Shortcut reference | F1 |
 | Add node | Drag from the palette, or click an item to add it at the view center |
+| Sticky note | N (at the pointer), the palette item above the nodes, or the canvas context menu. Double-click or F2 edits the text (Ctrl+Enter or a click outside finishes), the folded corner resizes, the context menu sets the color |
 
 Keyboard shortcuts use physical keys, so they work with any layout (e.g. Russian).
 All shortcuts are defined in `src/app/shortcuts.ts`, which also feeds the F1 overlay.
@@ -215,7 +216,8 @@ node itself) has its own, with capacity and duplicate checks per copy.
 
 Graphs are JSON (`"format": "node-graph", "version": 2`). Each node stores its schema id and version,
 name, position and `data`; connections reference `{ node, port }` with the schema port key, plus
-`view` (an alias id) for an end drawn at a linked copy; linked copies are `aliases: [{ id, node, position }]`. Nodes whose
+`view` (an alias id) for an end drawn at a linked copy; linked copies are `aliases: [{ id, node, position }]`; sticky
+notes are `notes: [{ id, position, size, text, color }]` (editor only, not exported for the game). Nodes whose
 schema is missing load as placeholders and are written back unchanged; connections that cannot be
 restored (e.g. to a removed repeated port) are kept in `unresolvedConnections`.
 

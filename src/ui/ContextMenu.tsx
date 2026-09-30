@@ -1,6 +1,8 @@
 import { useLayoutEffect, useRef, useState } from "react";
 
 export type ContextMenuItem =
+  /** A row of color choices. */
+  | { swatches: { color: string; label: string; current: boolean; action: () => void }[] }
   | {
       label: string;
       /** Key hint shown on the right, e.g. "Ctrl+L". */
@@ -67,6 +69,23 @@ export function ContextMenu({ x, y, items, onClose }: ContextMenuProps) {
       {items.map((item, index) =>
         item === "separator" ? (
           <div key={index} className="context-menu-separator" role="separator" />
+        ) : "swatches" in item ? (
+          <div key={index} className="context-menu-swatches" role="group">
+            {item.swatches.map((swatch) => (
+              <button
+                key={swatch.label}
+                className={`context-menu-swatch${swatch.current ? " current" : ""}`}
+                role="menuitemradio"
+                aria-checked={swatch.current}
+                title={swatch.label}
+                style={{ background: swatch.color }}
+                onClick={() => {
+                  onClose();
+                  swatch.action();
+                }}
+              />
+            ))}
+          </div>
         ) : (
           <button
             key={index}

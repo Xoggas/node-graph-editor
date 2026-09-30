@@ -11,7 +11,13 @@ export interface TextEditRequest {
   placeholder?: string;
   /** Language of the text: turns on spell checking for it. */
   language?: string;
+  /** Extra class for a differently styled editor (e.g. "note"). */
+  variant?: string;
+  /** Line height (px) for text areas that must match the canvas text. */
+  lineHeight?: number;
   onCommit: (value: string) => void;
+  /** Called after the editor closes, committed or not. */
+  onClose?: () => void;
 }
 
 export interface ListPickRequest {
@@ -30,7 +36,7 @@ export interface ListPickRequest {
  * Committing happens on Enter (Ctrl+Enter for text areas) and on blur; Escape cancels.
  */
 export class InlineEditor {
-  private active: { element: HTMLElement; commit: (() => void) | null } | null = null;
+  private active: { element: HTMLElement; commit: (() => void) | null; onClose?: () => void } | null = null;
   private readonly onOutsidePointer = (event: PointerEvent) => {
     if (this.active && !this.active.element.contains(event.target as Node)) {
       this.close(true);
@@ -46,7 +52,7 @@ export class InlineEditor {
   editText(request: TextEditRequest): void {
     this.close(true);
     const element = document.createElement(request.multiline ? "textarea" : "input");
-    element.className = `ng-inline-editor${request.multiline ? " multiline" : ""}`;
+    element.className = `ng-inline-editor${request.multiline ? " multiline" : ""}${request.variant ? ` ${request.variant}` : ""}`;
     if (element instanceof HTMLInputElement) {
       element.type = "text";
       element.inputMode = request.inputMode ?? "text";
@@ -57,6 +63,7 @@ export class InlineEditor {
     element.placeholder = request.placeholder ?? "";
     place(element, request.rect);
     Object.assign(element.style, { fontSize: `${request.fontSize}px`, textAlign: request.align ?? "left" });
+    if (request.lineHeight !== undefined) element.style.lineHeight = `${request.lineHeight}px`;
 
     const commit = () => request.onCommit(element.value);
     element.addEventListener("keydown", (event: Event) => {
@@ -71,7 +78,7 @@ export class InlineEditor {
       }
     });
     element.addEventListener("blur", () => this.close(true));
-    this.open(element, commit);
+    this.open(element, commit, request.onClose);
     element.focus();
     element.select();
   }
@@ -167,11 +174,12 @@ export class InlineEditor {
       active.commit?.();
     }
     active.element.remove();
+    active.onClose?.();
   }
 
-  private open(element: HTMLElement, commit: (() => void) | null): void {
+  private open(element: HTMLElement, commit: (() => void) | null, onClose?: () => void): void {
     this.host.appendChild(element);
-    this.active = { element, commit };
+    this.active = { element, commit, onClose };
     window.addEventListener("pointerdown", this.onOutsidePointer, true);
   }
 }

@@ -25,6 +25,7 @@ export type ShortcutId =
   | "cut"
   | "paste"
   | "duplicate"
+  | "addNote"
   | "linkedCopy"
   | "nextLinked"
   | "rename"
@@ -180,6 +181,14 @@ export const shortcuts: Shortcut[] = [
   },
   {
     group: "Edit",
+    id: "addNote",
+    description: "Add sticky note (at the pointer)",
+    keys: ["N"],
+    bindings: [{ code: "KeyN" }],
+    run: whenIdle((renderer) => renderer.addNoteAtPointer()),
+  },
+  {
+    group: "Edit",
     id: "linkedCopy",
     description: "Create linked copy (same node in another place)",
     keys: ["Ctrl+L"],
@@ -197,7 +206,7 @@ export const shortcuts: Shortcut[] = [
   {
     group: "Edit",
     id: "rename",
-    description: "Rename node",
+    description: "Rename node / edit note",
     keys: ["F2"],
     bindings: [{ code: "F2" }],
     run: whenIdle((renderer) => renderer.renameSelection()),

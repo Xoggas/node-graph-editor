@@ -42,9 +42,26 @@ export const theme = {
   connectionPreview: 0xb8bcc5,
   portIncompatibleAlpha: 0.25,
 
+  noteText: 0x25262b,
+  noteShadow: 0x000000,
+
   selectionFill: { color: 0x8ab4ff, alpha: 0.08 },
   selectionStroke: { color: 0x8ab4ff, alpha: 0.6 },
 } as const;
+
+/** Sticky note colors by palette key (`NOTE_COLORS`): the sheet, and its top band and folded corner. */
+export const noteColors: Record<string, { body: number; band: number; swatch: string }> = {
+  yellow: { body: 0xebd583, band: 0xd8bd5c, swatch: "#ebd583" },
+  green: { body: 0xacd6a0, band: 0x8cc27e, swatch: "#acd6a0" },
+  blue: { body: 0xa3c4ec, band: 0x7fa9df, swatch: "#a3c4ec" },
+  pink: { body: 0xedb0c9, band: 0xdc8fb0, swatch: "#edb0c9" },
+  purple: { body: 0xc6b3ec, band: 0xa993dc, swatch: "#c6b3ec" },
+  gray: { body: 0xc8ccd3, band: 0xaab0b9, swatch: "#c8ccd3" },
+};
+
+export function noteColor(key: string) {
+  return noteColors[key] ?? noteColors.yellow;
+}
 
 const knownTypeColors: Record<string, number> = {
   "system.float": 0x6fc3b2,

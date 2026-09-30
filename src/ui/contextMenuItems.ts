@@ -1,9 +1,11 @@
 import type { Editor } from "../app/editor";
+import { NOTE_COLORS } from "../graph/types";
+import { noteColors } from "../render/theme";
 import { shortcutLabel } from "../app/shortcuts";
 import type { ContextMenuRequest, GraphRenderer } from "../render/GraphRenderer";
 import type { ContextMenuItem } from "./ContextMenu";
 
-/** Menu for a right click on a node, a connection or empty canvas; actions match the shortcuts. */
+/** Menu for a right click on a node, a note, a connection or empty canvas; actions match the shortcuts. */
 export function buildContextMenu(request: ContextMenuRequest, editor: Editor, renderer: GraphRenderer): ContextMenuItem[] {
   const { target } = request;
 
@@ -16,6 +18,7 @@ export function buildContextMenu(request: ContextMenuRequest, editor: Editor, re
 
   if (target.kind === "canvas") {
     return [
+      { label: "Add sticky note", shortcut: shortcutLabel("addNote"), action: () => renderer.addNoteAt(request.world) },
       {
         label: "Paste here",
         shortcut: shortcutLabel("paste"),
@@ -30,10 +33,49 @@ export function buildContextMenu(request: ContextMenuRequest, editor: Editor, re
 
   const selection = renderer.selectedViewIds();
   const single = selection.length === 1;
+  const count = selection.length > 1 ? ` ${selection.length} elements` : "";
+  const clipboardItems: ContextMenuItem[] = [
+    { label: `Copy${count}`, shortcut: shortcutLabel("copy"), action: () => editor.copy(renderer.selectedViewIds()) },
+    {
+      label: `Cut${count}`,
+      shortcut: shortcutLabel("cut"),
+      action: () => {
+        const ids = renderer.selectedViewIds();
+        renderer.clearSelection();
+        editor.cut(ids);
+      },
+    },
+    {
+      label: `Duplicate${count}`,
+      shortcut: shortcutLabel("duplicate"),
+      action: () => renderer.selectViews(editor.duplicate(renderer.selectedViewIds())),
+    },
+  ];
+
+  if (target.kind === "note") {
+    const note = editor.graph.getNote(target.noteId);
+    // The color applies to every selected note.
+    const notes = selection.filter((id) => editor.graph.getNote(id));
+    return [
+      { label: "Edit text", shortcut: shortcutLabel("rename"), disabled: !single, action: () => renderer.editNote(target.noteId) },
+      {
+        swatches: NOTE_COLORS.map((color) => ({
+          color: noteColors[color].swatch,
+          label: color[0].toUpperCase() + color.slice(1),
+          current: note?.color === color,
+          action: () => notes.forEach((id) => editor.updateNote(id, { color })),
+        })),
+      },
+      "separator",
+      ...clipboardItems,
+      "separator",
+      { label: `Delete${count}`, shortcut: shortcutLabel("delete"), danger: true, action: () => renderer.deleteSelection() },
+    ];
+  }
+
   const node = editor.graph.viewNode(target.viewId);
   const isCopy = !!editor.graph.getAlias(target.viewId);
   const linked = node ? editor.graph.viewIdsOf(node.id).length > 1 : false;
-  const count = selection.length > 1 ? ` ${selection.length} nodes` : "";
 
   return [
     {
@@ -55,21 +97,7 @@ export function buildContextMenu(request: ContextMenuRequest, editor: Editor, re
       action: () => renderer.goToNextLinkedView(),
     },
     "separator",
-    { label: `Copy${count}`, shortcut: shortcutLabel("copy"), action: () => editor.copy(renderer.selectedViewIds()) },
-    {
-      label: `Cut${count}`,
-      shortcut: shortcutLabel("cut"),
-      action: () => {
-        const ids = renderer.selectedViewIds();
-        renderer.clearSelection();
-        editor.cut(ids);
-      },
-    },
-    {
-      label: `Duplicate${count}`,
-      shortcut: shortcutLabel("duplicate"),
-      action: () => renderer.selectViews(editor.duplicate(renderer.selectedViewIds())),
-    },
+    ...clipboardItems,
     "separator",
     {
       label: isCopy && single ? "Delete linked copy" : `Delete${count}`,

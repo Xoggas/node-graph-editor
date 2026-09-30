@@ -9,9 +9,14 @@ import {
   type ConnectionViews,
   isValidId,
   type NodeAlias,
+  NOTE_COLORS,
+  NOTE_DEFAULT_SIZE,
+  NOTE_MIN_SIZE,
+  type NoteContent,
   newId,
   type Port,
   RegistryError,
+  type StickyNote,
   type UnresolvedConnection,
   type Vec2,
   type Viewport,
@@ -28,6 +33,10 @@ export type GraphChange =
   | { kind: "aliasAdded"; alias: NodeAlias }
   | { kind: "aliasRemoved"; alias: NodeAlias }
   | { kind: "aliasMoved"; alias: NodeAlias; previous: Vec2 }
+  | { kind: "noteAdded"; note: StickyNote }
+  | { kind: "noteRemoved"; note: StickyNote }
+  | { kind: "noteMoved"; note: StickyNote; previous: Vec2 }
+  | { kind: "noteChanged"; note: StickyNote; previous: NoteContent }
   | { kind: "connectionAdded"; connection: Connection }
   | { kind: "connectionRemoved"; connection: Connection }
   | { kind: "viewportChanged" }
@@ -54,6 +63,7 @@ export class GraphModel {
   private readonly connectionsByPort = new Map<string, Set<Connection>>();
   private readonly aliasMap = new Map<string, NodeAlias>();
   private readonly aliasesByNode = new Map<string, Set<NodeAlias>>();
+  private readonly noteMap = new Map<string, StickyNote>();
   private readonly listeners = new Set<GraphListener>();
   private batchDepth = 0;
   private batchChanged = false;
@@ -88,6 +98,10 @@ export class GraphModel {
 
   get aliases(): IterableIterator<NodeAlias> {
     return this.aliasMap.values();
+  }
+
+  get notes(): IterableIterator<StickyNote> {
+    return this.noteMap.values();
   }
 
   get viewport(): Viewport {
@@ -145,7 +159,12 @@ export class GraphModel {
     return aliases ? [...aliases] : [];
   }
 
+  getNote(id: string): StickyNote | undefined {
+    return this.noteMap.get(id);
+  }
+
   // A "view" is a place where a node is shown: the node itself (view id = node id) or an alias.
+  // Moving and removing by view id also takes sticky notes, so a selection can mix them.
 
   /** The node shown by a view. */
   viewNode(viewId: string): NodeModel | undefined {
@@ -153,16 +172,20 @@ export class GraphModel {
   }
 
   viewPosition(viewId: string): Vec2 | undefined {
-    return this.nodeMap.get(viewId)?.position ?? this.aliasMap.get(viewId)?.position;
+    return this.nodeMap.get(viewId)?.position ?? this.aliasMap.get(viewId)?.position ?? this.noteMap.get(viewId)?.position;
   }
 
   moveView(viewId: string, position: Vec2): boolean {
-    return this.nodeMap.has(viewId) ? this.moveNode(viewId, position) : this.moveAlias(viewId, position);
+    if (this.nodeMap.has(viewId)) return this.moveNode(viewId, position);
+    if (this.noteMap.has(viewId)) return this.moveNote(viewId, position);
+    return this.moveAlias(viewId, position);
   }
 
-  /** Removes a node (with its aliases) or just an alias. */
+  /** Removes a node (with its aliases), just an alias, or a sticky note. */
   removeView(viewId: string): boolean {
-    return this.nodeMap.has(viewId) ? this.removeNode(viewId) : this.removeAlias(viewId);
+    if (this.nodeMap.has(viewId)) return this.removeNode(viewId);
+    if (this.noteMap.has(viewId)) return this.removeNote(viewId);
+    return this.removeAlias(viewId);
   }
 
   /** The node itself and its aliases. */
@@ -329,6 +352,72 @@ export class GraphModel {
       alias.position = { x: position.x, y: position.y };
       this.emit({ kind: "aliasMoved", alias, previous });
     }
+    return true;
+  }
+
+  /** Adds a sticky note at a position, or restores a removed note object. */
+  addNote(positionOrNote: Vec2 | StickyNote, content: Partial<NoteContent> = {}): StickyNote {
+    const note: StickyNote =
+      "id" in positionOrNote
+        ? positionOrNote
+        : {
+            id: newId(),
+            position: { x: positionOrNote.x, y: positionOrNote.y },
+            size: { ...NOTE_DEFAULT_SIZE },
+            text: "",
+            color: NOTE_COLORS[0],
+            ...content,
+          };
+    if (!isValidId(note.id) || this.noteMap.has(note.id) || this.nodeMap.has(note.id) || this.aliasMap.has(note.id)) {
+      throw new RegistryError(`Note id '${note.id}' is invalid or already used.`);
+    }
+    this.noteMap.set(note.id, note);
+    this.emit({ kind: "noteAdded", note });
+    return note;
+  }
+
+  removeNote(noteId: string): boolean {
+    const note = this.noteMap.get(noteId);
+    if (!note) {
+      return false;
+    }
+    this.noteMap.delete(noteId);
+    this.emit({ kind: "noteRemoved", note });
+    return true;
+  }
+
+  moveNote(noteId: string, position: Vec2): boolean {
+    const note = this.noteMap.get(noteId);
+    if (!note) {
+      return false;
+    }
+    if (note.position.x !== position.x || note.position.y !== position.y) {
+      const previous = note.position;
+      note.position = { x: position.x, y: position.y };
+      this.emit({ kind: "noteMoved", note, previous });
+    }
+    return true;
+  }
+
+  /** Changes a note's text, color or size (clamped to the minimum size). */
+  updateNote(noteId: string, content: Partial<NoteContent>): boolean {
+    const note = this.noteMap.get(noteId);
+    if (!note) {
+      return false;
+    }
+    const size = content.size
+      ? { width: Math.max(NOTE_MIN_SIZE.width, content.size.width), height: Math.max(NOTE_MIN_SIZE.height, content.size.height) }
+      : note.size;
+    const text = content.text ?? note.text;
+    const color = content.color ?? note.color;
+    if (text === note.text && color === note.color && size.width === note.size.width && size.height === note.size.height) {
+      return false;
+    }
+    const previous: NoteContent = { text: note.text, color: note.color, size: note.size };
+    note.text = text;
+    note.color = color;
+    note.size = { ...size };
+    this.emit({ kind: "noteChanged", note, previous });
     return true;
   }
 

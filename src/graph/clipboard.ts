@@ -1,7 +1,7 @@
 import type { GraphModel } from "./graph";
 import { createNode, createPlaceholder, type NodeModel } from "./node";
 import { type FieldSchema, isRecord, type NodeData, type NodeSchema } from "./schema";
-import { newId, type PortDirection, type Vec2 } from "./types";
+import { newId, type NoteContent, type PortDirection, type Vec2 } from "./types";
 
 interface ClipboardNode {
   /** Id of the copied node, so references between pasted nodes follow the copies. */
@@ -20,6 +20,10 @@ interface ClipboardAlias {
   position: Vec2;
 }
 
+interface ClipboardNote extends NoteContent {
+  position: Vec2;
+}
+
 /** A copied node or alias, by index. */
 type ClipboardView = { node: number } | { alias: number };
 
@@ -33,6 +37,7 @@ interface ClipboardConnection {
 export interface ClipboardData {
   nodes: ClipboardNode[];
   aliases: ClipboardAlias[];
+  notes: ClipboardNote[];
   /** Only connections between copied views. */
   connections: ClipboardConnection[];
   bounds: { minX: number; minY: number; maxX: number; maxY: number };
@@ -41,19 +46,20 @@ export interface ClipboardData {
 export interface PasteResult {
   /** New nodes, in clipboard order. */
   nodeIds: string[];
-  /** New nodes and aliases, e.g. to select them. */
+  /** New nodes, aliases and notes, e.g. to select them. */
   viewIds: string[];
 }
 
 /**
- * Copies views (node ids and alias ids). An alias copied with its node becomes an alias of the
+ * Copies views (node, alias and note ids). An alias copied with its node becomes an alias of the
  * copy; an alias copied alone pastes as another alias of the same node.
  */
 export function copyViews(graph: GraphModel, viewIds: Iterable<string>): ClipboardData | null {
   const ids = [...new Set(viewIds)];
   const nodes = ids.map((id) => graph.getNode(id)).filter((node): node is NodeModel => !!node);
   const aliases = ids.map((id) => graph.getAlias(id)).filter((alias) => !!alias);
-  if (nodes.length === 0 && aliases.length === 0) {
+  const notes = ids.map((id) => graph.getNote(id)).filter((note) => !!note);
+  if (nodes.length === 0 && aliases.length === 0 && notes.length === 0) {
     return null;
   }
   const nodeIndex = new Map(nodes.map((node, i) => [node.id, i]));
@@ -80,7 +86,7 @@ export function copyViews(graph: GraphModel, viewIds: Iterable<string>): Clipboa
     }
   }
   const bounds = { minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity };
-  for (const { position } of [...nodes, ...aliases]) {
+  for (const { position } of [...nodes, ...aliases, ...notes]) {
     bounds.minX = Math.min(bounds.minX, position.x);
     bounds.minY = Math.min(bounds.minY, position.y);
     bounds.maxX = Math.max(bounds.maxX, position.x);
@@ -99,6 +105,7 @@ export function copyViews(graph: GraphModel, viewIds: Iterable<string>): Clipboa
       const copied = nodeIndex.get(alias.nodeId);
       return { node: copied !== undefined ? { copied } : { existing: alias.nodeId }, position: { ...alias.position } };
     }),
+    notes: notes.map((note) => ({ position: { ...note.position }, size: { ...note.size }, text: note.text, color: note.color })),
     connections,
     bounds,
   };
@@ -163,8 +170,11 @@ export function pasteViews(graph: GraphModel, data: ClipboardData, offset: Vec2)
       graph.connect(outputPort.id, inputPort.id, undefined, { output: output.viewId, input: input.viewId });
     }
   }
+  const noteIds = data.notes.map(
+    (entry) => graph.addNote({ x: entry.position.x + offset.x, y: entry.position.y + offset.y }, { text: entry.text, color: entry.color, size: { ...entry.size } }).id,
+  );
   const nodeIds = created.map(({ node }) => node.id);
-  return { nodeIds, viewIds: [...nodeIds, ...createdAliases.flatMap((alias) => (alias ? [alias.viewId] : []))] };
+  return { nodeIds, viewIds: [...nodeIds, ...createdAliases.flatMap((alias) => (alias ? [alias.viewId] : [])), ...noteIds] };
 }
 
 /**

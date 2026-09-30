@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { Editor, type Notice } from "./app/editor";
+import { NOTE_DEFAULT_SIZE } from "./graph/types";
 import { physicalKey } from "./app/keys";
 import { findShortcut, isEditableTarget } from "./app/shortcuts";
 import type { GraphRenderer, RendererStats } from "./render/GraphRenderer";
@@ -82,6 +83,16 @@ export default function App() {
       editor.addNode(schemaId, { x: position.x - DROP_OFFSET.x, y: position.y - DROP_OFFSET.y });
     }
   }, []);
+
+  // A dropped note is centered under the cursor; a clicked one goes to the view center.
+  const onDropNote = useCallback((clientX: number, clientY: number) => {
+    const renderer = rendererRef.current;
+    const position = renderer?.clientToGraph(clientX, clientY);
+    if (renderer && position) {
+      renderer.addNoteAt({ x: position.x - NOTE_DEFAULT_SIZE.width / 2, y: position.y - NOTE_DEFAULT_SIZE.height / 2 });
+    }
+  }, []);
+  const onAddNote = useCallback(() => rendererRef.current?.addNoteAtPointer(), []);
 
   const onAdd = useCallback((schemaId: string) => {
     const center = rendererRef.current?.viewCenter() ?? { x: 0, y: 0 };
@@ -246,6 +257,8 @@ export default function App() {
           languageSelect={languageSelect || null}
           onDrop={onDrop}
           onAdd={onAdd}
+          onDropNote={onDropNote}
+          onAddNote={onAddNote}
           onChoosePack={() => void editor.choosePackFolder()}
           onReloadPack={() => void editor.reloadPack()}
         />

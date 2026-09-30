@@ -10,7 +10,7 @@ import { type NodeData, type NodeSchema, type PackFile, parseSchemaPack, reconci
 import { exportRuntimeGraph } from "../graph/export";
 import { GraphJsonSerializer } from "../graph/serializer";
 import { type Problem, validateGraph } from "../graph/validate";
-import type { Vec2 } from "../graph/types";
+import type { NoteContent, Vec2 } from "../graph/types";
 import { bundledPack } from "./bundledPack";
 import { createFileSystem, type GraphFileSystem, type OpenedFile } from "./files";
 
@@ -502,6 +502,16 @@ export class Editor {
     }
   }
 
+  /** Adds a sticky note with its top-left corner at `position`; returns its id. */
+  addNote(position: Vec2, content: Partial<NoteContent> = {}): string {
+    return this.graph.addNote(position, content).id;
+  }
+
+  /** Changes a note's text, color or size; one undo step per call (or per interaction). */
+  updateNote(noteId: string, content: Partial<NoteContent>): void {
+    this.graph.updateNote(noteId, content);
+  }
+
   /**
    * Adds a linked copy of each node shown by the given views, next to that view. Returns the new
    * alias ids.
@@ -687,7 +697,7 @@ export class Editor {
     }
     this.clipboard = data;
     this.pasteCount = 0;
-    this.update({ canPaste: true, status: `Copied ${data.nodes.length + data.aliases.length} node(s).` });
+    this.update({ canPaste: true, status: `Copied ${data.nodes.length + data.aliases.length + data.notes.length} element(s).` });
     return true;
   }
 
@@ -697,7 +707,7 @@ export class Editor {
       return false;
     }
     this.deleteElements(ids, []);
-    this.setStatus(`Cut ${ids.length} node(s).`);
+    this.setStatus(`Cut ${ids.length} element(s).`);
     return true;
   }
 
@@ -754,7 +764,7 @@ export class Editor {
           }
         });
       });
-      this.setStatus(`${verb} ${viewIds.length} node(s).`);
+      this.setStatus(`${verb} ${viewIds.length} element(s).`);
       return viewIds;
     } catch (error) {
       this.setStatus(`${verb} failed: ${errorMessage(error)}`, "error");

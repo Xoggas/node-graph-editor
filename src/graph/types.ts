@@ -42,6 +42,28 @@ export interface NodeAlias {
   position: Vec2;
 }
 
+export interface Size {
+  width: number;
+  height: number;
+}
+
+/** A comment on the canvas: editor-only, never exported for the game. */
+export interface StickyNote {
+  id: string;
+  position: Vec2;
+  size: Size;
+  text: string;
+  /** A palette key (see `NOTE_COLORS`); unknown keys are drawn as the first color. */
+  color: string;
+}
+
+/** What `GraphModel.updateNote` changes; the position changes with `moveNote`. */
+export type NoteContent = Pick<StickyNote, "text" | "color" | "size">;
+
+export const NOTE_COLORS = ["yellow", "green", "blue", "pink", "purple", "gray"] as const;
+export const NOTE_DEFAULT_SIZE: Size = { width: 240, height: 140 };
+export const NOTE_MIN_SIZE: Size = { width: 120, height: 56 };
+
 /** Views a connection belongs to, when not the nodes themselves (see `Connection.outputViewId`). */
 export interface ConnectionViews {
   output?: string;

@@ -1,5 +1,5 @@
 import type { GraphChange, GraphModel } from "./graph";
-import type { Connection, Vec2 } from "./types";
+import type { Connection, NoteContent, Vec2 } from "./types";
 
 export interface HistoryStep {
   undo(graph: GraphModel): void;
@@ -10,8 +10,10 @@ type Step = HistoryStep;
 
 interface Transaction {
   steps: Step[];
-  /** Index of the coalesced move step per node or alias, so a drag becomes one step per view. */
+  /** Index of the coalesced move step per node, alias or note, so a drag becomes one step per view. */
   moves: Map<string, { step: Step; to: Vec2 }>;
+  /** The same for note edits, so resizing a note is one step. */
+  noteEdits: Map<string, { step: Step; to: NoteContent }>;
 }
 
 const MAX_ENTRIES = 200;
@@ -123,8 +125,26 @@ export class GraphHistory {
       return;
     }
     const transaction = this.open();
-    if (change.kind === "nodeMoved" || change.kind === "aliasMoved") {
-      const view = change.kind === "nodeMoved" ? change.node : change.alias;
+    if (change.kind === "noteChanged") {
+      const { note } = change;
+      const to: NoteContent = { text: note.text, color: note.color, size: { ...note.size } };
+      const existing = transaction.noteEdits.get(note.id);
+      if (existing) {
+        existing.to = to;
+        return;
+      }
+      const from: NoteContent = { ...change.previous, size: { ...change.previous.size } };
+      const edit = { step: null as unknown as Step, to };
+      edit.step = {
+        undo: (graph) => graph.updateNote(note.id, from),
+        redo: (graph) => graph.updateNote(note.id, edit.to),
+      };
+      transaction.noteEdits.set(note.id, edit);
+      transaction.steps.push(edit.step);
+      return;
+    }
+    if (change.kind === "nodeMoved" || change.kind === "aliasMoved" || change.kind === "noteMoved") {
+      const view = change.kind === "nodeMoved" ? change.node : change.kind === "aliasMoved" ? change.alias : change.note;
       const viewId = view.id;
       const to = { ...view.position };
       const existing = transaction.moves.get(viewId);
@@ -150,7 +170,7 @@ export class GraphHistory {
 
   private open(): Transaction {
     if (!this.current) {
-      this.current = { steps: [], moves: new Map() };
+      this.current = { steps: [], moves: new Map(), noteEdits: new Map() };
     }
     if (this.explicitDepth === 0 && !this.flushScheduled) {
       this.flushScheduled = true;
@@ -227,6 +247,20 @@ function createStep(change: GraphChange): Step | null {
       return {
         undo: (graph) => graph.addAlias(alias, position),
         redo: (graph) => graph.removeAlias(alias.id),
+      };
+    }
+    case "noteAdded": {
+      const { note } = change;
+      return {
+        undo: (graph) => graph.removeNote(note.id),
+        redo: (graph) => graph.addNote(note),
+      };
+    }
+    case "noteRemoved": {
+      const { note } = change;
+      return {
+        undo: (graph) => graph.addNote(note),
+        redo: (graph) => graph.removeNote(note.id),
       };
     }
     case "connectionAdded": {

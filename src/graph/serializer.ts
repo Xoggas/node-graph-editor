@@ -2,7 +2,7 @@ import { GraphModel } from "./graph";
 import { createNode, createPlaceholder, type NodeModel, portId } from "./node";
 import type { SchemaRegistry } from "./registry";
 import { isRecord, normalizeData } from "./schema";
-import { isValidId, type PortDirection, type PortRef, type UnresolvedConnection } from "./types";
+import { isValidId, NOTE_COLORS, NOTE_DEFAULT_SIZE, NOTE_MIN_SIZE, type PortDirection, type PortRef, type UnresolvedConnection } from "./types";
 
 export const GRAPH_FORMAT = "node-graph";
 export const GRAPH_FORMAT_VERSION = 2;
@@ -29,6 +29,14 @@ interface AliasDto {
   position: { x: number; y: number };
 }
 
+interface NoteDto {
+  id: string;
+  position: { x: number; y: number };
+  size: { width: number; height: number };
+  text: string;
+  color: string;
+}
+
 interface ConnectionDto {
   id: string | null;
   from: PortRef | null;
@@ -45,6 +53,8 @@ interface GraphDocumentDto {
   nodes: NodeDto[];
   /** Linked copies of nodes (editor only). */
   aliases?: AliasDto[];
+  /** Sticky notes (editor only). */
+  notes?: NoteDto[];
   connections: ConnectionDto[];
   unresolvedConnections: ConnectionDto[];
 }
@@ -76,6 +86,13 @@ export class GraphJsonSerializer {
         id: alias.id,
         node: alias.nodeId,
         position: { x: alias.position.x, y: alias.position.y },
+      })),
+      notes: [...graph.notes].map((note) => ({
+        id: note.id,
+        position: { x: note.position.x, y: note.position.y },
+        size: { width: note.size.width, height: note.size.height },
+        text: note.text,
+        color: note.color,
       })),
       connections: [...graph.connections].map((connection) => ({
         id: connection.id,
@@ -166,6 +183,30 @@ export class GraphJsonSerializer {
           throw new GraphSerializationError(`Duplicate id '${dto.id}'.`);
         }
         graph.addAlias({ id: dto.id, nodeId: dto.node, position: { x: 0, y: 0 } }, toPoint(dto.position));
+      }
+
+      for (const noteDto of asArray<unknown>(document.notes, "notes")) {
+        const dto: Record<string, unknown> = isRecord(noteDto) ? noteDto : {};
+        if (!isValidId(dto.id)) {
+          warnings.push("A note with an invalid id was dropped.");
+          continue;
+        }
+        if (graph.getNote(dto.id) || graph.getAlias(dto.id) || graph.getNode(dto.id)) {
+          throw new GraphSerializationError(`Duplicate id '${dto.id}'.`);
+        }
+        const size: Record<string, unknown> = isRecord(dto.size) ? dto.size : {};
+        const dimension = (value: unknown, fallback: number, min: number) =>
+          typeof value === "number" && Number.isFinite(value) ? Math.max(min, value) : fallback;
+        graph.addNote({
+          id: dto.id,
+          position: toPoint(dto.position),
+          size: {
+            width: dimension(size.width, NOTE_DEFAULT_SIZE.width, NOTE_MIN_SIZE.width),
+            height: dimension(size.height, NOTE_DEFAULT_SIZE.height, NOTE_MIN_SIZE.height),
+          },
+          text: typeof dto.text === "string" ? dto.text : "",
+          color: typeof dto.color === "string" ? dto.color : NOTE_COLORS[0],
+        });
       }
 
       const connectionIds = new Set<string>();

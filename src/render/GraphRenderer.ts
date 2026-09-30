@@ -1,7 +1,7 @@
 import { Application, Container, Graphics } from "pixi.js";
 import type { Editor, GraphReplacedOptions } from "../app/editor";
 import type { GraphChange, GraphModel } from "../graph/graph";
-import { clampZoom, type Connection, type Port, type Vec2, type Viewport } from "../graph/types";
+import { clampZoom, type Connection, NOTE_DEFAULT_SIZE, type Port, type Size, type Vec2, type Viewport } from "../graph/types";
 import { DotGrid } from "./DotGrid";
 import { EdgeView, traceEdgePath } from "./EdgeView";
 import { type Bounds, computeEdgePath, edgeIntersectsBounds, hitTestEdge, rectsIntersect } from "./geometry";
@@ -15,6 +15,7 @@ import { choiceRouteConnections } from "../graph/choices";
 import { NodeTooltip } from "./NodeTooltip";
 import { getIn, itemRefCandidates, itemRefLabel, nodeRefCandidates } from "../graph/dataOps";
 import { type Control, formatNumber, INFO_KEY, type NodeHit, NodeView, type PortHighlight } from "./NodeView";
+import { NOTE_LINE_HEIGHT, NOTE_TEXT_SIZE, type NoteHit, NoteView } from "./NoteView";
 import { installFonts } from "./text";
 import { theme, typeColor } from "./theme";
 
@@ -36,7 +37,8 @@ const EDGE_RESTYLE_BUDGET_MS = 6;
 
 type Hit =
   | { kind: "node"; view: NodeView; hit: NodeHit }
-  | { kind: "edge"; view: EdgeView };
+  | { kind: "edge"; view: EdgeView }
+  | { kind: "note"; view: NoteView; hit: NoteHit };
 
 type Interaction =
   | { kind: "none" }
@@ -61,11 +63,17 @@ type Interaction =
       initial: Set<string>;
       initialEdges: Set<string>;
     }
+  /** Dragging a note's folded corner. */
+  | { kind: "resize"; pointerId: number; view: NoteView; start: Vec2; origin: Size }
   /** Pressing a checkbox or an enum segment; applied on release over the same target. */
   | { kind: "press"; pointerId: number; view: NodeView; control: Control; segment: number | null };
 
 /** What a right click hit; the selection is already updated to include it. */
-export type ContextTarget = { kind: "node"; viewId: string } | { kind: "edge"; connectionId: string } | { kind: "canvas" };
+export type ContextTarget =
+  | { kind: "node"; viewId: string }
+  | { kind: "note"; noteId: string }
+  | { kind: "edge"; connectionId: string }
+  | { kind: "canvas" };
 
 export interface ContextMenuRequest {
   clientX: number;
@@ -88,6 +96,8 @@ export class GraphRenderer {
   private readonly app = new Application();
   private readonly grid = new DotGrid();
   private readonly world = new Container();
+  /** Sticky notes lie under the connections and nodes. */
+  private readonly noteLayer = new Container();
   private readonly edgeLayer = new Container();
   private readonly nodeLayer = new Container();
   private readonly preview = new Graphics();
@@ -101,7 +111,10 @@ export class GraphRenderer {
   private readonly nodeViews = new Map<string, NodeView>();
   private readonly viewsByContainer = new Map<Container, NodeView>();
   private readonly edgeViews = new Map<string, EdgeView>();
-  /** Selected view ids. */
+  private readonly noteViews = new Map<string, NoteView>();
+  private readonly notesByContainer = new Map<Container, NoteView>();
+  private hoveredNote: NoteView | null = null;
+  /** Selected view ids (nodes, linked copies and notes). */
   private readonly selection = new Set<string>();
   /** Other views of the selected nodes, drawn highlighted. */
   private linkHighlights = new Set<string>();
@@ -183,7 +196,7 @@ export class GraphRenderer {
     stage.eventMode = "none";
     stage.interactiveChildren = false;
     stage.addChild(this.grid.sprite, this.world, this.overlay);
-    this.world.addChild(this.edgeLayer, this.nodeLayer, this.preview);
+    this.world.addChild(this.noteLayer, this.edgeLayer, this.nodeLayer, this.preview);
 
     const canvas = this.app.canvas;
     canvas.style.display = "block";
@@ -254,12 +267,13 @@ export class GraphRenderer {
   }
 
   frameAll(): void {
-    this.frameNodes(this.nodeViews.keys());
+    this.frameNodes([...this.nodeViews.keys(), ...this.noteViews.keys()]);
   }
 
   /** Frames the selection, or the whole graph when nothing is selected. */
   frameSelection(): void {
-    this.frameNodes(this.selection.size > 0 ? this.selection : this.nodeViews.keys());
+    if (this.selection.size > 0) this.frameNodes(this.selection);
+    else this.frameAll();
   }
 
   private frameNodes(nodeIds: Iterable<string>): void {
@@ -268,7 +282,7 @@ export class GraphRenderer {
     let maxX = -Infinity;
     let maxY = -Infinity;
     for (const id of nodeIds) {
-      const view = this.nodeViews.get(id);
+      const view = this.nodeViews.get(id) ?? this.noteViews.get(id);
       if (!view) {
         continue;
       }
@@ -329,9 +343,14 @@ export class GraphRenderer {
     return !!this.graph.viewNode(viewId)?.schema?.naming.editable;
   }
 
-  /** Opens the rename field on the only selected node. */
+  /** Opens the rename field on the only selected node, or the text of the only selected note. */
   renameSelection(): boolean {
     const [viewId] = this.selection;
+    const note = this.selection.size === 1 ? this.noteViews.get(viewId) : undefined;
+    if (note) {
+      this.openNoteEditor(note);
+      return true;
+    }
     const view = this.selection.size === 1 ? this.nodeViews.get(viewId) : undefined;
     if (!view || !this.canRename(viewId)) {
       this.editor.setStatus(view ? "This node has no editable name." : "Select one node to rename.");
@@ -359,16 +378,36 @@ export class GraphRenderer {
     return [...this.selectedEdges.keys()];
   }
 
-  /** Selects nodes and linked copies by view id. */
+  /** Selects nodes, linked copies and notes by id. */
   selectViews(viewIds: Iterable<string>): void {
     this.setEdgeSelection(new Set());
-    const ids = new Set([...viewIds].filter((id) => this.nodeViews.has(id)));
+    const ids = new Set([...viewIds].filter((id) => this.nodeViews.has(id) || this.noteViews.has(id)));
     this.setSelection(ids);
     this.bringToFront(ids);
   }
 
   selectAll(): void {
-    this.selectViews(this.nodeViews.keys());
+    this.selectViews([...this.nodeViews.keys(), ...this.noteViews.keys()]);
+  }
+
+  /** Adds a sticky note with its top-left corner at `world`, selects it and opens its text. */
+  addNoteAt(world: Vec2): void {
+    const id = this.editor.addNote({ x: Math.round(world.x), y: Math.round(world.y) });
+    this.selectViews([id]);
+    const view = this.noteViews.get(id);
+    if (view) this.openNoteEditor(view);
+  }
+
+  /** Adds a note centered under the pointer (or the view center). */
+  addNoteAtPointer(): void {
+    const center = this.pointerPosition() ?? this.viewCenter();
+    this.addNoteAt({ x: center.x - NOTE_DEFAULT_SIZE.width / 2, y: center.y - NOTE_DEFAULT_SIZE.height / 2 });
+  }
+
+  /** Opens the text of a note for editing. */
+  editNote(noteId: string): void {
+    const view = this.noteViews.get(noteId);
+    if (view) this.openNoteEditor(view);
   }
 
   clearSelection(): void {
@@ -435,7 +474,7 @@ export class GraphRenderer {
     this.unsubscribeGraph();
     this.graph = graph;
     this.unsubscribeGraph = graph.subscribe(this.onGraphChange);
-    if (this.interaction.kind === "drag") {
+    if (this.interaction.kind === "drag" || this.interaction.kind === "resize") {
       this.editor.endInteraction();
     }
     this.interaction = { kind: "none" };
@@ -456,6 +495,12 @@ export class GraphRenderer {
     for (const view of this.edgeViews.values()) {
       view.destroy();
     }
+    for (const view of this.noteViews.values()) {
+      view.destroy();
+    }
+    this.noteViews.clear();
+    this.notesByContainer.clear();
+    this.hoveredNote = null;
     this.nodeViews.clear();
     this.viewsByContainer.clear();
     this.edgeViews.clear();
@@ -472,6 +517,9 @@ export class GraphRenderer {
     for (const alias of this.graph.aliases) {
       this.addNodeView(alias.id);
     }
+    for (const note of this.graph.notes) {
+      this.addNoteView(note.id);
+    }
     for (const connection of this.graph.connections) {
       this.addEdgeView(connection);
     }
@@ -481,7 +529,7 @@ export class GraphRenderer {
   }
 
   private readonly onGraphChange = (change: GraphChange): void => {
-    if (change.kind !== "viewportChanged" && change.kind !== "nodeMoved" && change.kind !== "aliasMoved") {
+    if (change.kind !== "viewportChanged" && change.kind !== "nodeMoved" && change.kind !== "aliasMoved" && !change.kind.startsWith("note")) {
       this.choiceRoutesDirty = true;
     }
     switch (change.kind) {
@@ -538,6 +586,18 @@ export class GraphRenderer {
         this.redrawNodes(change.connection);
         break;
       }
+      case "noteAdded":
+        this.addNoteView(change.note.id);
+        break;
+      case "noteRemoved":
+        this.removeNoteView(change.note.id);
+        break;
+      case "noteMoved":
+        this.noteViews.get(change.note.id)?.syncPosition();
+        break;
+      case "noteChanged":
+        this.noteViews.get(change.note.id)?.redraw();
+        break;
       case "viewportChanged":
         if (!this.applyingViewport) {
           this.viewport = { ...this.graph.viewport };
@@ -604,6 +664,26 @@ export class GraphRenderer {
     this.linkHighlights.delete(viewId);
     this.viewsByContainer.delete(view.container);
     this.nodeViews.delete(viewId);
+    view.destroy();
+  }
+
+  private addNoteView(noteId: string): void {
+    const note = this.graph.getNote(noteId);
+    if (!note || this.noteViews.has(noteId)) return;
+    const view = new NoteView(note);
+    this.noteViews.set(noteId, view);
+    this.notesByContainer.set(view.container, view);
+    this.noteLayer.addChild(view.container);
+  }
+
+  private removeNoteView(noteId: string): void {
+    const view = this.noteViews.get(noteId);
+    if (!view) return;
+    if (this.hoveredNote === view) this.hoveredNote = null;
+    if (view.editing) this.inlineEditor.close(false);
+    if (this.selection.delete(noteId)) this.updateSelectionCount();
+    this.noteViews.delete(noteId);
+    this.notesByContainer.delete(view.container);
     view.destroy();
   }
 
@@ -769,6 +849,10 @@ export class GraphRenderer {
         }
       }
     }
+    for (const noteView of this.noteViews.values()) {
+      const { x, y, width, height } = noteView.rect;
+      noteView.container.visible = rectsIntersect({ minX: x - 4, minY: y - 4, maxX: x + width + 4, maxY: y + height + 6 }, view);
+    }
     let visibleEdges = 0;
     for (const edgeView of this.edgeViews.values()) {
       const visible = rectsIntersect(edgeView.bounds, view);
@@ -920,7 +1004,7 @@ export class GraphRenderer {
   }
 
   private setNodeSelected(nodeId: string, selected: boolean): void {
-    const view = this.nodeViews.get(nodeId);
+    const view = this.nodeViews.get(nodeId) ?? this.noteViews.get(nodeId);
     if (view && view.selected !== selected) {
       view.selected = selected;
       view.redraw();
@@ -957,6 +1041,10 @@ export class GraphRenderer {
       if (view) {
         this.nodeLayer.addChild(view.container);
       }
+      const note = this.noteViews.get(id);
+      if (note) {
+        this.noteLayer.addChild(note.container);
+      }
     }
   }
 
@@ -979,18 +1067,27 @@ export class GraphRenderer {
         return { kind: "node", view, hit };
       }
     }
-    if (!includeEdges) {
-      return null;
-    }
-    const tolerance = 6 / this.viewport.zoom;
-    const views = [...this.edgeViews.values()];
-    for (let i = views.length - 1; i >= 0; i--) {
-      const view = views[i];
-      const b = view.bounds;
-      if (view.path && world.x >= b.minX && world.x <= b.maxX && world.y >= b.minY && world.y <= b.maxY) {
-        if (hitTestEdge(view.path, world, tolerance)) {
-          return { kind: "edge", view };
+    if (includeEdges) {
+      const tolerance = 6 / this.viewport.zoom;
+      const views = [...this.edgeViews.values()];
+      for (let i = views.length - 1; i >= 0; i--) {
+        const view = views[i];
+        const b = view.bounds;
+        if (view.path && world.x >= b.minX && world.x <= b.maxX && world.y >= b.minY && world.y <= b.maxY) {
+          if (hitTestEdge(view.path, world, tolerance)) {
+            return { kind: "edge", view };
+          }
         }
+      }
+    }
+    // Notes lie under everything else.
+    const notes = this.noteLayer.children;
+    for (let i = notes.length - 1; i >= 0; i--) {
+      const view = this.notesByContainer.get(notes[i]);
+      if (!view) continue;
+      const hit = view.hitTest(world.x - view.note.position.x, world.y - view.note.position.y);
+      if (hit) {
+        return { kind: "note", view, hit };
       }
     }
     return null;
@@ -1104,21 +1201,21 @@ export class GraphRenderer {
       this.interaction = { kind: "connect", pointerId: event.pointerId, from: hit.hit.port, fromView: hit.view, cursor: world, target: null };
       this.invalidateAllNodes();
       this.editor.setStatus(`Connecting from ${hit.hit.port.displayName}...`);
+    } else if (hit?.kind === "note") {
+      const noteId = hit.view.id;
+      if (hit.hit === "resize" && !toggle && !additive) {
+        this.setEdgeSelection(new Set());
+        this.setSelection(new Set([noteId]));
+        this.bringToFront([noteId]);
+        this.editor.beginInteraction();
+        this.interaction = { kind: "resize", pointerId: event.pointerId, view: hit.view, start: world, origin: { ...hit.view.note.size } };
+      } else {
+        this.pressSelect(noteId, toggle, additive);
+        if (this.selection.has(noteId)) this.startDrag(event.pointerId, world);
+      }
     } else if (hit?.kind === "node") {
       const nodeId = hit.view.viewId;
-      // Shift / Ctrl keep selected connections, like selected nodes.
-      if (!toggle && !additive) this.setEdgeSelection(new Set());
-      if (toggle) {
-        const next = new Set(this.selection);
-        if (!next.delete(nodeId)) {
-          next.add(nodeId);
-        }
-        this.setSelection(next);
-      } else if (additive) {
-        this.setSelection(new Set([...this.selection, nodeId]));
-      } else if (!this.selection.has(nodeId)) {
-        this.setSelection(new Set([nodeId]));
-      }
+      this.pressSelect(nodeId, toggle, additive);
 
       if (hit.hit.kind === "control") {
         const { control, segment } = hit.hit;
@@ -1129,31 +1226,7 @@ export class GraphRenderer {
         // Checkboxes, segments, list buttons and matrix cells act on release over the same target.
         this.interaction = { kind: "press", pointerId: event.pointerId, view: hit.view, control, segment };
       } else if (this.selection.has(nodeId)) {
-        this.bringToFront(this.selection);
-        const origins = new Map<string, Vec2>();
-        const internalEdges = new Set<string>();
-        for (const id of this.selection) {
-          const position = this.graph.viewPosition(id);
-          const node = this.graph.viewNode(id);
-          if (position && node) {
-            origins.set(id, { ...position });
-            for (const connection of this.graph.getNodeConnections(node.id)) {
-              if (this.selection.has(connection.outputViewId) && this.selection.has(connection.inputViewId)) {
-                internalEdges.add(connection.id);
-              }
-            }
-          }
-        }
-        this.translatingEdges = internalEdges;
-        this.editor.beginInteraction();
-        this.interaction = {
-          kind: "drag",
-          pointerId: event.pointerId,
-          start: world,
-          origins,
-          internalEdges,
-          applied: { x: 0, y: 0 },
-        };
+        this.startDrag(event.pointerId, world);
       }
     } else if (hit?.kind === "edge") {
       const id = hit.view.connection.id;
@@ -1189,6 +1262,45 @@ export class GraphRenderer {
     }
     this.requestFrame();
   };
+
+  /** Click selection of a node or note: Ctrl toggles, Shift adds; a plain click keeps a selection it is in. */
+  private pressSelect(id: string, toggle: boolean, additive: boolean): void {
+    // Shift / Ctrl keep selected connections, like selected nodes.
+    if (!toggle && !additive) this.setEdgeSelection(new Set());
+    if (toggle) {
+      const next = new Set(this.selection);
+      if (!next.delete(id)) {
+        next.add(id);
+      }
+      this.setSelection(next);
+    } else if (additive) {
+      this.setSelection(new Set([...this.selection, id]));
+    } else if (!this.selection.has(id)) {
+      this.setSelection(new Set([id]));
+    }
+  }
+
+  /** Starts moving the selection (nodes, linked copies and notes) with the pointer. */
+  private startDrag(pointerId: number, world: Vec2): void {
+    this.bringToFront(this.selection);
+    const origins = new Map<string, Vec2>();
+    const internalEdges = new Set<string>();
+    for (const id of this.selection) {
+      const position = this.graph.viewPosition(id);
+      if (!position) continue;
+      origins.set(id, { ...position });
+      const node = this.graph.viewNode(id);
+      if (!node) continue;
+      for (const connection of this.graph.getNodeConnections(node.id)) {
+        if (this.selection.has(connection.outputViewId) && this.selection.has(connection.inputViewId)) {
+          internalEdges.add(connection.id);
+        }
+      }
+    }
+    this.translatingEdges = internalEdges;
+    this.editor.beginInteraction();
+    this.interaction = { kind: "drag", pointerId, start: world, origins, internalEdges, applied: { x: 0, y: 0 } };
+  }
 
   private readonly onPointerMove = (event: PointerEvent): void => {
     const point = this.localPoint(event);
@@ -1253,6 +1365,16 @@ export class GraphRenderer {
           this.updateBoxSelection(interaction);
         }
         return;
+      case "resize":
+        if (event.pointerId === interaction.pointerId) {
+          this.editor.updateNote(interaction.view.id, {
+            size: {
+              width: Math.round(interaction.origin.width + world.x - interaction.start.x),
+              height: Math.round(interaction.origin.height + world.y - interaction.start.y),
+            },
+          });
+        }
+        return;
       case "press":
         return;
     }
@@ -1298,6 +1420,9 @@ export class GraphRenderer {
         this.translatingEdges = new Set();
         this.editor.endInteraction();
         break;
+      case "resize":
+        this.editor.endInteraction();
+        break;
       case "press": {
         const hit = this.hitTest(this.screenToWorld(this.localPoint(event)), false);
         const { view, control, segment } = interaction;
@@ -1325,6 +1450,13 @@ export class GraphRenderer {
         this.setSelection(new Set([viewId]));
       }
       target = { kind: "node", viewId };
+    } else if (hit?.kind === "note") {
+      const noteId = hit.view.id;
+      if (!this.selection.has(noteId)) {
+        this.setEdgeSelection(new Set());
+        this.setSelection(new Set([noteId]));
+      }
+      target = { kind: "note", noteId };
     } else if (hit?.kind === "edge") {
       const id = hit.view.connection.id;
       if (!this.selectedEdges.has(id)) {
@@ -1344,14 +1476,17 @@ export class GraphRenderer {
     const hit = this.hitTest(this.screenToWorld(this.localPoint(event)), false);
     if (hit?.kind === "node" && hit.hit.kind === "header" && hit.view.node.schema?.naming.editable) {
       this.openRenameEditor(hit.view);
+    } else if (hit?.kind === "note") {
+      this.openNoteEditor(hit.view);
     }
   };
 
   private readonly onPointerLeave = (): void => {
     this.pointerInside = false;
     this.tooltip.hide();
-    if (this.interaction.kind === "none" && this.hovered) {
+    if (this.interaction.kind === "none" && (this.hovered || this.hoveredNote)) {
       this.setHovered(null, null, null);
+      this.setHoveredNote(null);
       this.app.canvas.style.cursor = "";
     }
   };
@@ -1366,12 +1501,13 @@ export class GraphRenderer {
   private updateHover(world: Vec2): void {
     const hit = this.hitTest(world, false);
     const canvas = this.app.canvas;
+    this.setHoveredNote(hit?.kind === "note" ? hit.view : null);
     if (hit?.kind !== "node") {
       if (this.hovered) {
         this.setHovered(null, null, null);
       }
       this.tooltip.hide();
-      canvas.style.cursor = this.spaceDown ? "grab" : "";
+      canvas.style.cursor = this.spaceDown ? "grab" : hit?.kind === "note" ? (hit.hit === "resize" ? "nwse-resize" : "move") : "";
       return;
     }
     const info = hit.hit.kind === "info";
@@ -1386,6 +1522,20 @@ export class GraphRenderer {
       this.tooltip.hide();
     }
     canvas.style.cursor = portId ? "crosshair" : info ? "help" : control !== null ? "pointer" : "move";
+  }
+
+  private setHoveredNote(view: NoteView | null): void {
+    if (this.hoveredNote === view) return;
+    if (this.hoveredNote) {
+      this.hoveredNote.hovered = false;
+      this.hoveredNote.redraw();
+    }
+    this.hoveredNote = view;
+    if (view) {
+      view.hovered = true;
+      view.redraw();
+    }
+    this.requestFrame();
   }
 
   private updateBoxSelection(box: Extract<Interaction, { kind: "box" }>): void {
@@ -1406,6 +1556,13 @@ export class GraphRenderer {
       if (rectsIntersect({ minX: x, minY: y, maxX: x + width, maxY: y + height }, area)) {
         touchedNodes = true;
         apply(next, box.initial, view.viewId);
+      }
+    }
+    for (const view of this.noteViews.values()) {
+      const { x, y, width, height } = view.rect;
+      if (rectsIntersect({ minX: x, minY: y, maxX: x + width, maxY: y + height }, area)) {
+        touchedNodes = true;
+        apply(next, box.initial, view.id);
       }
     }
     // Connections are picked only by a box over empty space: a box over nodes would otherwise also
@@ -1608,6 +1765,36 @@ export class GraphRenderer {
         onCommit: (text) => this.editor.setValue(nodeId, path, text),
       });
     }
+  }
+
+  /** Edits a note's text in place, in a text area laid over the sheet with the same font and lines. */
+  private openNoteEditor(view: NoteView): void {
+    const noteId = view.id;
+    const { x, y, zoom } = this.viewport;
+    const area = view.textRect;
+    view.editing = true;
+    view.redraw();
+    this.requestFrame();
+    this.inlineEditor.editText({
+      rect: {
+        x: x + (view.note.position.x + area.x) * zoom,
+        y: y + (view.note.position.y + area.y) * zoom,
+        width: area.width * zoom,
+        height: area.height * zoom,
+      },
+      fontSize: NOTE_TEXT_SIZE * zoom,
+      lineHeight: NOTE_LINE_HEIGHT * zoom,
+      multiline: true,
+      variant: "note",
+      value: view.note.text,
+      placeholder: "Write a note…",
+      onCommit: (text) => this.editor.updateNote(noteId, { text }),
+      onClose: () => {
+        view.editing = false;
+        if (this.noteViews.get(noteId) === view) view.redraw();
+        this.requestFrame();
+      },
+    });
   }
 
   private openRenameEditor(view: NodeView): void {
