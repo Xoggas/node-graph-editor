@@ -43,7 +43,13 @@ export class InlineEditor {
     }
   };
 
-  constructor(private readonly host: HTMLElement) {}
+  constructor(private readonly host: HTMLElement) {
+    // An editor that reaches past the canvas edge would make the browser scroll the canvas to show
+    // it (or its caret), shifting the whole graph; the canvas never scrolls.
+    host.addEventListener("scroll", () => {
+      if (host.scrollTop !== 0 || host.scrollLeft !== 0) host.scrollTo(0, 0);
+    });
+  }
 
   get isOpen(): boolean {
     return this.active !== null;
@@ -79,7 +85,16 @@ export class InlineEditor {
     });
     element.addEventListener("blur", () => this.close(true));
     this.open(element, commit, request.onClose);
-    element.focus();
+    if (element instanceof HTMLTextAreaElement) {
+      // Grow with the text (never below the box it covers), so all of it stays visible.
+      const fit = () => {
+        element.style.height = `${request.rect.height}px`;
+        element.style.height = `${Math.max(request.rect.height, element.scrollHeight + 2)}px`;
+      };
+      element.addEventListener("input", fit);
+      fit();
+    }
+    element.focus({ preventScroll: true });
     element.select();
   }
 
@@ -160,7 +175,7 @@ export class InlineEditor {
 
     this.open(popup, null);
     render();
-    (search ?? popup).focus();
+    (search ?? popup).focus({ preventScroll: true });
   }
 
   close(commit: boolean): void {

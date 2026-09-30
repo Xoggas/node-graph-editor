@@ -843,6 +843,9 @@ export class GraphRenderer {
         if (nodeView.staleLayout) {
           nodeView.stale = false;
           nodeView.rebuild();
+          // The size may have changed (e.g. a longer text), so its connections are re-routed.
+          this.markNodeEdgesDirty(nodeView.node.id);
+          this.requestFrame();
         } else if (nodeView.stale) {
           nodeView.stale = false;
           nodeView.redraw();
@@ -1643,8 +1646,13 @@ export class GraphRenderer {
   private refreshTexts(key: string | null): void {
     for (const view of this.nodeViews.values()) {
       if (key === null ? view.localizedKeys.size === 0 && !view.hasUnnamedTexts : !view.localizedKeys.has(key)) continue;
-      if (view.container.visible) view.rebuild();
-      else view.staleLayout = true;
+      if (view.container.visible) {
+        view.rebuild();
+        // Text boxes grow with their text, so the node may have a new size.
+        this.markNodeEdgesDirty(view.node.id);
+      } else {
+        view.staleLayout = true;
+      }
     }
     this.requestFrame();
   }

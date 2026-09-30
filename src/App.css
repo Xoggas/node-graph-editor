@@ -1040,6 +1040,7 @@ kbd {
 
 .ng-inline-editor.multiline {
   padding: 4px 8px;
+  overflow-y: hidden;
   resize: none;
   line-height: 1.35;
 }
@@ -1049,7 +1050,7 @@ kbd {
   padding: 3px 4px;
   color: #25262b;
   background: transparent;
-  border: 1px dashed rgba(37, 38, 43, 0.35);
+  border: 1px solid transparent;
   border-radius: 3px;
   caret-color: #25262b;
 }

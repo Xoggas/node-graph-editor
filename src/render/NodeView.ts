@@ -34,6 +34,7 @@ const PORT_ROW_HEIGHT = 24;
 const PORTS_PADDING = 4;
 const BODY_PADDING = 8;
 const FIELD_HEIGHT = 24;
+/** Text boxes show at least this many lines and grow to fit the whole text. */
 const MULTILINE_LINES = 3;
 /** Height of the label row above a multiline text box. */
 const TALL_LABEL_HEIGHT = 20;
@@ -541,7 +542,9 @@ export class NodeView {
 
     const kind = fieldKind(field);
     const tall = isTall(field);
-    const height = tall ? FIELD_HEIGHT + LINE_HEIGHT * (MULTILINE_LINES - 1) : FIELD_HEIGHT;
+    // Tall boxes take the full width (the label is above), so the text wraps to `width - 16`.
+    const lines = tall ? Math.max(MULTILINE_LINES, wrapLines(this.boxText(field, path), width - 16, Infinity).length) : 1;
+    const height = tall ? FIELD_HEIGHT + LINE_HEIGHT * (lines - 1) : FIELD_HEIGHT;
     const key = path.join(".");
     if (kind === "bool") {
       const label = this.detail.addChild(makeText(fitText(field.label, width - 28, LABEL_SIZE), LABEL_SIZE, theme.textSecondary));
@@ -740,6 +743,15 @@ export class NodeView {
     }
   }
 
+  /** The text a tall box shows: a multiline string, or a localized text in the shown language. */
+  private boxText(field: FieldSchema, path: DataPath): string {
+    const value = getIn(this.node.data, path);
+    if (field.type === "localizedText") {
+      return this.context.localizedText(field, path, value).text ?? "";
+    }
+    return typeof value === "string" ? value : "";
+  }
+
   private createValueTexts(control: Control & { type: "field" }): BitmapText[] {
     const { field, kind, hitRect: box } = control;
     const value = getIn(this.node.data, control.path);
@@ -760,7 +772,7 @@ export class NodeView {
         return [text];
       }
       case "multiline":
-        return wrapLines(typeof value === "string" ? value : "", inner, MULTILINE_LINES).map((line, index) => {
+        return wrapLines(typeof value === "string" ? value : "", inner, Infinity).map((line, index) => {
           const text = makeText(line, VALUE_SIZE, theme.textPrimary);
           text.position.set(box.x + 8, Math.round(box.y + 4 + index * LINE_HEIGHT));
           return text;
@@ -796,7 +808,7 @@ export class NodeView {
           empty.position.set(box.x + 8, Math.round(box.y + 5));
           return [empty];
         }
-        const lines = (field as LocalizedTextField).multiline ? MULTILINE_LINES : 1;
+        const lines = (field as LocalizedTextField).multiline ? Infinity : 1;
         const texts = wrapLines(localized.text, inner, lines).map((line, index) => {
           const text = makeText(line, VALUE_SIZE, theme.textPrimary);
           text.position.set(box.x + 8, Math.round(box.y + 4 + index * LINE_HEIGHT));
