@@ -26,7 +26,7 @@ Requires Node.js and a Rust toolchain ([Tauri prerequisites](https://tauri.app/s
 | Move | Drag selected nodes |
 | Connect | Drag from a port to a compatible port (compatible ports are highlighted) |
 | Undo / Redo | Ctrl+Z / Ctrl+Y (Ctrl+Shift+Z) |
-| Copy / Cut / Paste / Duplicate | Ctrl+C / Ctrl+X / Ctrl+V (at the cursor) / Ctrl+D |
+| Copy / Cut / Paste / Duplicate | Ctrl+C / Ctrl+X / Ctrl+V (at the cursor) / Ctrl+D. Pasting nodes with unique names (e.g. lines) whose originals are still in the graph asks: **Copy** (new nodes, new names, texts copied) or **Link** (linked copies of the originals, see below); hover a choice for what it means |
 | Create linked copy / Go to the next linked copy | Ctrl+L / Ctrl+Shift+L |
 | Rename node / Context menu | F2 / Right click (right drag pans) |
 | Find nodes (name, type, texts in all languages, fields) | Ctrl+F — arrows preview, Enter goes, Esc closes |

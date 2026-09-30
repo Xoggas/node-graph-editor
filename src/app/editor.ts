@@ -1,4 +1,4 @@
-import { type ClipboardData, copyViews, pasteViews } from "../graph/clipboard";
+import { type ClipboardData, copyViews, linkCopiedNodes, pasteViews } from "../graph/clipboard";
 import { type GraphChange, GraphModel } from "../graph/graph";
 import { GraphHistory } from "../graph/history";
 import { LOCALIZATION_DIR, type LocalizationChange, LocalizationStore, localizedEntries } from "../graph/localization";
@@ -22,6 +22,16 @@ export interface PackInfo {
   source: string;
   nodeCount: number;
   resourceCount: number;
+}
+
+/** How to paste nodes with unique names: as new nodes, or as linked copies of the originals. */
+export type PasteMode = "copy" | "link";
+
+export interface PasteModeQuestion {
+  /** Pasted nodes with unique names whose originals are still in the graph. */
+  count: number;
+  /** Their node type titles, e.g. ["Line", "Choice"]. */
+  types: string[];
 }
 
 /** `info` goes to the status bar; warnings and errors also pop up as toasts. */
@@ -103,6 +113,8 @@ export class Editor {
     this.update({ canUndo: this.history.canUndo, canRedo: this.history.canRedo }),
   );
   private clipboard: ClipboardData | null = null;
+  /** Asks how to paste nodes with unique names; without it they are copied. Null answers cancel. */
+  private askPasteMode: ((question: PasteModeQuestion) => Promise<PasteMode | null>) | null = null;
   private pasteCount = 0;
   private localizationStore = new LocalizationStore([]);
   private unobserveLocalization: () => void = () => {};
@@ -711,11 +723,16 @@ export class Editor {
     return true;
   }
 
+  /** Sets the question shown before pasting nodes with unique names (see `PasteMode`). */
+  setPasteModeAsker(ask: ((question: PasteModeQuestion) => Promise<PasteMode | null>) | null): void {
+    this.askPasteMode = ask;
+  }
+
   /**
    * Pastes the clipboard centered at `center` (graph coordinates), or offset from the
    * original position when no center is given. Returns the ids of the new views.
    */
-  paste(center?: Vec2): string[] {
+  async paste(center?: Vec2): Promise<string[]> {
     const data = this.clipboard;
     if (!data) {
       return [];
@@ -733,17 +750,38 @@ export class Editor {
     return this.insert(data, offset, "Pasted");
   }
 
-  duplicate(viewIds: Iterable<string>): string[] {
+  async duplicate(viewIds: Iterable<string>): Promise<string[]> {
     const data = copyViews(this.graph, viewIds);
     return data ? this.insert(data, { x: PASTE_STEP, y: PASTE_STEP }, "Duplicated") : [];
   }
 
-  private insert(data: ClipboardData, offset: Vec2, verb: string): string[] {
-    const singletons = data.nodes.filter(
+  /**
+   * Nodes with unique names (e.g. lines, whose name is their localization key) can be pasted as
+   * copies or as linked copies of their originals, if those are still in the graph: asks which.
+   */
+  private async choosePasteMode(data: ClipboardData): Promise<ClipboardData | null> {
+    const linkable = data.nodes.filter((entry) => this.registry.getSchema(entry.schemaId)?.naming.unique && this.graph.getNode(entry.originalId));
+    if (linkable.length === 0 || !this.askPasteMode) {
+      return data;
+    }
+    const types = [...new Set(linkable.map((entry) => this.registry.getSchema(entry.schemaId)!.title))];
+    const mode = await this.askPasteMode({ count: linkable.length, types });
+    if (mode === null) return null;
+    return mode === "link" ? linkCopiedNodes(data, new Set(linkable.map((entry) => entry.originalId))) : data;
+  }
+
+  private async insert(original: ClipboardData, offset: Vec2, verb: string): Promise<string[]> {
+    // Checked before asking anything: there is no point choosing how to paste what cannot be pasted.
+    const singletons = original.nodes.filter(
       (entry) => this.registry.getSchema(entry.schemaId)?.singleton && [...this.graph.nodes].some((node) => node.schemaId === entry.schemaId),
     );
     if (singletons.length > 0) {
-      this.setStatus(`${verb} failed: only one '${this.registry.getSchema(singletons[0].schemaId)!.title}' node is allowed.`, "error");
+      this.setStatus(`${verb === "Pasted" ? "Paste" : "Duplicate"} failed: only one '${this.registry.getSchema(singletons[0].schemaId)!.title}' node is allowed.`, "error");
+      return [];
+    }
+    const data = await this.choosePasteMode(original);
+    if (!data) {
+      this.setStatus(`${verb === "Pasted" ? "Paste" : "Duplicate"} cancelled.`);
       return [];
     }
     try {

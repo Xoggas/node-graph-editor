@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import { Editor, type Notice } from "./app/editor";
+import { Editor, type Notice, type PasteMode, type PasteModeQuestion } from "./app/editor";
 import { NOTE_DEFAULT_SIZE } from "./graph/types";
 import { physicalKey } from "./app/keys";
 import { findShortcut, isEditableTarget } from "./app/shortcuts";
@@ -10,6 +10,7 @@ import { GraphCanvas } from "./ui/GraphCanvas";
 import { NodePalette } from "./ui/NodePalette";
 import { ProblemsPanel, summary } from "./ui/ProblemsPanel";
 import { LocalizationTable } from "./ui/LocalizationTable";
+import { PasteModeDialog } from "./ui/PasteModeDialog";
 import { ResourceBrowser } from "./ui/ResourceBrowser";
 import { SearchPanel } from "./ui/SearchPanel";
 import { ShortcutHelp } from "./ui/ShortcutHelp";
@@ -47,6 +48,25 @@ export default function App() {
   const [helpOpen, setHelpOpen] = useState(false);
   const helpOpenRef = useRef(helpOpen);
   helpOpenRef.current = helpOpen;
+
+  // The question before pasting nodes with unique names (see `Editor.setPasteModeAsker`).
+  const [pasteQuestion, setPasteQuestion] = useState<{ question: PasteModeQuestion; answer: (mode: PasteMode | null) => void } | null>(null);
+  const pasteQuestionRef = useRef(pasteQuestion);
+  pasteQuestionRef.current = pasteQuestion;
+  useEffect(() => {
+    editor.setPasteModeAsker(
+      (question) =>
+        new Promise((resolve) => {
+          pasteQuestionRef.current?.answer(null);
+          setPasteQuestion({ question, answer: resolve });
+        }),
+    );
+    return () => editor.setPasteModeAsker(null);
+  }, []);
+  const answerPaste = useCallback((mode: PasteMode | null) => {
+    pasteQuestionRef.current?.answer(mode);
+    setPasteQuestion(null);
+  }, []);
 
   // Bumped on every Ctrl+F, so pressing it again refocuses and selects the query.
   const [searchRequest, setSearchRequest] = useState(0);
@@ -121,6 +141,8 @@ export default function App() {
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
+      // The dialog handles its own keys; nothing else runs meanwhile.
+      if (pasteQuestionRef.current) return;
       if (helpOpenRef.current && physicalKey(event) === "Escape") {
         event.preventDefault();
         setHelpOpen(false);
@@ -369,6 +391,8 @@ export default function App() {
       {menu && <ContextMenu x={menu.x} y={menu.y} items={menu.items} onClose={closeMenu} />}
 
       {helpOpen && <ShortcutHelp onClose={() => setHelpOpen(false)} />}
+
+      {pasteQuestion && <PasteModeDialog question={pasteQuestion.question} onAnswer={answerPaste} />}
     </div>
   );
 }

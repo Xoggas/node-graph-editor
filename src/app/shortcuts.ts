@@ -177,7 +177,7 @@ export const shortcuts: Shortcut[] = [
     description: "Paste (at the cursor)",
     keys: ["Ctrl+V"],
     bindings: [{ code: "KeyV", ctrl: true }],
-    run: whenIdle((renderer, { editor }) => renderer.selectViews(editor.paste(renderer.pointerPosition() ?? undefined))),
+    run: whenIdle((renderer, { editor }) => void editor.paste(renderer.pointerPosition() ?? undefined).then((ids) => renderer.selectViews(ids))),
   },
   {
     group: "Edit",
@@ -185,7 +185,7 @@ export const shortcuts: Shortcut[] = [
     description: "Duplicate",
     keys: ["Ctrl+D"],
     bindings: [{ code: "KeyD", ctrl: true }],
-    run: whenIdle((renderer, { editor }) => renderer.selectViews(editor.duplicate(renderer.selectedViewIds()))),
+    run: whenIdle((renderer, { editor }) => void editor.duplicate(renderer.selectedViewIds()).then((ids) => renderer.selectViews(ids))),
   },
   {
     group: "Edit",

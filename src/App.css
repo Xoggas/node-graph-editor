@@ -938,6 +938,132 @@ body,
 
 /* Shortcut help */
 
+/* Modal questions (e.g. copy or link when pasting) */
+
+.dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 220;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(10, 11, 13, 0.55);
+}
+
+.dialog {
+  width: min(460px, calc(100vw - 32px));
+  padding: 18px 20px 16px;
+  background: #2b2e35;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+}
+
+.dialog h2 {
+  margin: 0 0 8px;
+  color: #f5f6f8;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.dialog p {
+  margin: 0 0 16px;
+  color: #c8ccd4;
+  line-height: 1.5;
+}
+
+.dialog-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.dialog-actions-spacer {
+  flex: 1;
+}
+
+.dialog-button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 30px;
+  padding: 4px 12px;
+  color: #e5e7eb;
+  font: inherit;
+  background: var(--button);
+  border: 1px solid var(--button-border);
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.dialog-button:hover {
+  background: var(--button-hover);
+  border-color: #999da6;
+}
+
+.dialog-button:focus-visible {
+  outline: 2px solid #8ab4ff;
+  outline-offset: 1px;
+}
+
+.dialog-button.primary {
+  background: #3f6fb8;
+  border-color: #5b8ad6;
+}
+
+.dialog-button.primary:hover {
+  background: #4a7cc8;
+}
+
+.dialog-button kbd {
+  padding: 0 5px;
+  color: #c8ccd4;
+  font-size: 11px;
+  line-height: 16px;
+  background: rgba(0, 0, 0, 0.22);
+  border: none;
+  border-radius: 3px;
+}
+
+/* The explanation of a choice pops up under its button on hover. */
+.dialog-choice {
+  position: relative;
+}
+
+.dialog-hint {
+  position: absolute;
+  top: calc(100% + 10px);
+  left: 0;
+  z-index: 1;
+  width: 300px;
+  padding: 9px 11px;
+  color: #e5e7eb;
+  font-size: 12px;
+  line-height: 1.5;
+  background: #1f2126;
+  border: 1px solid #5b5f68;
+  border-radius: 6px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(-4px);
+  transition: opacity 0.12s, transform 0.12s;
+}
+
+.dialog-hint::after {
+  position: absolute;
+  bottom: 100%;
+  left: 18px;
+  border: 6px solid transparent;
+  border-bottom-color: #5b5f68;
+  content: "";
+}
+
+.dialog-choice:hover .dialog-hint {
+  opacity: 1;
+  transform: none;
+}
+
 .help-backdrop {
   position: fixed;
   inset: 0;

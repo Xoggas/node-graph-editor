@@ -91,10 +91,40 @@ describe("localization", () => {
   it("copies texts to duplicated nodes under their new names", async () => {
     const id = editor.addNode("line", { x: 0, y: 0 })!;
     await tick();
-    const [copy] = editor.duplicate([id]);
+    const [copy] = await editor.duplicate([id]);
     expect(editor.graph.getNode(copy)!.name).toBe("1.2");
     expect(texts("1.2")).toEqual({ ru: "Привет", en: "Hello" });
     expect(texts("1.1").ru).toBe("Привет");
+  });
+
+  it("asks how to paste nodes with unique names: linked copies, copies or nothing", async () => {
+    const id = editor.addNode("line", { x: 0, y: 0 })!;
+    await tick();
+    const questions: unknown[] = [];
+    let answer: "copy" | "link" | null = "link";
+    editor.setPasteModeAsker(async (question) => {
+      questions.push(question);
+      return answer;
+    });
+    editor.copy([id]);
+
+    const [linked] = await editor.paste({ x: 100, y: 100 });
+    expect(questions).toEqual([{ count: 1, types: ["Line"] }]);
+    expect(editor.graph.getAlias(linked)?.nodeId).toBe(id);
+    expect(editor.graph.nodeCount).toBe(1);
+
+    answer = "copy";
+    const [copied] = await editor.paste();
+    expect(editor.graph.getNode(copied)!.name).toBe("1.2");
+
+    answer = null;
+    expect(await editor.duplicate([id])).toEqual([]);
+    expect(editor.graph.nodeCount).toBe(2);
+
+    // Nothing to link to once the original is gone: no question.
+    editor.cut([id]);
+    await editor.paste();
+    expect(questions).toHaveLength(3);
   });
 
   it("edits several languages as one undo step and saves changed files", async () => {

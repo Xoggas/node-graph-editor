@@ -259,3 +259,41 @@ function uniqueName(name: string, taken: Set<string>): string {
   taken.add(candidate);
   return candidate;
 }
+
+/**
+ * Turns the copied nodes with the given original ids into linked copies (aliases) of those originals,
+ * keeping the other nodes as copies. Connections between pasted views are kept, now drawn at the
+ * aliases; aliases that pointed at a linked node point at its original.
+ */
+export function linkCopiedNodes(data: ClipboardData, originalIds: ReadonlySet<string>): ClipboardData {
+  const nodes: ClipboardNode[] = [];
+  const nodeIndex = new Map<number, number>();
+  const aliases: ClipboardAlias[] = data.aliases.map((alias) => ({ ...alias }));
+  const aliasIndex = new Map<number, number>();
+  data.nodes.forEach((node, index) => {
+    if (originalIds.has(node.originalId)) {
+      aliasIndex.set(index, aliases.length);
+      aliases.push({ node: { existing: node.originalId }, position: { ...node.position } });
+    } else {
+      nodeIndex.set(index, nodes.length);
+      nodes.push(node);
+    }
+  });
+  data.aliases.forEach((alias, index) => {
+    if ("copied" in alias.node) {
+      const copied = alias.node.copied;
+      aliases[index] = {
+        ...alias,
+        node: nodeIndex.has(copied) ? { copied: nodeIndex.get(copied)! } : { existing: data.nodes[copied].originalId },
+      };
+    }
+  });
+  const view = (entry: ClipboardView): ClipboardView =>
+    "node" in entry ? (nodeIndex.has(entry.node) ? { node: nodeIndex.get(entry.node)! } : { alias: aliasIndex.get(entry.node)! }) : entry;
+  return {
+    ...data,
+    nodes,
+    aliases,
+    connections: data.connections.map((connection) => ({ ...connection, output: view(connection.output), input: view(connection.input) })),
+  };
+}

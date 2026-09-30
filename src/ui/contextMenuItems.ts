@@ -23,7 +23,7 @@ export function buildContextMenu(request: ContextMenuRequest, editor: Editor, re
         label: "Paste here",
         shortcut: shortcutLabel("paste"),
         disabled: !editor.getSnapshot().canPaste,
-        action: () => renderer.selectViews(editor.paste(request.world)),
+        action: () => void editor.paste(request.world).then((ids) => renderer.selectViews(ids)),
       },
       "separator",
       { label: "Select all", shortcut: shortcutLabel("selectAll"), action: () => renderer.selectAll() },
@@ -48,7 +48,7 @@ export function buildContextMenu(request: ContextMenuRequest, editor: Editor, re
     {
       label: `Duplicate${count}`,
       shortcut: shortcutLabel("duplicate"),
-      action: () => renderer.selectViews(editor.duplicate(renderer.selectedViewIds())),
+      action: () => void editor.duplicate(renderer.selectedViewIds()).then((ids) => renderer.selectViews(ids)),
     },
   ];
 
