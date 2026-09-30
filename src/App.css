@@ -100,7 +100,7 @@ body,
   background: #18191d;
 }
 
-.ng-number-input {
+.ng-inline-editor {
   position: absolute;
   z-index: 10;
   padding: 0 8px;
@@ -126,11 +126,69 @@ body,
   border-left: 1px solid var(--border);
 }
 
-.palette-title {
-  padding: 0 12px 8px;
+.palette-pack {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 0 8px 10px;
+  margin-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+.palette-pack-name {
+  overflow: hidden;
   color: #eceef2;
   font-size: 14px;
   font-weight: 700;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.palette-pack-version {
+  margin-left: 6px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 400;
+}
+
+.palette-pack-actions {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.palette-pack-actions button {
+  padding: 2px 8px;
+  color: #e5e7eb;
+  font: inherit;
+  font-size: 12px;
+  background: var(--button);
+  border: 1px solid var(--button-border);
+  border-radius: 3px;
+  cursor: pointer;
+}
+
+.palette-pack-actions button:hover {
+  background: var(--button-hover);
+}
+
+.palette-pack-warnings {
+  margin-left: auto;
+  color: #fad860;
+  cursor: help;
+}
+
+.palette-group {
+  margin-bottom: 8px;
+}
+
+.palette-group-title {
+  margin: 4px 2px 5px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
 }
 
 .palette-filter {
@@ -157,10 +215,11 @@ body,
 }
 
 .palette-item {
-  margin-bottom: 6px;
-  padding: 7px 10px;
+  margin-bottom: 5px;
+  padding: 6px 10px;
   background: #393c43;
   border: 1px solid #5b5f68;
+  border-left: 4px solid #5b5f68;
   border-radius: 4px;
   cursor: grab;
 }
@@ -374,4 +433,45 @@ kbd {
   border: 1px solid #5b5f68;
   border-bottom-width: 2px;
   border-radius: 5px;
+}
+
+.ng-inline-editor.multiline {
+  padding: 4px 8px;
+  resize: none;
+  line-height: 1.35;
+}
+
+.ng-inline-list {
+  position: absolute;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  max-height: 240px;
+  min-width: 120px;
+  padding: 3px;
+  overflow-y: auto;
+  background: #26282d;
+  border: 1px solid #8ab4ff;
+  border-radius: 4px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.45);
+  outline: none;
+}
+
+.ng-inline-list button {
+  padding: 4px 8px;
+  color: #e5e7eb;
+  font: inherit;
+  text-align: left;
+  background: none;
+  border: none;
+  border-radius: 3px;
+  cursor: pointer;
+}
+
+.ng-inline-list button.current {
+  font-weight: 700;
+}
+
+.ng-inline-list button.highlighted {
+  background: #3b5a8f;
 }

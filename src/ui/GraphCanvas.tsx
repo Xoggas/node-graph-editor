@@ -15,7 +15,14 @@ export function GraphCanvas({ editor, onRenderer }: GraphCanvasProps) {
     let active = true;
     renderer
       .init()
-      .then(() => active && onRenderer(renderer))
+      .then(() => {
+        if (!active) return;
+        onRenderer(renderer);
+        if (import.meta.env.DEV) {
+          // Console / test access, like `__editor`.
+          (window as unknown as { __renderer: GraphRenderer }).__renderer = renderer;
+        }
+      })
       .catch((error: unknown) => editor.setStatus(`Renderer failed to start: ${String(error)}`));
     return () => {
       active = false;

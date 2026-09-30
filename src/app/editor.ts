@@ -1,11 +1,21 @@
 import { type ClipboardData, copyNodes, pasteNodes } from "../graph/clipboard";
-import { GraphModel, type GraphChange } from "../graph/graph";
+import { type GraphChange, GraphModel } from "../graph/graph";
 import { GraphHistory } from "../graph/history";
-import type { NodeGraphRegistry } from "../graph/registry";
-import { createSampleRegistry, type NumberState } from "../graph/samples";
+import { type NodeDescriptor, SchemaRegistry } from "../graph/registry";
+import { type PackFile, parseSchemaPack } from "../graph/schema";
 import { GraphJsonSerializer } from "../graph/serializer";
 import type { Vec2 } from "../graph/types";
+import { bundledPack } from "./bundledPack";
 import { createFileSystem, type GraphFileSystem } from "./files";
+
+export interface PackInfo {
+  id: string;
+  name: string;
+  version: number;
+  /** Folder path, or a label for the built-in pack. */
+  source: string;
+  nodeCount: number;
+}
 
 export interface EditorSnapshot {
   status: string;
@@ -18,7 +28,12 @@ export interface EditorSnapshot {
   nodeCount: number;
   connectionCount: number;
   selectionCount: number;
+  /** Problems found while loading the current document. */
   warnings: readonly string[];
+  pack: PackInfo | null;
+  /** Problems found while loading the schema pack. */
+  packWarnings: readonly string[];
+  descriptors: readonly NodeDescriptor[];
   canUndo: boolean;
   canRedo: boolean;
   canPaste: boolean;
@@ -27,6 +42,7 @@ export interface EditorSnapshot {
 /** Approximate node size, used to center pasted nodes on the cursor. */
 const NODE_SIZE_ESTIMATE = { width: 220, height: 110 };
 const PASTE_STEP = 32;
+const PACK_FOLDER_KEY = "node-graph-editor.packFolder";
 
 export interface GraphReplacedOptions {
   /** Fit the whole graph into view instead of restoring the saved viewport. */
@@ -36,8 +52,8 @@ export interface GraphReplacedOptions {
 type GraphReplacedListener = (graph: GraphModel, options: GraphReplacedOptions) => void;
 
 export class Editor {
-  readonly registry: NodeGraphRegistry;
-  private readonly serializer: GraphJsonSerializer;
+  private currentRegistry = new SchemaRegistry();
+  private packSource: { kind: "folder"; path: string } | { kind: "bundled" } | null = null;
   private readonly files: GraphFileSystem;
   private currentGraph: GraphModel;
   private unsubscribeGraph: () => void = () => {};
@@ -52,11 +68,9 @@ export class Editor {
   private clipboard: ClipboardData | null = null;
   private pasteCount = 0;
 
-  constructor(options: { registry?: NodeGraphRegistry; files?: GraphFileSystem } = {}) {
-    this.registry = options.registry ?? createSampleRegistry();
-    this.serializer = new GraphJsonSerializer(this.registry);
+  constructor(options: { files?: GraphFileSystem } = {}) {
     this.files = options.files ?? createFileSystem();
-    this.currentGraph = new GraphModel(this.registry);
+    this.currentGraph = new GraphModel(this.currentRegistry);
     this.state = {
       status: "",
       statusId: 0,
@@ -67,6 +81,9 @@ export class Editor {
       connectionCount: 0,
       selectionCount: 0,
       warnings: [],
+      pack: null,
+      packWarnings: [],
+      descriptors: [],
       canUndo: false,
       canRedo: false,
       canPaste: false,
@@ -76,6 +93,10 @@ export class Editor {
 
   get graph(): GraphModel {
     return this.currentGraph;
+  }
+
+  get registry(): SchemaRegistry {
+    return this.currentRegistry;
   }
 
   // --- React store protocol -------------------------------------------------
@@ -90,6 +111,83 @@ export class Editor {
   onGraphReplaced(listener: GraphReplacedListener): () => void {
     this.graphReplacedListeners.add(listener);
     return () => this.graphReplacedListeners.delete(listener);
+  }
+
+  // --- Schema pack ------------------------------------------------------------
+
+  /** Loads the remembered pack folder, or the built-in example pack. */
+  async loadInitialPack(): Promise<void> {
+    const folder = readStoredFolder();
+    if (folder) {
+      try {
+        await this.loadPackFolder(folder);
+        return;
+      } catch (error) {
+        this.setStatus(`Could not load the schema pack from '${folder}': ${errorMessage(error)}`);
+      }
+    }
+    this.applyPack(bundledPack.files, { kind: "bundled" });
+  }
+
+  async choosePackFolder(): Promise<void> {
+    try {
+      const folder = await this.files.pickPackFolder();
+      if (!folder) {
+        return;
+      }
+      await this.loadPackFolder(folder);
+    } catch (error) {
+      this.setStatus(`Could not load the schema pack: ${errorMessage(error)}`);
+    }
+  }
+
+  async reloadPack(): Promise<void> {
+    try {
+      if (this.packSource?.kind === "folder") {
+        await this.loadPackFolder(this.packSource.path);
+      } else {
+        this.applyPack(bundledPack.files, { kind: "bundled" });
+      }
+    } catch (error) {
+      this.setStatus(`Could not reload the schema pack: ${errorMessage(error)}`);
+    }
+  }
+
+  private async loadPackFolder(folder: string): Promise<void> {
+    const files = await this.files.readPackFolder(folder);
+    this.applyPack(files, { kind: "folder", path: folder });
+    writeStoredFolder(folder);
+  }
+
+  /** Switches to a new pack and rebinds the open graph to it; node data is preserved. */
+  applyPack(files: PackFile[], source: NonNullable<Editor["packSource"]>): void {
+    const pack = parseSchemaPack(files);
+    const registry = new SchemaRegistry(pack);
+    const json = new GraphJsonSerializer(this.currentRegistry).serialize(this.graph);
+    const { graph, warnings } = new GraphJsonSerializer(registry).deserialize(json);
+    const dirty = this.state.dirty;
+
+    this.currentRegistry = registry;
+    this.packSource = source;
+    this.attach(graph);
+    this.update({
+      pack: {
+        id: pack.id,
+        name: pack.name,
+        version: pack.version,
+        source: source.kind === "folder" ? source.path : bundledPack.label,
+        nodeCount: pack.nodes.size,
+      },
+      packWarnings: pack.warnings,
+      descriptors: registry.descriptors(),
+      warnings: warnings.filter((warning) => !warning.startsWith("The graph was made with schema pack")),
+      dirty,
+      status:
+        pack.warnings.length === 0
+          ? `Schema pack loaded: ${pack.name} (${pack.nodes.size} nodes).`
+          : `Schema pack loaded with ${pack.warnings.length} problem(s).`,
+    });
+    this.notifyGraphReplaced(graph, false);
   }
 
   // --- Document commands -----------------------------------------------------
@@ -110,7 +208,7 @@ export class Editor {
       if (!file) {
         return;
       }
-      const { graph, warnings } = this.serializer.deserialize(file.text);
+      const { graph, warnings } = new GraphJsonSerializer(this.registry).deserialize(file.text);
       const status = warnings.length === 0 ? `Opened: ${file.name}` : `Opened ${file.name} with ${warnings.length} warning(s).`;
       this.replaceGraph(graph, file.path, status, warnings, false);
       this.update({ fileName: file.name });
@@ -121,7 +219,8 @@ export class Editor {
 
   async save(chooseLocation = false): Promise<void> {
     try {
-      const saved = await this.files.save(this.serializer.serialize(this.graph), this.filePath, chooseLocation);
+      const json = new GraphJsonSerializer(this.registry).serialize(this.graph);
+      const saved = await this.files.save(json, this.filePath, chooseLocation);
       if (!saved) {
         return;
       }
@@ -134,11 +233,17 @@ export class Editor {
 
   // --- Graph commands --------------------------------------------------------
 
-  addNode(typeId: string, position: Vec2): void {
+  addNode(schemaId: string, position: Vec2): string | null {
+    const schema = this.registry.getSchema(schemaId);
+    if (schema?.singleton && [...this.graph.nodes].some((node) => node.schemaId === schemaId)) {
+      this.setStatus(`Only one '${schema.title}' node is allowed per graph.`);
+      return null;
+    }
     try {
-      this.graph.addNode(typeId, position);
+      return this.graph.addNode(schemaId, position).id;
     } catch (error) {
       this.setStatus(`Could not add node: ${errorMessage(error)}`);
+      return null;
     }
   }
 
@@ -172,25 +277,38 @@ export class Editor {
     this.setStatus(result.success ? `Connected ${output.displayName} → ${input.displayName}.` : result.message);
   }
 
-  setNumberWidget(nodeId: string, widgetIndex: number, value: number): void {
+  /** Sets one top-level field of a node's data. */
+  setField(nodeId: string, fieldId: string, value: unknown): void {
     const node = this.graph.getNode(nodeId);
-    const widget = node?.definition?.widgets?.[widgetIndex];
-    if (node && widget?.kind === "number" && widget.get(node.state) !== value) {
-      this.graph.setNodeState(nodeId, widget.set(node.state, value));
-    }
-  }
-
-  runWidgetAction(nodeId: string, widgetIndex: number): void {
-    const node = this.graph.getNode(nodeId);
-    const widget = node?.definition?.widgets?.[widgetIndex];
-    if (!node || widget?.kind !== "button") {
+    if (!node || node.isPlaceholder || Object.is(node.data[fieldId], value)) {
       return;
     }
-    try {
-      widget.action(node, this.graph);
-    } catch (error) {
-      this.setStatus(`${widget.label} failed: ${errorMessage(error)}`);
+    this.graph.setNodeData(nodeId, { ...node.data, [fieldId]: value });
+  }
+
+  /** Renames a node, enforcing the schema's naming rules. Returns false when the name was rejected. */
+  renameNode(nodeId: string, rawName: string): boolean {
+    const node = this.graph.getNode(nodeId);
+    const naming = node?.schema?.naming;
+    if (!node || !naming?.editable) {
+      return false;
     }
+    const name = rawName.trim();
+    if (name && naming.pattern && !naming.pattern.test(name)) {
+      this.setStatus(`'${name}' is not a valid name for '${node.schema!.title}'.`);
+      return false;
+    }
+    if (name && naming.unique) {
+      const clash = [...this.graph.nodes].find(
+        (other) => other !== node && other.schema?.naming.unique && other.name === name,
+      );
+      if (clash) {
+        this.setStatus(`The name '${name}' is already used by another node.`);
+        return false;
+      }
+    }
+    this.graph.renameNode(nodeId, name);
+    return true;
   }
 
   // --- History ------------------------------------------------------------------
@@ -263,6 +381,13 @@ export class Editor {
   }
 
   private insert(data: ClipboardData, offset: Vec2, verb: string): string[] {
+    const singletons = data.nodes.filter(
+      (entry) => this.registry.getSchema(entry.schemaId)?.singleton && [...this.graph.nodes].some((node) => node.schemaId === entry.schemaId),
+    );
+    if (singletons.length > 0) {
+      this.setStatus(`${verb} failed: only one '${this.registry.getSchema(singletons[0].schemaId)!.title}' node is allowed.`);
+      return [];
+    }
     try {
       const ids = pasteNodes(this.graph, data, offset);
       this.setStatus(`${verb} ${ids.length} node(s).`);
@@ -284,50 +409,50 @@ export class Editor {
   }
 
   /**
-   * Replaces the document with a generated graph: a column of Number nodes feeding
-   * a grid of Add nodes, each wired to two nodes of the previous column.
+   * Replaces the document with a generated grid of `nodeCount` nodes for performance checks. Uses the
+   * first schema that has a plain input and output of compatible types, and chains nodes row by row.
    */
   async generateStressGraph(nodeCount = 1000): Promise<void> {
+    const schema = [...(this.registry.pack?.nodes.values() ?? [])].find((candidate) => {
+      const input = candidate.ports.find((port) => port.direction === "Input" && !port.repeat);
+      const output = candidate.ports.find((port) => port.direction === "Output" && !port.repeat);
+      return input && output && this.registry.isAssignable(input.type, output.type);
+    });
+    if (!schema) {
+      this.setStatus("The schema pack has no node with a connectable input and output.");
+      return;
+    }
     if (!(await this.confirmDiscard())) {
       return;
     }
     const started = performance.now();
     const graph = new GraphModel(this.registry);
     const columns = Math.max(2, Math.round(Math.sqrt(nodeCount / 1.6)));
-    const rows = Math.ceil(nodeCount / columns);
     graph.batch(() => {
       const grid: string[][] = [];
-      let created = 0;
-      for (let column = 0; column < columns; column++) {
-        grid.push([]);
-        for (let row = 0; row < rows && created < nodeCount; row++, created++) {
-          const position = { x: column * 320, y: row * 150 };
-          const node = graph.addNode(column === 0 ? "sample.number" : "sample.add", position);
-          if (column === 0) {
-            graph.setNodeState<NumberState>(node.id, { value: row });
-          }
-          grid[column].push(node.id);
-        }
+      for (let index = 0; index < nodeCount; index++) {
+        const column = index % columns;
+        const row = Math.floor(index / columns);
+        const node = graph.addNode(schema.id, { x: column * 320, y: row * 180 });
+        (grid[row] ??= []).push(node.id);
       }
-      const output = (id: string) => graph.getNode(id)!.outputs[0].id;
-      for (let column = 1; column < grid.length; column++) {
-        const previous = grid[column - 1];
-        grid[column].forEach((id, row) => {
-          const node = graph.getNode(id)!;
-          if (row < previous.length) {
-            graph.connect(output(previous[row]), node.getPort("a")!.id);
-          }
-          if (previous.length > 0) {
-            graph.connect(output(previous[(row + 1) % previous.length]), node.getPort("b")!.id);
+      const input = schema.ports.find((port) => port.direction === "Input" && !port.repeat)!.id;
+      const output = schema.ports.find((port) => port.direction === "Output" && !port.repeat)!.id;
+      const portOf = (nodeId: string, key: string) => `${nodeId}/${key}`;
+      grid.forEach((row, rowIndex) => {
+        row.forEach((id, column) => {
+          const target = row[column + 1] ?? grid[rowIndex + 1]?.[0];
+          if (target) {
+            graph.connect(portOf(id, output), portOf(target, input));
           }
         });
-      }
+      });
     });
     const elapsed = Math.round(performance.now() - started);
     this.replaceGraph(
       graph,
       null,
-      `Generated ${graph.nodeCount} nodes and ${graph.connectionCount} connections in ${elapsed} ms.`,
+      `Generated ${graph.nodeCount} '${schema.title}' nodes and ${graph.connectionCount} connections in ${elapsed} ms.`,
       [],
       true,
     );
@@ -340,16 +465,14 @@ export class Editor {
     return !this.state.dirty || this.files.confirm("Discard unsaved changes?");
   }
 
-  private replaceGraph(
-    graph: GraphModel,
-    filePath: string | null,
-    status: string,
-    warnings: string[],
-    frameAll: boolean,
-  ): void {
+  private replaceGraph(graph: GraphModel, filePath: string | null, status: string, warnings: string[], frameAll: boolean): void {
     this.attach(graph);
     this.filePath = filePath;
     this.update({ status, warnings, dirty: false, fileName: null, filePath, selectionCount: 0 });
+    this.notifyGraphReplaced(graph, frameAll);
+  }
+
+  private notifyGraphReplaced(graph: GraphModel, frameAll: boolean): void {
     for (const listener of this.graphReplacedListeners) {
       listener(graph, { frameAll });
     }
@@ -367,7 +490,7 @@ export class Editor {
     if (change.kind === "viewportChanged") {
       return;
     }
-    const structural = change.kind !== "nodeMoved" && change.kind !== "nodeStateChanged";
+    const structural = change.kind !== "nodeMoved" && change.kind !== "nodeDataChanged" && change.kind !== "nodeRenamed";
     if (structural) {
       this.syncCounts({ dirty: true });
     } else if (!this.state.dirty) {
@@ -392,6 +515,22 @@ export class Editor {
         }
       });
     }
+  }
+}
+
+function readStoredFolder(): string | null {
+  try {
+    return localStorage.getItem(PACK_FOLDER_KEY);
+  } catch {
+    return null;
+  }
+}
+
+function writeStoredFolder(folder: string): void {
+  try {
+    localStorage.setItem(PACK_FOLDER_KEY, folder);
+  } catch {
+    // Remembering the folder is a convenience only.
   }
 }
 

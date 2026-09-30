@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { Editor } from "./app/editor";
 import { findShortcut, isEditableTarget } from "./app/shortcuts";
 import type { GraphRenderer, RendererStats } from "./render/GraphRenderer";
@@ -13,6 +13,7 @@ const DROP_OFFSET = { x: 110, y: 48 };
 const STATUS_VISIBLE_MS = 4000;
 
 const editor = new Editor();
+void editor.loadInitialPack();
 
 if (import.meta.env.DEV) {
   // Console access for manual checks, e.g. `__editor.generateStressGraph(1000)`.
@@ -23,7 +24,6 @@ export default function App() {
   const snapshot = useSyncExternalStore(editor.subscribe, editor.getSnapshot);
   const rendererRef = useRef<GraphRenderer | null>(null);
   const [stats, setStats] = useState<RendererStats | null>(null);
-  const descriptors = useMemo(() => editor.registry.nodes.descriptors(), []);
   const [helpOpen, setHelpOpen] = useState(false);
   const helpOpenRef = useRef(helpOpen);
   helpOpenRef.current = helpOpen;
@@ -32,14 +32,14 @@ export default function App() {
     rendererRef.current = renderer;
   }, []);
 
-  const onDrop = useCallback((typeId: string, clientX: number, clientY: number) => {
+  const onDrop = useCallback((schemaId: string, clientX: number, clientY: number) => {
     const position = rendererRef.current?.clientToGraph(clientX, clientY);
     if (position) {
-      editor.addNode(typeId, { x: position.x - DROP_OFFSET.x, y: position.y - DROP_OFFSET.y });
+      editor.addNode(schemaId, { x: position.x - DROP_OFFSET.x, y: position.y - DROP_OFFSET.y });
     }
   }, []);
 
-  const onAdd = useCallback((typeId: string) => {
+  const onAdd = useCallback((schemaId: string) => {
     const center = rendererRef.current?.viewCenter() ?? { x: 0, y: 0 };
     const position = { x: center.x - DROP_OFFSET.x, y: center.y - DROP_OFFSET.y };
     // Cascade repeated clicks so new nodes do not hide each other.
@@ -49,7 +49,7 @@ export default function App() {
       position.x += 24;
       position.y += 24;
     }
-    editor.addNode(typeId, position);
+    editor.addNode(schemaId, position);
   }, []);
 
   useEffect(() => {
@@ -117,7 +117,15 @@ export default function App() {
 
       <main className="workspace">
         <GraphCanvas editor={editor} onRenderer={onRenderer} />
-        <NodePalette descriptors={descriptors} onDrop={onDrop} onAdd={onAdd} />
+        <NodePalette
+          descriptors={snapshot.descriptors}
+          pack={snapshot.pack}
+          packWarnings={snapshot.packWarnings}
+          onDrop={onDrop}
+          onAdd={onAdd}
+          onChoosePack={() => void editor.choosePackFolder()}
+          onReloadPack={() => void editor.reloadPack()}
+        />
       </main>
 
       <footer className="statusbar">

@@ -1,18 +1,11 @@
 import { GraphModel } from "./graph";
-import { createNode, createPlaceholder, NodeModel, restorePorts } from "./node";
-import type { NodeGraphRegistry } from "./registry";
-import {
-  isValidId,
-  NodeSchemaMismatchError,
-  type PortCapacity,
-  type PortDirection,
-  type PortSnapshot,
-  RegistryError,
-  type UnresolvedConnection,
-} from "./types";
+import { createNode, createPlaceholder, type NodeModel, portId } from "./node";
+import type { SchemaRegistry } from "./registry";
+import { isRecord, normalizeData } from "./schema";
+import { isValidId, type PortDirection, type PortRef, type UnresolvedConnection } from "./types";
 
 export const GRAPH_FORMAT = "node-graph";
-export const GRAPH_FORMAT_VERSION = 1;
+export const GRAPH_FORMAT_VERSION = 2;
 
 export class GraphSerializationError extends Error {}
 
@@ -21,83 +14,60 @@ export interface GraphLoadResult {
   warnings: string[];
 }
 
-interface PointDto {
-  x: number;
-  y: number;
-}
-
-interface PortDto {
-  id: string;
-  key: string;
-  direction: PortDirection;
-  capacity: PortCapacity;
-  typeId: string;
-  displayName: string;
-  isDynamic: boolean;
-}
-
 interface NodeDto {
   id: string;
-  typeId: string;
-  position: PointDto;
-  ports: PortDto[];
-  state: Record<string, unknown>;
+  schema: string;
+  schemaVersion: number | null;
+  name: string;
+  position: { x: number; y: number };
+  data: Record<string, unknown>;
 }
 
 interface ConnectionDto {
   id: string | null;
-  outputNodeId: string | null;
-  outputPortId: string | null;
-  inputNodeId: string | null;
-  inputPortId: string | null;
-  reason: string | null;
+  from: PortRef | null;
+  to: PortRef | null;
+  reason?: string;
 }
 
 interface GraphDocumentDto {
   format: string;
   version: number;
   graphId: string;
-  viewport: { position: PointDto; zoom: number };
+  pack: { id: string; version: number } | null;
+  viewport: { x: number; y: number; zoom: number };
   nodes: NodeDto[];
   connections: ConnectionDto[];
   unresolvedConnections: ConnectionDto[];
 }
 
-/** Reads and writes the same JSON document format as the Unity implementation. */
+/**
+ * Graph documents store, per node, the schema id and version, the node name and its data;
+ * connections reference ports by node id and schema port key.
+ */
 export class GraphJsonSerializer {
-  constructor(private readonly registry: NodeGraphRegistry) {}
+  constructor(private readonly registry: SchemaRegistry) {}
 
   serialize(graph: GraphModel): string {
+    const pack = this.registry.pack;
     const document: GraphDocumentDto = {
       format: GRAPH_FORMAT,
       version: GRAPH_FORMAT_VERSION,
       graphId: graph.id,
-      viewport: {
-        position: { x: graph.viewport.x, y: graph.viewport.y },
-        zoom: graph.viewport.zoom,
-      },
+      pack: pack ? { id: pack.id, version: pack.version } : null,
+      viewport: { ...graph.viewport },
       nodes: [...graph.nodes].map((node) => ({
         id: node.id,
-        typeId: node.typeId,
+        schema: node.schemaId,
+        schemaVersion: node.schema?.version ?? node.loadedSchemaVersion ?? null,
+        name: node.name,
         position: { x: node.position.x, y: node.position.y },
-        ports: node.ports.map((port) => ({
-          id: port.id,
-          key: port.key,
-          direction: port.direction,
-          capacity: port.capacity,
-          typeId: port.typeId,
-          displayName: port.displayName,
-          isDynamic: port.isDynamic,
-        })),
-        state: captureState(node),
+        data: node.data,
       })),
       connections: [...graph.connections].map((connection) => ({
         id: connection.id,
-        outputNodeId: connection.outputNodeId,
-        outputPortId: connection.outputPortId,
-        inputNodeId: connection.inputNodeId,
-        inputPortId: connection.inputPortId,
-        reason: null,
+        from: { node: connection.outputNodeId, port: graph.getPort(connection.outputPortId)!.key },
+        to: { node: connection.inputNodeId, port: graph.getPort(connection.inputPortId)!.key },
       })),
       unresolvedConnections: graph.unresolvedConnections.map((connection) => ({ ...connection })),
     };
@@ -108,191 +78,151 @@ export class GraphJsonSerializer {
     if (!json.trim()) {
       throw new GraphSerializationError("The graph JSON is empty.");
     }
-
     let document: Partial<GraphDocumentDto>;
     try {
       document = JSON.parse(json);
     } catch (error) {
       throw new GraphSerializationError(`The graph JSON could not be parsed: ${(error as Error).message}`);
     }
-
-    if (!isObject(document)) {
+    if (!isRecord(document)) {
       throw new GraphSerializationError("The graph JSON produced an empty document.");
     }
     if (document.format !== GRAPH_FORMAT) {
-      throw new GraphSerializationError(`Unsupported graph format '${document.format}'.`);
+      throw new GraphSerializationError(`Unsupported graph format '${String(document.format)}'.`);
     }
     if (document.version !== GRAPH_FORMAT_VERSION) {
-      throw new GraphSerializationError(`Unsupported graph format version '${document.version}'.`);
+      throw new GraphSerializationError(
+        `Unsupported graph format version '${String(document.version)}' (expected ${GRAPH_FORMAT_VERSION}).`,
+      );
+    }
+
+    const warnings: string[] = [];
+    const pack = this.registry.pack;
+    const documentPack = isRecord(document.pack) ? document.pack : null;
+    if (documentPack && (!pack || pack.id !== documentPack.id)) {
+      warnings.push(
+        `The graph was made with schema pack '${String(documentPack.id)}', but ${pack ? `'${pack.id}'` : "no pack"} is loaded.`,
+      );
     }
 
     const graph = new GraphModel(this.registry, requireId(document.graphId, "graphId"));
-    const warnings: string[] = [];
-    const nodeIds = new Set<string>();
+    const nodeDtos = asArray<NodeDto>(document.nodes, "nodes");
+    const connectionDtos = asArray<unknown>(document.connections, "connections").map(normalizeConnection);
 
     graph.batch(() => {
-      for (const nodeDto of asArray<NodeDto>(document.nodes, "nodes")) {
-        if (!isObject(nodeDto)) {
-          throw new GraphSerializationError("The nodes array contains null.");
+      const nodeIds = new Set<string>();
+      for (const nodeDto of nodeDtos) {
+        if (!isRecord(nodeDto)) {
+          throw new GraphSerializationError("The nodes array contains a non-object entry.");
         }
         const nodeId = requireId(nodeDto.id, "node.id");
         if (nodeIds.has(nodeId)) {
           throw new GraphSerializationError(`Duplicate node id '${nodeId}'.`);
         }
         nodeIds.add(nodeId);
-
-        const typeId = String(nodeDto.typeId ?? "");
-        const snapshots = parsePortSnapshots(nodeDto.ports);
-        const rawState = isObject(nodeDto.state) ? (nodeDto.state as Record<string, unknown>) : {};
+        const schemaId = typeof nodeDto.schema === "string" ? nodeDto.schema : "";
+        const name = typeof nodeDto.name === "string" ? nodeDto.name : "";
+        const rawData = isRecord(nodeDto.data) ? nodeDto.data : {};
+        const label = name || schemaId;
         let node: NodeModel;
 
-        const definition = this.registry.nodes.get(typeId);
-        if (!definition) {
-          node = createPlaceholder(nodeId, typeId, rawState, snapshots);
-          warnings.push(`Unknown node type '${typeId}' was loaded as a placeholder.`);
-        } else {
-          try {
-            node = createNode(this.registry.nodes, typeId, nodeId);
-            restorePorts(node, snapshots, this.registry.dataTypes);
-            node.state = definition.restoreState ? definition.restoreState(rawState) : { ...rawState };
-          } catch (error) {
-            if (!(error instanceof NodeSchemaMismatchError || error instanceof RegistryError || error instanceof TypeError)) {
-              throw error;
-            }
-            node = createPlaceholder(nodeId, typeId, rawState, snapshots);
-            warnings.push(`Node '${typeId}' could not be restored and was loaded as a placeholder: ${error.message}`);
+        const schema = this.registry.getSchema(schemaId);
+        if (schema) {
+          const data = normalizeData(schema, rawData, (message) => warnings.push(`Node '${label}': ${message}`));
+          node = createNode(this.registry, schemaId, nodeId, data);
+          node.name = name;
+          const version = typeof nodeDto.schemaVersion === "number" ? nodeDto.schemaVersion : null;
+          if (version !== null && version !== schema.version) {
+            warnings.push(`Node '${label}' was saved with version ${version} of '${schemaId}', the pack has version ${schema.version}.`);
           }
+        } else {
+          node = createPlaceholder(nodeId, schemaId, rawData, name, placeholderPorts(nodeId, connectionDtos));
+          warnings.push(`Unknown node schema '${schemaId}' — node '${label}' was loaded as a placeholder.`);
         }
-
+        node.loadedSchemaVersion = typeof nodeDto.schemaVersion === "number" ? nodeDto.schemaVersion : null;
         graph.addNode(node, toPoint(nodeDto.position));
       }
 
       const connectionIds = new Set<string>();
-      for (const connectionDto of asArray<ConnectionDto>(document.connections, "connections")) {
-        const dto = normalizeConnection(connectionDto);
+      for (const dto of connectionDtos) {
         if (!dto.id) {
-          graph.addUnresolvedConnection({ ...dto, reason: "Invalid or duplicate connection id." });
-          warnings.push("A connection with an invalid id was preserved as unresolved.");
+          graph.addUnresolvedConnection({ ...dto, reason: "Invalid connection id." });
+          warnings.push("A connection with an invalid id was kept as unresolved.");
           continue;
         }
         if (connectionIds.has(dto.id)) {
           throw new GraphSerializationError(`Duplicate connection id '${dto.id}'.`);
         }
         connectionIds.add(dto.id);
-
-        const endpointError = validateEndpoints(graph, dto);
-        if (endpointError) {
-          graph.addUnresolvedConnection({ ...dto, reason: endpointError });
-          warnings.push(`A connection was preserved as unresolved: ${endpointError}`);
-          continue;
-        }
-
-        const result = graph.connect(dto.outputPortId!, dto.inputPortId!, dto.id);
-        if (!result.success) {
-          graph.addUnresolvedConnection({ ...dto, reason: result.message });
-          warnings.push(`A connection was preserved as unresolved: ${result.message}`);
+        const problem = this.connectFromDto(graph, dto);
+        if (problem) {
+          graph.addUnresolvedConnection({ ...dto, reason: problem });
+          warnings.push(`A connection was kept as unresolved: ${problem}`);
         }
       }
 
-      for (const unresolvedDto of asArray<ConnectionDto>(document.unresolvedConnections, "unresolvedConnections")) {
-        const dto = normalizeConnection(unresolvedDto);
+      for (const raw of asArray<unknown>(document.unresolvedConnections, "unresolvedConnections")) {
+        const dto = normalizeConnection(raw);
+        if (dto.id && connectionIds.has(dto.id)) {
+          throw new GraphSerializationError(`Duplicate connection id '${dto.id}'.`);
+        }
         if (dto.id) {
-          if (connectionIds.has(dto.id)) {
-            throw new GraphSerializationError(`Duplicate connection id '${dto.id}'.`);
-          }
           connectionIds.add(dto.id);
         }
-        graph.addUnresolvedConnection({
-          ...dto,
-          reason: dto.reason || "Unresolved connection from source document.",
-        });
+        graph.addUnresolvedConnection({ ...dto, reason: dto.reason || "Unresolved connection from the source document." });
       }
 
-      const viewport = isObject(document.viewport) ? document.viewport : null;
-      const viewportPosition = toPoint(viewport?.position);
+      const viewport: Record<string, unknown> = isRecord(document.viewport) ? document.viewport : {};
       graph.setViewport({
-        x: viewportPosition.x,
-        y: viewportPosition.y,
-        zoom: typeof viewport?.zoom === "number" ? viewport.zoom : 1,
+        x: finiteOr(viewport.x, 0),
+        y: finiteOr(viewport.y, 0),
+        zoom: finiteOr(viewport.zoom, 1),
       });
     });
 
     return { graph, warnings };
   }
-}
 
-function captureState(node: NodeModel): Record<string, unknown> {
-  if (node.isPlaceholder) {
-    return node.rawState ?? {};
-  }
-  const capture = node.definition?.captureState;
-  if (capture) {
-    return capture(node.state);
-  }
-  return isObject(node.state) ? { ...(node.state as Record<string, unknown>) } : {};
-}
-
-function parsePortSnapshots(value: unknown): PortSnapshot[] {
-  return asArray<PortDto>(value, "ports").map((port) => {
-    if (!isObject(port)) {
-      throw new GraphSerializationError("The ports array contains null.");
+  private connectFromDto(graph: GraphModel, dto: UnresolvedConnection): string | null {
+    if (!dto.from || !graph.getNode(dto.from.node)) {
+      return "Output node is missing.";
     }
-    const direction = parseEnum(port.direction, ["Input", "Output"] as const);
-    const capacity = parseEnum(port.capacity, ["Single", "Multiple"] as const);
-    if (!direction || !capacity) {
-      throw new GraphSerializationError(`Port '${port.key}' has invalid direction or capacity.`);
+    if (!dto.to || !graph.getNode(dto.to.node)) {
+      return "Input node is missing.";
     }
-    const key = String(port.key ?? "");
-    return {
-      id: requireId(port.id, "port.id"),
-      key,
-      direction,
-      capacity,
-      typeId: String(port.typeId ?? ""),
-      displayName: typeof port.displayName === "string" && port.displayName.trim() ? port.displayName : key,
-      isDynamic: port.isDynamic === true,
-    };
-  });
+    const output = graph.getPort(portId(dto.from.node, dto.from.port));
+    if (!output) {
+      return `Output port '${dto.from.port}' does not exist.`;
+    }
+    const input = graph.getPort(portId(dto.to.node, dto.to.port));
+    if (!input) {
+      return `Input port '${dto.to.port}' does not exist.`;
+    }
+    const result = graph.connect(output.id, input.id, dto.id!);
+    return result.success ? null : result.message;
+  }
 }
 
-function validateEndpoints(graph: GraphModel, dto: UnresolvedConnection): string | null {
-  const outputNode = dto.outputNodeId ? graph.getNode(dto.outputNodeId) : undefined;
-  if (!outputNode) {
-    return "Output node endpoint is missing.";
+/** Port keys a placeholder node needs so that its saved connections can be restored. */
+function placeholderPorts(nodeId: string, connections: UnresolvedConnection[]): { key: string; direction: PortDirection }[] {
+  const ports: { key: string; direction: PortDirection }[] = [];
+  for (const connection of connections) {
+    if (connection.from?.node === nodeId) ports.push({ key: connection.from.port, direction: "Output" });
+    if (connection.to?.node === nodeId) ports.push({ key: connection.to.port, direction: "Input" });
   }
-  const output = dto.outputPortId ? graph.getPort(dto.outputPortId) : undefined;
-  if (!output || output.nodeId !== outputNode.id) {
-    return "Output endpoint is missing.";
-  }
-  const inputNode = dto.inputNodeId ? graph.getNode(dto.inputNodeId) : undefined;
-  if (!inputNode) {
-    return "Input node endpoint is missing.";
-  }
-  const input = dto.inputPortId ? graph.getPort(dto.inputPortId) : undefined;
-  if (!input || input.nodeId !== inputNode.id) {
-    return "Input endpoint is missing.";
-  }
-  return null;
+  return ports;
 }
 
 function normalizeConnection(value: unknown): UnresolvedConnection {
-  const dto = isObject(value) ? (value as Partial<ConnectionDto>) : {};
-  const id = (field: unknown) => (isValidId(field) ? field : null);
+  const dto = isRecord(value) ? value : {};
+  const ref = (raw: unknown): PortRef | null =>
+    isRecord(raw) && isValidId(raw.node) && typeof raw.port === "string" && raw.port ? { node: raw.node, port: raw.port } : null;
   return {
-    id: id(dto.id),
-    outputNodeId: id(dto.outputNodeId),
-    outputPortId: id(dto.outputPortId),
-    inputNodeId: id(dto.inputNodeId),
-    inputPortId: id(dto.inputPortId),
+    id: isValidId(dto.id) ? dto.id : null,
+    from: ref(dto.from),
+    to: ref(dto.to),
     reason: typeof dto.reason === "string" ? dto.reason : "",
   };
-}
-
-function parseEnum<T extends string>(value: unknown, options: readonly T[]): T | null {
-  if (typeof value !== "string") {
-    return null;
-  }
-  return options.find((option) => option.toLowerCase() === value.toLowerCase()) ?? null;
 }
 
 function requireId(value: unknown, field: string): string {
@@ -303,11 +233,12 @@ function requireId(value: unknown, field: string): string {
 }
 
 function toPoint(value: unknown): { x: number; y: number } {
-  const point = isObject(value) ? (value as Partial<PointDto>) : {};
-  return {
-    x: typeof point.x === "number" && Number.isFinite(point.x) ? point.x : 0,
-    y: typeof point.y === "number" && Number.isFinite(point.y) ? point.y : 0,
-  };
+  const point: Record<string, unknown> = isRecord(value) ? value : {};
+  return { x: finiteOr(point.x, 0), y: finiteOr(point.y, 0) };
+}
+
+function finiteOr(value: unknown, fallback: number): number {
+  return typeof value === "number" && Number.isFinite(value) ? value : fallback;
 }
 
 function asArray<T>(value: unknown, field: string): T[] {
@@ -318,8 +249,4 @@ function asArray<T>(value: unknown, field: string): T[] {
     throw new GraphSerializationError(`Field '${field}' must be an array.`);
   }
   return value as T[];
-}
-
-function isObject(value: unknown): value is Record<string, any> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }

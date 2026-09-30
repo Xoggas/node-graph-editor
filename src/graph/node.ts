@@ -1,30 +1,23 @@
 import type { GraphModel } from "./graph";
-import type { DataTypeRegistry, NodeDefinition, NodeTypeRegistry } from "./registry";
-import {
-  isValidId,
-  newId,
-  NodeSchemaMismatchError,
-  type Port,
-  type PortDefinition,
-  type PortSnapshot,
-  RegistryError,
-  type Vec2,
-} from "./types";
+import type { SchemaRegistry } from "./registry";
+import { createData, derivePorts, type NodeData, type NodeSchema } from "./schema";
+import { isValidId, newId, type Port, type PortDirection, RegistryError, type Vec2 } from "./types";
 
-export class NodeModel<S = any> {
+export class NodeModel {
   position: Vec2 = { x: 0, y: 0 };
   ports: Port[] = [];
   /** @internal set by GraphModel */
   graph: GraphModel | null = null;
+  /** Schema version the node was saved with; written back unchanged for placeholder nodes. */
+  loadedSchemaVersion: number | null = null;
 
   constructor(
     readonly id: string,
-    readonly typeId: string,
-    /** Null for placeholder nodes whose type is not registered. */
-    readonly definition: NodeDefinition<S> | null,
-    public state: S,
-    /** Verbatim JSON state of a placeholder node, written back unchanged on save. */
-    readonly rawState: Record<string, unknown> | null = null,
+    readonly schemaId: string,
+    /** Null for placeholder nodes whose schema is not in the loaded pack. */
+    readonly schema: NodeSchema | null,
+    public data: NodeData,
+    public name: string = "",
   ) {
     if (!isValidId(id)) {
       throw new RegistryError("A node id must be a non-empty GUID.");
@@ -32,14 +25,15 @@ export class NodeModel<S = any> {
   }
 
   get isPlaceholder(): boolean {
-    return this.definition === null;
+    return this.schema === null;
   }
 
+  /** Header text: the custom name for renamable schemas, otherwise the schema title. */
   get displayName(): string {
-    if (!this.definition) {
-      return `Missing: ${this.typeId}`;
+    if (!this.schema) {
+      return `Missing: ${this.schemaId}`;
     }
-    return this.definition.displayName?.trim() || this.typeId;
+    return this.schema.naming.editable && this.name.trim() ? this.name : this.schema.title;
   }
 
   getPort(key: string): Port | undefined {
@@ -55,116 +49,62 @@ export class NodeModel<S = any> {
   }
 }
 
-export function makePort(
-  nodeId: string,
-  definition: PortDefinition,
-  isDynamic: boolean,
-  id: string = newId(),
-): Port {
-  if (!definition.key.trim()) {
-    throw new RegistryError("A port key is required.");
-  }
-  return {
-    id,
-    key: definition.key,
-    direction: definition.direction,
-    capacity: definition.capacity ?? (definition.direction === "Input" ? "Single" : "Multiple"),
-    typeId: definition.typeId,
-    displayName: definition.displayName?.trim() || definition.key,
-    isDynamic,
-    nodeId,
-  };
+export function portId(nodeId: string, key: string): string {
+  return `${nodeId}/${key}`;
 }
 
-export function createNode(registry: NodeTypeRegistry, typeId: string, id: string = newId()): NodeModel {
-  const definition = registry.get(typeId);
-  if (!definition) {
-    throw new RegistryError(`Unknown node type '${typeId}'.`);
+/** Ports of a schema node for its current data. */
+export function buildPorts(node: NodeModel, registry: SchemaRegistry): Port[] {
+  if (!node.schema) {
+    return node.ports;
   }
-  const node = new NodeModel(id, typeId, definition, definition.defaultState());
-  const keys = new Set<string>();
-  const add = (portDefinition: PortDefinition, isDynamic: boolean) => {
-    if (keys.has(portDefinition.key)) {
-      throw new RegistryError(`Node '${typeId}' already contains port '${portDefinition.key}'.`);
-    }
-    registry.dataTypes.resolve(portDefinition.typeId);
-    keys.add(portDefinition.key);
-    node.ports.push(makePort(id, portDefinition, isDynamic));
-  };
-  definition.ports?.forEach((port) => add(port, false));
-  definition.initialDynamicPorts?.forEach((port) => add(port, true));
+  return derivePorts(node.schema, node.data, registry.portTypes).map((port) => ({
+    id: portId(node.id, port.key),
+    key: port.key,
+    direction: port.direction,
+    capacity: port.capacity,
+    typeId: port.type,
+    displayName: port.label,
+    nodeId: node.id,
+  }));
+}
+
+export function createNode(registry: SchemaRegistry, schemaId: string, id: string = newId(), data?: NodeData): NodeModel {
+  const schema = registry.getSchema(schemaId);
+  if (!schema) {
+    throw new RegistryError(`Unknown node schema '${schemaId}'.`);
+  }
+  const node = new NodeModel(id, schemaId, schema, data ?? createData(schema));
+  node.ports = buildPorts(node, registry);
   return node;
 }
 
 /**
- * Applies saved port ids and dynamic ports to a freshly created node.
- * Static ports must match the node definition exactly, otherwise the document is considered out of date.
+ * A node whose schema is missing. Its data is kept verbatim; ports are recreated from the
+ * connections that reference it so those connections survive a save.
  */
-export function restorePorts(node: NodeModel, snapshots: readonly PortSnapshot[], dataTypes: DataTypeRegistry): void {
-  const staticPorts = new Map(node.ports.filter((port) => !port.isDynamic).map((port) => [port.key, port]));
-  const seenKeys = new Set<string>();
-  const seenIds = new Set<string>();
-  const restored: Port[] = [];
-
-  for (const snapshot of snapshots) {
-    if (!isValidId(snapshot.id)) {
-      throw new RegistryError(`Node '${node.id}' contains an empty port id.`);
-    }
-    if (seenKeys.has(snapshot.key)) {
-      throw new RegistryError(`Node '${node.id}' contains duplicate port key '${snapshot.key}'.`);
-    }
-    if (seenIds.has(snapshot.id)) {
-      throw new RegistryError(`Node '${node.id}' contains duplicate port id '${snapshot.id}'.`);
-    }
-    seenKeys.add(snapshot.key);
-    seenIds.add(snapshot.id);
-    dataTypes.resolve(snapshot.typeId);
-
-    const staticPort = staticPorts.get(snapshot.key);
-    if (!snapshot.isDynamic) {
-      if (!staticPort) {
-        throw new NodeSchemaMismatchError(`Static port '${snapshot.key}' is not declared by '${node.typeId}'.`);
-      }
-      if (
-        staticPort.direction !== snapshot.direction ||
-        staticPort.capacity !== snapshot.capacity ||
-        staticPort.typeId !== snapshot.typeId
-      ) {
-        throw new NodeSchemaMismatchError(`Static port '${snapshot.key}' does not match the '${node.typeId}' schema.`);
-      }
-      restored.push({ ...staticPort, id: snapshot.id, displayName: snapshot.displayName || snapshot.key });
-      continue;
-    }
-
-    if (staticPort) {
-      throw new NodeSchemaMismatchError(`Dynamic port '${snapshot.key}' conflicts with a static port.`);
-    }
-    restored.push({ ...snapshot, nodeId: node.id });
-  }
-
-  for (const key of staticPorts.keys()) {
-    if (!seenKeys.has(key)) {
-      throw new NodeSchemaMismatchError(`Static port '${key}' is missing from the document.`);
-    }
-  }
-
-  node.ports = restored;
-}
-
 export function createPlaceholder(
   id: string,
-  typeId: string,
-  rawState: Record<string, unknown>,
-  snapshots: readonly PortSnapshot[],
-): NodeModel<null> {
-  const node = new NodeModel<null>(id, typeId, null, null, rawState);
-  const ids = new Set<string>();
-  for (const snapshot of snapshots) {
-    if (!isValidId(snapshot.id) || ids.has(snapshot.id)) {
-      throw new RegistryError(`Node '${id}' contains an invalid or duplicate port id.`);
+  schemaId: string,
+  data: NodeData,
+  name: string,
+  portKeys: { key: string; direction: PortDirection }[],
+): NodeModel {
+  const node = new NodeModel(id, schemaId, null, data, name);
+  const seen = new Set<string>();
+  for (const { key, direction } of portKeys) {
+    if (!seen.has(key)) {
+      seen.add(key);
+      node.ports.push({
+        id: portId(id, key),
+        key,
+        direction,
+        capacity: "Multiple",
+        typeId: "",
+        displayName: key,
+        nodeId: id,
+      });
     }
-    ids.add(snapshot.id);
-    node.ports.push({ ...snapshot, nodeId: id });
   }
   return node;
 }

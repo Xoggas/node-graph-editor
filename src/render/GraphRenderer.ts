@@ -5,7 +5,9 @@ import { clampZoom, type Connection, type Port, type Vec2, type Viewport } from 
 import { DotGrid } from "./DotGrid";
 import { EdgeView, traceEdgePath } from "./EdgeView";
 import { type Bounds, computeEdgePath, hitTestEdge, rectsIntersect } from "./geometry";
-import { formatNumber, type NodeHit, NodeView, type PortHighlight, type WidgetLayout } from "./NodeView";
+import { clampNumber } from "../graph/schema";
+import { InlineEditor } from "./InlineEditor";
+import { type FieldLayout, formatNumber, type NodeHit, NodeView, type PortHighlight } from "./NodeView";
 import { installFonts } from "./text";
 import { theme, typeColor } from "./theme";
 
@@ -36,7 +38,8 @@ type Interaction =
     }
   | { kind: "connect"; pointerId: number; from: Port; cursor: Vec2; target: Port | null }
   | { kind: "box"; pointerId: number; start: Vec2; current: Vec2; mode: "replace" | "add" | "toggle"; initial: Set<string> }
-  | { kind: "button"; pointerId: number; view: NodeView; widget: WidgetLayout };
+  /** Pressing a checkbox or an enum segment; applied on release over the same target. */
+  | { kind: "press"; pointerId: number; view: NodeView; field: FieldLayout; segment: number | null };
 
 export interface RendererStats {
   frameMs: number;
@@ -84,7 +87,9 @@ export class GraphRenderer {
   private initialized = false;
   private destroyed = false;
   private resizeObserver: ResizeObserver | null = null;
-  private numberInput: { element: HTMLInputElement; view: NodeView; widget: WidgetLayout } | null = null;
+  private inlineEditor!: InlineEditor;
+  /** Node being edited inline, so the editor closes if the node disappears. */
+  private editedNode: NodeView | null = null;
   private readonly frameTimes: number[] = [];
   private visibleNodes = 0;
   private visibleEdges = 0;
@@ -123,6 +128,7 @@ export class GraphRenderer {
     canvas.style.display = "block";
     canvas.style.touchAction = "none";
     this.host.appendChild(canvas);
+    this.inlineEditor = new InlineEditor(this.host);
     canvas.addEventListener("pointerdown", this.onPointerDown);
     canvas.addEventListener("pointermove", this.onPointerMove);
     canvas.addEventListener("pointerup", this.onPointerUp);
@@ -130,6 +136,7 @@ export class GraphRenderer {
     canvas.addEventListener("pointerleave", this.onPointerLeave);
     canvas.addEventListener("wheel", this.onWheel, { passive: false });
     canvas.addEventListener("contextmenu", preventDefault);
+    canvas.addEventListener("dblclick", this.onDoubleClick);
     window.addEventListener("keydown", this.onKeyDown);
     window.addEventListener("keyup", this.onKeyUp);
     window.addEventListener("blur", this.onWindowBlur);
@@ -148,7 +155,7 @@ export class GraphRenderer {
     if (!this.initialized) {
       return;
     }
-    this.closeNumberEditor(false);
+    this.inlineEditor.close(false);
     this.unsubscribeGraph();
     this.unsubscribeEditor();
     this.resizeObserver?.disconnect();
@@ -302,7 +309,7 @@ export class GraphRenderer {
   // --- Graph binding -----------------------------------------------------------
 
   private setGraph(graph: GraphModel, options: GraphReplacedOptions): void {
-    this.closeNumberEditor(false);
+    this.inlineEditor.close(false);
     this.unsubscribeGraph();
     this.graph = graph;
     this.unsubscribeGraph = graph.subscribe(this.onGraphChange);
@@ -359,8 +366,17 @@ export class GraphRenderer {
         this.markNodeEdgesDirty(change.node.id);
         break;
       }
-      case "nodeStateChanged":
-        this.nodeViews.get(change.node.id)?.refreshState();
+      case "nodeDataChanged": {
+        const view = this.nodeViews.get(change.node.id);
+        if (view) {
+          view.refreshValues();
+          view.redraw();
+        }
+        break;
+      }
+      case "nodeRenamed":
+        this.nodeViews.get(change.node.id)?.rebuild();
+        this.markNodeEdgesDirty(change.node.id);
         break;
       case "nodePortsChanged":
         this.nodeViews.get(change.node.id)?.rebuild();
@@ -405,6 +421,7 @@ export class GraphRenderer {
     const view = new NodeView(node, {
       isPortConnected: (portId) => this.graph.hasConnections(portId),
       portHighlight: (port) => this.portHighlight(port),
+      portColor: (typeId) => this.portColor(typeId),
     });
     view.setDetailVisible(this.detailVisible);
     this.nodeViews.set(nodeId, view);
@@ -420,8 +437,8 @@ export class GraphRenderer {
     if (this.hovered === view) {
       this.hovered = null;
     }
-    if (this.numberInput?.view === view) {
-      this.closeNumberEditor(false);
+    if (this.editedNode === view) {
+      this.inlineEditor.close(false);
     }
     if (this.selection.delete(nodeId)) {
       this.editor.setSelectionCount(this.selection.size);
@@ -433,7 +450,7 @@ export class GraphRenderer {
 
   private addEdgeView(connection: Connection): void {
     const output = this.graph.getPort(connection.outputPortId);
-    const view = new EdgeView(connection, output ? typeColor(output.typeId) : theme.connection);
+    const view = new EdgeView(connection, output ? this.portColor(output.typeId) : theme.connection);
     this.edgeViews.set(connection.id, view);
     this.edgeLayer.addChild(view.graphics);
     this.dirtyEdges.add(connection.id);
@@ -570,7 +587,7 @@ export class GraphRenderer {
     const other = (target && this.nodeViews.get(target.nodeId)?.portWorldPosition(target.id)) || cursor;
     const [start, end] = from.direction === "Output" ? [fromPosition, other] : [other, fromPosition];
     traceEdgePath(g, computeEdgePath(start, end));
-    g.stroke({ width: 2.5 * this.edgeScale, color: typeColor(from.typeId), alpha: target ? 1 : 0.75, cap: "round" });
+    g.stroke({ width: 2.5 * this.edgeScale, color: this.portColor(from.typeId), alpha: target ? 1 : 0.75, cap: "round" });
   }
 
   private drawOverlay(): void {
@@ -609,7 +626,7 @@ export class GraphRenderer {
     this.world.position.set(x, y);
     this.world.scale.set(zoom);
     this.gridDirty = true;
-    this.closeNumberEditor(true);
+    this.inlineEditor?.close(true);
 
     const detailVisible = zoom >= DETAIL_ZOOM;
     if (detailVisible !== this.detailVisible) {
@@ -775,19 +792,24 @@ export class GraphRenderer {
     this.requestFrame();
   }
 
-  private setHovered(view: NodeView | null, portId: string | null, widgetIndex: number | null): void {
+  private setHovered(view: NodeView | null, portId: string | null, fieldIndex: number | null, segment: number | null = null): void {
     if (this.hovered && this.hovered !== view) {
       const previous = this.hovered;
       previous.hovered = false;
       previous.hoveredPortId = null;
-      previous.hoveredWidget = null;
+      previous.hoveredField = null;
+      previous.hoveredSegment = null;
       previous.redraw();
     }
     this.hovered = view;
-    if (view && (!view.hovered || view.hoveredPortId !== portId || view.hoveredWidget !== widgetIndex)) {
+    if (
+      view &&
+      (!view.hovered || view.hoveredPortId !== portId || view.hoveredField !== fieldIndex || view.hoveredSegment !== segment)
+    ) {
       view.hovered = true;
       view.hoveredPortId = portId;
-      view.hoveredWidget = widgetIndex;
+      view.hoveredField = fieldIndex;
+      view.hoveredSegment = segment;
       view.redraw();
     }
     this.requestFrame();
@@ -795,7 +817,7 @@ export class GraphRenderer {
 
   // --- Pointer input ---------------------------------------------------------------
 
-  private localPoint(event: PointerEvent | WheelEvent): Vec2 {
+  private localPoint(event: MouseEvent): Vec2 {
     const rect = this.app.canvas.getBoundingClientRect();
     return { x: event.clientX - rect.left, y: event.clientY - rect.top };
   }
@@ -848,15 +870,14 @@ export class GraphRenderer {
         this.setSelection(new Set([nodeId]));
       }
 
-      if (hit.hit.kind === "widget") {
-        const { widget } = hit.hit;
-        if (widget.widget.kind === "number") {
-          this.openNumberEditor(hit.view, widget);
+      if (hit.hit.kind === "field") {
+        const { field, segment } = hit.hit;
+        if (field.kind === "bool" || field.kind === "segmented") {
+          this.interaction = { kind: "press", pointerId: event.pointerId, view: hit.view, field, segment };
+        } else {
+          this.openFieldEditor(hit.view, field);
           return;
         }
-        hit.view.pressedWidget = widget.index;
-        hit.view.redraw();
-        this.interaction = { kind: "button", pointerId: event.pointerId, view: hit.view, widget };
       } else if (this.selection.has(nodeId)) {
         this.bringToFront(this.selection);
         const origins = new Map<string, Vec2>();
@@ -964,17 +985,8 @@ export class GraphRenderer {
           this.updateBoxSelection(interaction);
         }
         return;
-      case "button": {
-        const hit = this.hitTest(world, false);
-        const over = hit?.kind === "node" && hit.view === interaction.view && hit.hit.kind === "widget" && hit.hit.widget.index === interaction.widget.index;
-        const pressed = over ? interaction.widget.index : null;
-        if (interaction.view.pressedWidget !== pressed) {
-          interaction.view.pressedWidget = pressed;
-          interaction.view.redraw();
-          this.requestFrame();
-        }
+      case "press":
         return;
-      }
     }
   };
 
@@ -1012,19 +1024,29 @@ export class GraphRenderer {
         this.translatingEdges = new Set();
         this.editor.endInteraction();
         break;
-      case "button": {
-        const { view, widget } = interaction;
-        const clicked = view.pressedWidget === widget.index;
-        view.pressedWidget = null;
-        view.redraw();
-        if (clicked) {
-          this.editor.runWidgetAction(view.node.id, widget.index);
+      case "press": {
+        const hit = this.hitTest(this.screenToWorld(this.localPoint(event)), false);
+        const { view, field, segment } = interaction;
+        if (hit?.kind === "node" && hit.view === view && hit.hit.kind === "field" && hit.hit.field.index === field.index) {
+          if (field.kind === "bool") {
+            this.editor.setField(view.node.id, field.field.id, view.node.data[field.field.id] !== true);
+          } else if (segment !== null && hit.hit.segment === segment && field.field.type === "enum") {
+            this.editor.setField(view.node.id, field.field.id, field.field.options[segment].value);
+          }
         }
         break;
       }
     }
     this.updateHover(this.screenToWorld(this.localPoint(event)));
     this.requestFrame();
+  };
+
+  /** Double-click on a node header renames the node. */
+  private readonly onDoubleClick = (event: MouseEvent): void => {
+    const hit = this.hitTest(this.screenToWorld(this.localPoint(event)), false);
+    if (hit?.kind === "node" && hit.hit.kind === "header" && hit.view.node.schema?.naming.editable) {
+      this.openRenameEditor(hit.view);
+    }
   };
 
   private readonly onPointerLeave = (): void => {
@@ -1053,9 +1075,10 @@ export class GraphRenderer {
       return;
     }
     const portId = hit.hit.kind === "port" ? hit.hit.port.id : null;
-    const widget = hit.hit.kind === "widget" ? hit.hit.widget.index : null;
-    this.setHovered(hit.view, portId, widget);
-    canvas.style.cursor = portId ? "crosshair" : widget !== null ? "pointer" : "move";
+    const field = hit.hit.kind === "field" ? hit.hit.field.index : null;
+    const segment = hit.hit.kind === "field" ? hit.hit.segment : null;
+    this.setHovered(hit.view, portId, field, segment);
+    canvas.style.cursor = portId ? "crosshair" : field !== null ? "pointer" : "move";
   }
 
   private updateBoxSelection(box: Extract<Interaction, { kind: "box" }>): void {
@@ -1107,62 +1130,80 @@ export class GraphRenderer {
     this.spaceDown = false;
   };
 
-  // --- Number editing overlay ------------------------------------------------------------
+  // --- Inline editing ----------------------------------------------------------------------
 
-  private openNumberEditor(view: NodeView, widget: WidgetLayout): void {
-    this.closeNumberEditor(true);
-    if (widget.widget.kind !== "number") {
-      return;
-    }
-    const { zoom } = this.viewport;
-    const rect = widget.hitRect;
-    const screen = {
-      x: this.viewport.x + (view.node.position.x + rect.x) * zoom,
-      y: this.viewport.y + (view.node.position.y + rect.y) * zoom,
-    };
-    const element = document.createElement("input");
-    element.className = "ng-number-input";
-    element.type = "text";
-    element.inputMode = "decimal";
-    element.spellcheck = false;
-    element.value = formatNumber(widget.widget.get(view.node.state));
-    Object.assign(element.style, {
-      left: `${screen.x}px`,
-      top: `${screen.y}px`,
-      width: `${rect.width * zoom}px`,
-      height: `${rect.height * zoom}px`,
-      fontSize: `${12 * zoom}px`,
-    });
-    element.addEventListener("keydown", (event) => {
-      event.stopPropagation();
-      if (event.key === "Enter") {
-        this.closeNumberEditor(true);
-      } else if (event.key === "Escape") {
-        this.closeNumberEditor(false);
-      }
-    });
-    element.addEventListener("blur", () => this.closeNumberEditor(true));
-    this.host.appendChild(element);
-    this.numberInput = { element, view, widget };
-    element.focus();
-    element.select();
+  private portColor(typeId: string): number {
+    return this.graph?.registry.portTypes.get(typeId)?.color ?? typeColor(typeId);
   }
 
-  private closeNumberEditor(commit: boolean): void {
-    const input = this.numberInput;
-    if (!input) {
-      return;
+  /** Screen rectangle (canvas pixels) of a node-local rectangle. */
+  private screenRect(view: NodeView, rect: { x: number; y: number; width: number; height: number }) {
+    const { x, y, zoom } = this.viewport;
+    return {
+      x: x + (view.node.position.x + rect.x) * zoom,
+      y: y + (view.node.position.y + rect.y) * zoom,
+      width: rect.width * zoom,
+      height: rect.height * zoom,
+    };
+  }
+
+  private openFieldEditor(view: NodeView, layout: FieldLayout): void {
+    const { field } = layout;
+    const nodeId = view.node.id;
+    const value = view.node.data[field.id];
+    const rect = this.screenRect(view, layout.hitRect);
+    const fontSize = 12 * this.viewport.zoom;
+    this.editedNode = view;
+
+    if (field.type === "enum") {
+      this.inlineEditor.pick({
+        rect,
+        fontSize: Math.max(11, fontSize),
+        options: field.options,
+        current: typeof value === "string" ? value : null,
+        onPick: (picked) => this.editor.setField(nodeId, field.id, picked),
+      });
+    } else if (field.type === "int" || field.type === "float") {
+      this.inlineEditor.editText({
+        rect,
+        fontSize,
+        value: formatNumber(value),
+        align: "right",
+        inputMode: field.type === "int" ? "numeric" : "decimal",
+        onCommit: (text) => {
+          const parsed = Number(text.trim().replace(",", "."));
+          if (text.trim() === "" || !Number.isFinite(parsed)) {
+            this.editor.setStatus(`'${text}' is not a number.`);
+            return;
+          }
+          const number = clampNumber(field, field.type === "int" ? Math.round(parsed) : parsed);
+          this.editor.setField(nodeId, field.id, number);
+        },
+      });
+    } else if (field.type === "string") {
+      this.inlineEditor.editText({
+        rect,
+        fontSize,
+        value: typeof value === "string" ? value : "",
+        multiline: field.multiline,
+        placeholder: field.placeholder,
+        onCommit: (text) => this.editor.setField(nodeId, field.id, text),
+      });
     }
-    this.numberInput = null;
-    if (commit) {
-      const value = Number(input.element.value.trim().replace(",", "."));
-      if (input.element.value.trim() !== "" && Number.isFinite(value)) {
-        this.editor.setNumberWidget(input.view.node.id, input.widget.index, value);
-      } else {
-        this.editor.setStatus("Invalid number.");
-      }
-    }
-    input.element.remove();
+  }
+
+  private openRenameEditor(view: NodeView): void {
+    const nodeId = view.node.id;
+    this.editedNode = view;
+    this.inlineEditor.editText({
+      rect: this.screenRect(view, { x: 4, y: 4, width: view.width - 8, height: view.headerHeight - 8 }),
+      fontSize: 13 * this.viewport.zoom,
+      value: view.node.name,
+      placeholder: view.node.schema?.title,
+      onCommit: (text) => {
+        this.editor.renameNode(nodeId, text);
+      },
+    });
   }
 }
 

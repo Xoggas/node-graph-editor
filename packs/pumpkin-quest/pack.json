@@ -1,0 +1,25 @@
+{
+  "id": "pumpkin-quest",
+  "name": "Pumpkin Quest",
+  "version": 1,
+  "languages": ["ru", "en"],
+  "portTypes": {
+    "flow": {
+      "label": "Flow",
+      "color": "#b8bcc5",
+      "capacity": { "input": "multiple", "output": "single" }
+    },
+    "bool": {
+      "label": "Condition",
+      "color": "#e07a6f",
+      "capacity": { "input": "single", "output": "multiple" }
+    }
+  },
+  "resourceTypes": {
+    "character": { "label": "Characters", "variants": { "emotions": { "label": "Emotion", "default": "Idle" } } },
+    "background": { "label": "Backgrounds" },
+    "music": { "label": "Music", "media": "audio" },
+    "sfx": { "label": "Sfx", "media": "audio" },
+    "diaryEntry": { "label": "Diary" }
+  }
+}

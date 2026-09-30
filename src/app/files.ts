@@ -1,5 +1,6 @@
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { ask, open, save } from "@tauri-apps/plugin-dialog";
+import type { PackFile } from "../graph/schema";
 
 export interface OpenedFile {
   /** Null when running in a plain browser, where files have no stable path. */
@@ -17,6 +18,9 @@ export interface GraphFileSystem {
   open(): Promise<OpenedFile | null>;
   save(text: string, currentPath: string | null, chooseLocation: boolean): Promise<SavedFile | null>;
   confirm(message: string): Promise<boolean>;
+  /** Resolves null when the user cancels. */
+  pickPackFolder(): Promise<string | null>;
+  readPackFolder(path: string): Promise<PackFile[]>;
 }
 
 const FILTERS = [{ name: "JSON graph", extensions: ["json"] }];
@@ -49,6 +53,15 @@ class TauriFileSystem implements GraphFileSystem {
 
   confirm(message: string): Promise<boolean> {
     return ask(message, { title: "Node Graph Editor", kind: "warning" });
+  }
+
+  async pickPackFolder(): Promise<string | null> {
+    const path = await open({ title: "Choose a schema pack folder (with pack.json)", directory: true, multiple: false });
+    return typeof path === "string" ? path : null;
+  }
+
+  readPackFolder(path: string): Promise<PackFile[]> {
+    return invoke<PackFile[]>("read_schema_pack", { path });
   }
 }
 
@@ -85,6 +98,14 @@ class BrowserFileSystem implements GraphFileSystem {
 
   async confirm(message: string): Promise<boolean> {
     return window.confirm(message);
+  }
+
+  async pickPackFolder(): Promise<string | null> {
+    throw new Error("choosing a pack folder needs the desktop app; the built-in pack is used");
+  }
+
+  async readPackFolder(path: string): Promise<PackFile[]> {
+    throw new Error(`Reading pack folders is only available in the desktop app ('${path}').`);
   }
 }
 

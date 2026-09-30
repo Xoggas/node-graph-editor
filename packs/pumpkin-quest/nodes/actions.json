@@ -1,0 +1,92 @@
+[
+  {
+    "id": "dialogue.set-background",
+    "title": "Set Background",
+    "menu": "Dialogue",
+    "color": "#5a96dc",
+    "meta": { "nodeType": "NonBlocking" },
+    "ports": [
+      { "id": "in", "direction": "input", "type": "flow", "label": "Input" },
+      { "id": "out", "direction": "output", "type": "flow", "label": "Output" }
+    ],
+    "fields": [{ "id": "background", "type": "resource", "resourceType": "background", "label": "Background" }]
+  },
+  {
+    "id": "dialogue.play-music",
+    "title": "Play Music",
+    "menu": "Dialogue/Audio",
+    "color": "#6cff0a",
+    "meta": { "nodeType": "NonBlocking" },
+    "ports": [
+      { "id": "in", "direction": "input", "type": "flow", "label": "Input" },
+      { "id": "out", "direction": "output", "type": "flow", "label": "Output" }
+    ],
+    "fields": [{ "id": "music", "type": "resource", "resourceType": "music", "label": "Music" }]
+  },
+  {
+    "id": "dialogue.play-sfx",
+    "title": "Play Sfx",
+    "menu": "Dialogue/Audio",
+    "color": "#6cff0a",
+    "meta": { "nodeType": "NonBlocking" },
+    "ports": [
+      { "id": "in", "direction": "input", "type": "flow", "label": "Input" },
+      { "id": "out", "direction": "output", "type": "flow", "label": "Output" }
+    ],
+    "fields": [{ "id": "sfx", "type": "resource", "resourceType": "sfx", "label": "Sfx" }]
+  },
+  {
+    "id": "dialogue.add-diary-entry",
+    "title": "Add Diary Entry",
+    "menu": "Dialogue",
+    "color": "#4682c8",
+    "meta": { "nodeType": "NonBlocking" },
+    "ports": [
+      { "id": "in", "direction": "input", "type": "flow", "label": "Input" },
+      { "id": "out", "direction": "output", "type": "flow", "label": "Output" }
+    ],
+    "fields": [{ "id": "entry", "type": "resource", "resourceType": "diaryEntry", "label": "Entry" }]
+  },
+  {
+    "id": "dialogue.strikethrough-diary-entry",
+    "title": "Strikethrough Diary Entry",
+    "menu": "Dialogue",
+    "color": "#4682c8",
+    "meta": { "nodeType": "NonBlocking" },
+    "ports": [
+      { "id": "in", "direction": "input", "type": "flow", "label": "Input" },
+      { "id": "out", "direction": "output", "type": "flow", "label": "Output" }
+    ],
+    "fields": [{ "id": "entry", "type": "resource", "resourceType": "diaryEntry", "label": "Entry" }]
+  },
+  {
+    "id": "dialogue.add-relationship-points",
+    "title": "Add Relationship Points",
+    "menu": "Dialogue",
+    "color": "#dc5050",
+    "meta": { "nodeType": "NonBlocking" },
+    "ports": [
+      { "id": "in", "direction": "input", "type": "flow", "label": "Input" },
+      { "id": "out", "direction": "output", "type": "flow", "label": "Output" }
+    ],
+    "fields": [
+      { "id": "character", "type": "resource", "resourceType": "character", "label": "Character" },
+      { "id": "pointsToAdd", "type": "int", "label": "Points to add" }
+    ]
+  },
+  {
+    "id": "dialogue.change-variable",
+    "title": "Change Variable",
+    "menu": "Dialogue",
+    "color": "#dc5050",
+    "meta": { "nodeType": "NonBlocking" },
+    "ports": [
+      { "id": "in", "direction": "input", "type": "flow", "label": "Input" },
+      { "id": "out", "direction": "output", "type": "flow", "label": "Output" }
+    ],
+    "fields": [
+      { "id": "variable", "type": "string", "label": "Name" },
+      { "id": "valueToAdd", "type": "int", "label": "Value to add" }
+    ]
+  }
+]

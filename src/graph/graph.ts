@@ -1,5 +1,6 @@
-import { makePort, NodeModel, createNode } from "./node";
-import type { NodeGraphRegistry } from "./registry";
+import { buildPorts, createNode, type NodeModel } from "./node";
+import type { SchemaRegistry } from "./registry";
+import type { NodeData } from "./schema";
 import {
   clampZoom,
   type Connection,
@@ -8,7 +9,6 @@ import {
   isValidId,
   newId,
   type Port,
-  type PortDefinition,
   RegistryError,
   type UnresolvedConnection,
   type Vec2,
@@ -19,7 +19,9 @@ export type GraphChange =
   | { kind: "nodeAdded"; node: NodeModel }
   | { kind: "nodeRemoved"; node: NodeModel }
   | { kind: "nodeMoved"; node: NodeModel; previous: Vec2 }
-  | { kind: "nodeStateChanged"; node: NodeModel; previous: unknown }
+  | { kind: "nodeDataChanged"; node: NodeModel; previous: NodeData }
+  | { kind: "nodeRenamed"; node: NodeModel; previous: string }
+  /** Ports are derived from data, so this follows a `nodeDataChanged` that altered them. */
   | { kind: "nodePortsChanged"; node: NodeModel; previous: readonly Port[] }
   | { kind: "connectionAdded"; connection: Connection }
   | { kind: "connectionRemoved"; connection: Connection }
@@ -43,7 +45,7 @@ export class GraphModel {
   private currentViewport: Viewport = { x: 0, y: 0, zoom: 1 };
 
   constructor(
-    readonly registry: NodeGraphRegistry,
+    readonly registry: SchemaRegistry,
     readonly id: string = newId(),
   ) {
     if (!isValidId(id)) {
@@ -136,10 +138,10 @@ export class GraphModel {
       .map((connection) => this.nodeMap.get(connection.outputNodeId)!);
   }
 
-  addNode(typeId: string, position: Vec2): NodeModel;
+  addNode(schemaId: string, position: Vec2): NodeModel;
   addNode(node: NodeModel, position?: Vec2): NodeModel;
-  addNode(nodeOrType: NodeModel | string, position?: Vec2): NodeModel {
-    const node = typeof nodeOrType === "string" ? createNode(this.registry.nodes, nodeOrType) : nodeOrType;
+  addNode(nodeOrSchema: NodeModel | string, position?: Vec2): NodeModel {
+    const node = typeof nodeOrSchema === "string" ? createNode(this.registry, nodeOrSchema) : nodeOrSchema;
     if (node.graph) {
       throw new RegistryError(`Node '${node.id}' already belongs to a graph.`);
     }
@@ -147,7 +149,7 @@ export class GraphModel {
       throw new RegistryError(`Node id '${node.id}' already exists in this graph.`);
     }
     for (const port of node.ports) {
-      if (!isValidId(port.id) || this.portMap.has(port.id)) {
+      if (!port.id || this.portMap.has(port.id)) {
         throw new RegistryError(`Port id '${port.id}' is already used in this graph.`);
       }
     }
@@ -195,80 +197,56 @@ export class GraphModel {
     return true;
   }
 
-  setNodeState<S>(nodeId: string, state: S): boolean {
-    const node = this.nodeMap.get(nodeId) as NodeModel<S> | undefined;
+  /**
+   * Replaces a node's data and re-derives its ports. Connections on ports that disappear
+   * (e.g. a removed list element) are disconnected first, so the change is fully undoable.
+   */
+  setNodeData(nodeId: string, data: NodeData): boolean {
+    const node = this.nodeMap.get(nodeId);
     if (!node || node.isPlaceholder) {
       return false;
     }
-    const previous = node.state;
-    node.state = state;
-    this.emit({ kind: "nodeStateChanged", node, previous });
+    const previous = node.data;
+    const previousPorts = node.ports;
+    node.data = data;
+    const nextPorts = buildPorts(node, this.registry);
+    const nextIds = new Set(nextPorts.map((port) => port.id));
+    node.data = previous;
+    for (const port of previousPorts) {
+      if (!nextIds.has(port.id)) {
+        for (const connection of [...this.getPortConnections(port.id)]) {
+          this.disconnect(connection.id);
+        }
+      }
+    }
+
+    node.data = data;
+    this.emit({ kind: "nodeDataChanged", node, previous });
+    if (!samePorts(previousPorts, nextPorts)) {
+      for (const port of previousPorts) {
+        if (!nextIds.has(port.id)) {
+          this.portMap.delete(port.id);
+          this.connectionsByPort.delete(port.id);
+        }
+      }
+      node.ports = nextPorts;
+      for (const port of nextPorts) {
+        this.portMap.set(port.id, port);
+      }
+      this.emit({ kind: "nodePortsChanged", node, previous: previousPorts });
+    }
     return true;
   }
 
-  addDynamicPort(nodeId: string, definition: PortDefinition): Port {
+  renameNode(nodeId: string, name: string): boolean {
     const node = this.nodeMap.get(nodeId);
-    if (!node) {
-      throw new RegistryError(`Node '${nodeId}' is not part of this graph.`);
-    }
-    if (node.ports.some((port) => port.key === definition.key)) {
-      throw new RegistryError(`Node '${node.typeId}' already contains port '${definition.key}'.`);
-    }
-    this.registry.dataTypes.resolve(definition.typeId);
-    const port = makePort(node.id, definition, true);
-    const previous = node.ports;
-    node.ports = [...node.ports, port];
-    this.portMap.set(port.id, port);
-    this.emit({ kind: "nodePortsChanged", node, previous });
-    return port;
-  }
-
-  removeDynamicPort(portId: string): boolean {
-    const port = this.portMap.get(portId);
-    const node = port && this.nodeMap.get(port.nodeId);
-    if (!port || !node || !port.isDynamic || this.hasConnections(portId)) {
+    if (!node || node.name === name) {
       return false;
     }
-    const previous = node.ports;
-    node.ports = node.ports.filter((candidate) => candidate.id !== portId);
-    this.portMap.delete(portId);
-    this.emit({ kind: "nodePortsChanged", node, previous });
+    const previous = node.name;
+    node.name = name;
+    this.emit({ kind: "nodeRenamed", node, previous });
     return true;
-  }
-
-  /**
-   * Replaces a node's port list, e.g. to undo a dynamic port change.
-   * Ports that disappear must not have connections.
-   */
-  setNodePorts(nodeId: string, ports: readonly Port[]): void {
-    const node = this.nodeMap.get(nodeId);
-    if (!node) {
-      throw new RegistryError(`Node '${nodeId}' is not part of this graph.`);
-    }
-    const nextIds = new Set(ports.map((port) => port.id));
-    for (const port of node.ports) {
-      if (!nextIds.has(port.id) && this.hasConnections(port.id)) {
-        throw new RegistryError(`Port '${port.key}' still has connections.`);
-      }
-    }
-    for (const port of ports) {
-      const existing = this.portMap.get(port.id);
-      if (port.nodeId !== nodeId || (existing && existing.nodeId !== nodeId)) {
-        throw new RegistryError(`Port id '${port.id}' is already used in this graph.`);
-      }
-    }
-    const previous = node.ports;
-    for (const port of previous) {
-      if (!nextIds.has(port.id)) {
-        this.portMap.delete(port.id);
-        this.connectionsByPort.delete(port.id);
-      }
-    }
-    node.ports = [...ports];
-    for (const port of node.ports) {
-      this.portMap.set(port.id, port);
-    }
-    this.emit({ kind: "nodePortsChanged", node, previous });
   }
 
   /** Checks whether a connection is allowed without creating it. */
@@ -281,9 +259,9 @@ export class GraphModel {
     if (output.direction !== "Output" || input.direction !== "Input") {
       return fail("WrongDirection", "Connections must go from Output to Input.");
     }
-    const types = this.registry.dataTypes;
-    const outputKnown = types.has(output.typeId);
-    const inputKnown = types.has(input.typeId);
+    const types = this.registry;
+    const outputKnown = types.hasPortType(output.typeId);
+    const inputKnown = types.hasPortType(input.typeId);
     const hasPlaceholderEndpoint =
       this.nodeMap.get(output.nodeId)!.isPlaceholder || this.nodeMap.get(input.nodeId)!.isPlaceholder;
     if ((!outputKnown || !inputKnown) && !hasPlaceholderEndpoint) {
@@ -300,6 +278,9 @@ export class GraphModel {
       if (connection.outputPortId === output.id) {
         return fail("DuplicateConnection", "This connection already exists.");
       }
+    }
+    if (output.capacity === "Single" && this.hasConnections(output.id)) {
+      return fail("OutputCapacityReached", "The output port already has a connection.");
     }
     return null;
   }
@@ -368,6 +349,20 @@ export class GraphModel {
       listener(change);
     }
   }
+}
+
+function samePorts(a: readonly Port[], b: readonly Port[]): boolean {
+  return (
+    a.length === b.length &&
+    a.every(
+      (port, index) =>
+        port.id === b[index].id &&
+        port.displayName === b[index].displayName &&
+        port.typeId === b[index].typeId &&
+        port.capacity === b[index].capacity &&
+        port.direction === b[index].direction,
+    )
+  );
 }
 
 function fail(reason: ConnectionFailureReason, message: string): ConnectionResult {

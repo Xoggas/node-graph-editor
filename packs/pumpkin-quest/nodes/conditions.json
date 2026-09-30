@@ -1,0 +1,119 @@
+[
+  {
+    "id": "condition.and",
+    "title": "And",
+    "menu": "Dialogue/Conditional",
+    "color": "#787878",
+    "naming": { "editable": false },
+    "ports": [
+      { "id": "conditions", "direction": "input", "type": "bool", "capacity": "multiple", "label": "Conditions" },
+      { "id": "result", "direction": "output", "type": "bool", "label": "Result" }
+    ]
+  },
+  {
+    "id": "condition.or",
+    "title": "Or",
+    "menu": "Dialogue/Conditional",
+    "color": "#8c8c8c",
+    "naming": { "editable": false },
+    "ports": [
+      { "id": "conditions", "direction": "input", "type": "bool", "capacity": "multiple", "label": "Conditions" },
+      { "id": "result", "direction": "output", "type": "bool", "label": "Result" }
+    ]
+  },
+  {
+    "id": "condition.not",
+    "title": "Not",
+    "menu": "Dialogue/Conditional",
+    "color": "#646464",
+    "naming": { "editable": false },
+    "ports": [
+      { "id": "condition", "direction": "input", "type": "bool", "label": "Condition" },
+      { "id": "result", "direction": "output", "type": "bool", "label": "Result" }
+    ]
+  },
+  {
+    "id": "condition.choice-was-made",
+    "title": "Choice Was Made",
+    "menu": "Dialogue/Conditional",
+    "color": "#e69646",
+    "naming": { "editable": false },
+    "ports": [{ "id": "result", "direction": "output", "type": "bool", "label": "Result" }],
+    "fields": [{ "id": "choice", "type": "itemRef", "schema": "dialogue.line", "list": "choices", "label": "Choice" }]
+  },
+  {
+    "id": "condition.choices-were-made",
+    "title": "Choices Were Made",
+    "menu": "Dialogue/Conditional",
+    "color": "#d28232",
+    "naming": { "editable": false },
+    "ports": [{ "id": "result", "direction": "output", "type": "bool", "label": "Result" }],
+    "fields": [
+      {
+        "id": "choices",
+        "type": "list",
+        "label": "Choices",
+        "maxItems": 15,
+        "item": {
+          "type": "record",
+          "fields": [
+            { "id": "choice", "type": "itemRef", "schema": "dialogue.line", "list": "choices", "label": "Choice" },
+            { "id": "made", "type": "bool", "default": true, "label": "Was made" }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "id": "condition.relationship-points",
+    "title": "Relationship Point Comparer",
+    "menu": "Dialogue/Conditional",
+    "color": "#c83c3c",
+    "naming": { "editable": false },
+    "ports": [{ "id": "result", "direction": "output", "type": "bool", "label": "Result" }],
+    "fields": [
+      { "id": "character", "type": "resource", "resourceType": "character", "label": "Character" },
+      {
+        "id": "comparison",
+        "type": "enum",
+        "display": "segmented",
+        "label": "Comparison",
+        "options": [
+          { "value": "Equal", "label": "=" },
+          { "value": "NotEqual", "label": "≠" },
+          { "value": "Greater", "label": ">" },
+          { "value": "GreaterOrEqual", "label": "≥" },
+          { "value": "Less", "label": "<" },
+          { "value": "LessOrEqual", "label": "≤" }
+        ]
+      },
+      { "id": "targetValue", "type": "int", "label": "Target value" }
+    ]
+  },
+  {
+    "id": "condition.variable",
+    "title": "Variable Comparer",
+    "menu": "Dialogue/Conditional",
+    "color": "#c83c3c",
+    "naming": { "editable": false },
+    "ports": [{ "id": "result", "direction": "output", "type": "bool", "label": "Result" }],
+    "fields": [
+      { "id": "variable", "type": "string", "label": "Name" },
+      {
+        "id": "comparison",
+        "type": "enum",
+        "display": "segmented",
+        "label": "Comparison",
+        "options": [
+          { "value": "Equal", "label": "=" },
+          { "value": "NotEqual", "label": "≠" },
+          { "value": "Greater", "label": ">" },
+          { "value": "GreaterOrEqual", "label": "≥" },
+          { "value": "Less", "label": "<" },
+          { "value": "LessOrEqual", "label": "≤" }
+        ]
+      },
+      { "id": "targetValue", "type": "int", "label": "Target value" }
+    ]
+  }
+]

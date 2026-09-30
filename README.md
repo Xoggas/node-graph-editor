@@ -22,6 +22,7 @@ Requires Node.js and a Rust toolchain ([Tauri prerequisites](https://tauri.app/s
 | Pan | Right or middle mouse drag, or Space + left drag |
 | Zoom | Mouse wheel (around the cursor) |
 | Select | Click; Shift adds, Ctrl toggles; drag on empty space for box selection |
+| Edit a field | Click it on the node; double-click the header to rename |
 | Move | Drag selected nodes |
 | Connect | Drag from a port to a compatible port (compatible ports are highlighted) |
 | Undo / Redo | Ctrl+Z / Ctrl+Y (Ctrl+Shift+Z) |
@@ -39,52 +40,79 @@ Keyboard shortcuts use physical keys, so they work with any layout (e.g. Russian
 All shortcuts are defined in `src/app/shortcuts.ts`, which also feeds the F1 overlay.
 
 In a dev build, `__editor.generateStressGraph(1000)` in the devtools console replaces the document with
-1000 generated nodes and ~1900 connections for performance checks. The status bar shows the CPU time per rendered frame and how many nodes survive culling.
+a chain of 1000 nodes of the first pack schema that has a connectable input and output, for performance checks. The status bar shows the CPU time per rendered frame and how many nodes survive culling.
 
 ## Structure
 
 ```
-src/graph/     Framework-free graph core: data types with inheritance, node definitions,
-               GraphModel (indexed nodes/ports/connections + change events), JSON serializer
-src/render/    Pixi renderer: NodeView, EdgeView, hit testing, culling, LOD, interaction
-src/app/       Editor (document state, commands) and file access (Tauri dialogs / browser fallback)
-src/ui/        React components: canvas host, node palette
-src-tauri/     Rust shell: dialog plugin + atomic read/write of graph files
+src/graph/     Framework-free core: schema pack parsing, GraphModel (nodes with schema data,
+               ports derived from schema + data, indexed connections), history, clipboard, serializer
+src/render/    Pixi renderer: NodeView (fields drawn from the schema), EdgeView, hit testing,
+               culling, LOD, inline DOM editors
+src/app/       Editor (document + pack state, commands), file access, keymap
+src/ui/        React components: canvas host, node palette, shortcut help
+src-tauri/     Rust shell: dialogs, atomic graph writes, reading schema pack folders
+packs/         Schema packs; pumpkin-quest is built in and used until another pack is chosen
+docs/          Design notes (docs/schema-design.md)
 ```
 
-## Defining nodes
+## Schema packs
 
-Nodes are plain definitions registered in a `NodeGraphRegistry` (see `src/graph/samples.ts`):
+The editor has no built-in nodes. Node kinds, port types and resources come from a **schema pack** —
+a folder with `pack.json` and `nodes/*.json`. Choose it with **Pack…** in the palette; **Reload**
+re-reads it from disk (the open graph keeps its data). The last folder is remembered.
 
-```ts
-registry.dataTypes.register("my.vector");
-registry.dataTypes.register("my.vector3", ["my.vector"]); // assignable to my.vector
-
-registry.nodes.register({
-  typeId: "my.scale",
-  displayName: "Scale",
-  menuPath: "Math",
-  ports: [
-    { key: "in", direction: "Input", typeId: "my.vector" },
-    { key: "factor", direction: "Input", typeId: "system.float" },
-    { key: "out", direction: "Output", typeId: "my.vector" },
-  ],
-  defaultState: () => ({ factor: 1 }),
-  widgets: [
-    { kind: "number", label: "Factor", get: (s) => s.factor, set: (s, factor) => ({ ...s, factor }) },
-  ],
-});
+```jsonc
+// pack.json
+{
+  "id": "my-game", "name": "My Game", "version": 1,
+  "portTypes": {
+    "flow": { "color": "#b8bcc5", "capacity": { "input": "multiple", "output": "single" } },
+    "bool": { "color": "#e07a6f" }
+  }
+}
 ```
 
-Connections are type-checked: an output can feed an input when its type equals the input type,
-inherits from it, or the input is `system.object`. Inputs default to a single connection, outputs to many.
+```jsonc
+// nodes/lines.json — one schema or an array of schemas per file
+{
+  "id": "dialogue.line",
+  "title": "Line",
+  "menu": "Dialogue",
+  "color": "#508cdc",
+  "naming": { "unique": true, "pattern": "^[\\p{L}0-9 ,.']+$" },
+  "meta": { "nodeType": "Blocking" },            // stored and exported as-is
+  "ports": [
+    { "id": "in", "direction": "input", "type": "flow" },
+    { "id": "choice", "direction": "output", "type": "flow", "repeat": { "list": "choices", "label": "Choice {n}" } },
+    { "id": "next", "direction": "output", "type": "flow" }
+  ],
+  "fields": [
+    { "id": "text", "type": "string", "multiline": true },
+    { "id": "choices", "type": "list", "item": { "type": "record", "fields": [{ "id": "text", "type": "string" }] } }
+  ]
+}
+```
+
+- **Field types:** `int`, `float` (`min`, `max`), `string` (`multiline`, `placeholder`), `bool`,
+  `enum` (`options`, `display: "dropdown" | "segmented"`), `list` (`item`, `minItems`, `maxItems`),
+  `record` (`fields`; every record gets a GUID `id`). Fields of other types are shown as
+  "not supported yet" and their data is kept.
+- **Ports:** `repeat: { list }` creates one port per list element, keyed `<port>:<element GUID>`, so
+  reordering elements keeps connections; `repeat: { count }` creates one per number of an int field.
+  Capacity defaults come from the port type.
+- **Naming:** `editable`, `unique`, `pattern`. `singleton: true` allows one node per graph.
+- Problems in a node schema skip that node and are listed under ⚠ in the palette.
+
+See `docs/schema-design.md` for the full design, including the planned resource library,
+localization and the remaining field types.
 
 ## File format
 
-Graphs are stored as JSON (`"format": "node-graph", "version": 1`), compatible with files saved by the
-previous Unity implementation. Nodes of unknown types, or whose ports no longer match their definition,
-load as placeholders and are written back unchanged; connections that cannot be restored are kept in
-`unresolvedConnections`.
+Graphs are JSON (`"format": "node-graph", "version": 2`). Each node stores its schema id and version,
+name, position and `data`; connections reference `{ node, port }` with the schema port key. Nodes whose
+schema is missing load as placeholders and are written back unchanged; connections that cannot be
+restored (e.g. to a removed repeated port) are kept in `unresolvedConnections`.
 
 ## Performance notes
 

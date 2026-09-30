@@ -1,5 +1,5 @@
 import type { GraphChange, GraphModel } from "./graph";
-import type { Port, Vec2 } from "./types";
+import type { Vec2 } from "./types";
 
 interface Step {
   undo(graph: GraphModel): void;
@@ -182,21 +182,20 @@ function createStep(change: GraphChange): Step | null {
         redo: (graph) => graph.removeNode(node.id),
       };
     }
-    case "nodeStateChanged": {
+    case "nodeDataChanged": {
       const { node, previous } = change;
-      const next = node.state;
+      const next = node.data;
       return {
-        undo: (graph) => graph.setNodeState(node.id, previous),
-        redo: (graph) => graph.setNodeState(node.id, next),
+        undo: (graph) => graph.setNodeData(node.id, previous),
+        redo: (graph) => graph.setNodeData(node.id, next),
       };
     }
-    case "nodePortsChanged": {
-      const { node } = change;
-      const previous: readonly Port[] = change.previous;
-      const next = node.ports;
+    case "nodeRenamed": {
+      const { node, previous } = change;
+      const next = node.name;
       return {
-        undo: (graph) => graph.setNodePorts(node.id, previous),
-        redo: (graph) => graph.setNodePorts(node.id, next),
+        undo: (graph) => graph.renameNode(node.id, previous),
+        redo: (graph) => graph.renameNode(node.id, next),
       };
     }
     case "connectionAdded": {
@@ -213,6 +212,7 @@ function createStep(change: GraphChange): Step | null {
         redo: (graph) => graph.disconnect(connection.id),
       };
     }
+    // Ports are derived from data; restoring the data restores them.
     default:
       return null;
   }

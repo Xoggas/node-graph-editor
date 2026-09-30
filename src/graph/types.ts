@@ -7,32 +7,15 @@ export interface Vec2 {
 }
 
 export interface Port {
+  /** Unique in the graph: `<node id>/<key>`. */
   id: string;
+  /** Stable key inside the node, derived from the schema (see `derivePorts`). */
   key: string;
   direction: PortDirection;
   capacity: PortCapacity;
   typeId: string;
   displayName: string;
-  isDynamic: boolean;
   nodeId: string;
-}
-
-export interface PortSnapshot {
-  id: string;
-  key: string;
-  direction: PortDirection;
-  capacity: PortCapacity;
-  typeId: string;
-  displayName: string;
-  isDynamic: boolean;
-}
-
-export interface PortDefinition {
-  key: string;
-  direction: PortDirection;
-  typeId: string;
-  capacity?: PortCapacity;
-  displayName?: string;
 }
 
 export interface Connection {
@@ -43,12 +26,16 @@ export interface Connection {
   inputNodeId: string;
 }
 
+export interface PortRef {
+  node: string;
+  port: string;
+}
+
+/** A connection from the document that could not be restored; kept so saving does not lose it. */
 export interface UnresolvedConnection {
   id: string | null;
-  outputNodeId: string | null;
-  outputPortId: string | null;
-  inputNodeId: string | null;
-  inputPortId: string | null;
+  from: PortRef | null;
+  to: PortRef | null;
   reason: string;
 }
 
@@ -59,6 +46,7 @@ export type ConnectionFailureReason =
   | "UnknownDataType"
   | "IncompatibleTypes"
   | "InputCapacityReached"
+  | "OutputCapacityReached"
   | "DuplicateConnection";
 
 export type ConnectionResult =
@@ -79,7 +67,6 @@ export function clampZoom(zoom: number): number {
 }
 
 export class RegistryError extends Error {}
-export class NodeSchemaMismatchError extends Error {}
 
 export const EMPTY_GUID = "00000000-0000-0000-0000-000000000000";
 const GUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
