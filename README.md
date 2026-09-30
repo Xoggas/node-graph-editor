@@ -41,7 +41,10 @@ Requires Node.js and a Rust toolchain ([Tauri prerequisites](https://tauri.app/s
 | Add node | Drag from the palette, or click an item to add it at the view center |
 | Sticky note | N (at the pointer), the palette item above the nodes, or the canvas context menu. Double-click or F2 edits the text (Ctrl+Enter or a click outside finishes), the folded corner resizes, the context menu sets the color |
 
-The interface is in English or Russian (picked from the system language, switchable, remembered).
+**Settings** (the gear in the toolbar, Ctrl+,) hold the interface language, export on save and the debug
+info in the status bar; all of them are remembered.
+
+The interface is in English or Russian (picked from the system language at first, then as set).
 Code writes English texts through `t()` (`src/i18n`); `src/i18n/ru.ts` maps them to Russian, with
 plural forms as functions, and a test fails when a text has no translation. Pack content (node types,
 fields, ports, menus) comes from the pack as written.
@@ -50,7 +53,7 @@ Keyboard shortcuts use physical keys, so they work with any layout (e.g. Russian
 All shortcuts are defined in `src/app/shortcuts.ts`, which also feeds the F1 overlay.
 
 In a dev build, `__editor.generateStressGraph(1000)` in the devtools console replaces the document with
-a chain of 1000 nodes of the first pack schema that has a connectable input and output, for performance checks. The status bar shows the CPU time per rendered frame and how many nodes survive culling.
+a chain of 1000 nodes of the first pack schema that has a connectable input and output, for performance checks. With **Show debug info** in the settings, the status bar shows the CPU time per rendered frame and how many nodes survive culling.
 
 ## Structure
 
@@ -249,7 +252,7 @@ data (positions, names, viewport, schema versions, connection ids). The first ex
 (`<graph>.runtime.json` next to the graph by default); later exports overwrite it, Ctrl+Shift+E picks a
 new file.
 
-With **on save** checked next to Export (the default, remembered between sessions), every save of a graph
+With **Export on save** on in the settings (the default, remembered between sessions), every save of a graph
 on disk also exports it without asking: to the last export path, or `<graph>.runtime.json` next to the
 graph the first time.
 

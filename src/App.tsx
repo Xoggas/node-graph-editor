@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import { onUiLanguageChange, setUiLanguage, t, UI_LANGUAGES, type UiLanguage, uiLanguage } from "./i18n";
+import { onUiLanguageChange, t, uiLanguage } from "./i18n";
 import { Editor, type Notice, type PasteMode, type PasteModeQuestion } from "./app/editor";
 import { NOTE_DEFAULT_SIZE } from "./graph/types";
 import { physicalKey } from "./app/keys";
@@ -12,6 +12,7 @@ import { NodePalette } from "./ui/NodePalette";
 import { ProblemsPanel, summary } from "./ui/ProblemsPanel";
 import { LocalizationTable } from "./ui/LocalizationTable";
 import { PasteModeDialog } from "./ui/PasteModeDialog";
+import { SettingsDialog } from "./ui/SettingsDialog";
 import { ResourceBrowser } from "./ui/ResourceBrowser";
 import { SearchPanel } from "./ui/SearchPanel";
 import { ShortcutHelp } from "./ui/ShortcutHelp";
@@ -23,6 +24,17 @@ const DROP_OFFSET = { x: 110, y: 48 };
 const STATUS_VISIBLE_MS = 4000;
 const TOAST_VISIBLE_MS = 5000;
 const MAX_TOASTS = 3;
+/** "true" when the status bar shows frame time and drawn nodes. */
+const SHOW_DEBUG_KEY = "node-graph-editor.showDebug";
+
+function readShowDebug(): boolean {
+  try {
+    return localStorage.getItem(SHOW_DEBUG_KEY) === "true";
+  } catch {
+    return false;
+  }
+}
+
 /** The tab with the graph; the others are the localization table and resource types of the pack. */
 const GRAPH_TAB = "graph";
 /** Not a valid resource type id, so it cannot clash with one. */
@@ -45,7 +57,19 @@ if (import.meta.env.DEV) {
 export default function App() {
   const snapshot = useSyncExternalStore(editor.subscribe, editor.getSnapshot);
   // Re-render everything in the new interface language.
-  const language = useSyncExternalStore(onUiLanguageChange, uiLanguage);
+  useSyncExternalStore(onUiLanguageChange, uiLanguage);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const settingsOpenRef = useRef(settingsOpen);
+  settingsOpenRef.current = settingsOpen;
+  const [showDebug, setShowDebug] = useState(readShowDebug);
+  const changeShowDebug = useCallback((on: boolean) => {
+    setShowDebug(on);
+    try {
+      localStorage.setItem(SHOW_DEBUG_KEY, String(on));
+    } catch {
+      // Only a convenience.
+    }
+  }, []);
   const rendererRef = useRef<GraphRenderer | null>(null);
   const [stats, setStats] = useState<RendererStats | null>(null);
   const [helpOpen, setHelpOpen] = useState(false);
@@ -144,8 +168,8 @@ export default function App() {
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      // The dialog handles its own keys; nothing else runs meanwhile.
-      if (pasteQuestionRef.current) return;
+      // Dialogs handle their own keys; nothing else runs meanwhile.
+      if (pasteQuestionRef.current || settingsOpenRef.current) return;
       if (helpOpenRef.current && physicalKey(event) === "Escape") {
         event.preventDefault();
         setHelpOpen(false);
@@ -166,6 +190,7 @@ export default function App() {
           editor,
           renderer: onGraph ? rendererRef.current : null,
           toggleHelp: () => setHelpOpen((open) => !open),
+          openSettings: () => setSettingsOpen(true),
           openSearch: () => (onGraph ? setSearchRequest((request) => request + 1) : setResourceFocusRequest((request) => request + 1)),
         },
         event,
@@ -234,10 +259,6 @@ export default function App() {
         >
           {t("Export")}
         </button>
-        <label className="toolbar-check" title={t("Every save also exports the graph (next to it the first time, then to the last export path)")}>
-          <input type="checkbox" checked={snapshot.autoExport} onChange={(event) => editor.setAutoExport(event.target.checked)} />
-          {t("Export on save")}
-        </label>
         <span className="toolbar-separator" />
         <button onClick={() => editor.undo()} disabled={!snapshot.canUndo} title="Ctrl+Z">
           {t("Undo")}
@@ -246,15 +267,15 @@ export default function App() {
           {t("Redo")}
         </button>
         <span className="toolbar-spacer" />
-        <label className="toolbar-language" title={t("Interface language")}>
-          <select value={language} onChange={(event) => setUiLanguage(event.target.value as UiLanguage)}>
-            {UI_LANGUAGES.map((option) => (
-              <option key={option.id} value={option.id}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-        </label>
+        <button className="toolbar-settings" onClick={() => setSettingsOpen(true)} title={t("Settings (Ctrl+,)")}>
+          <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+            <path
+              fill="currentColor"
+              d="M9.4 1l.3 1.9c.5.2 1 .5 1.4.8l1.8-.7 1.4 2.4-1.5 1.2c.1.5.1 1.1 0 1.6l1.5 1.2-1.4 2.4-1.8-.7c-.4.3-.9.6-1.4.8L9.4 15H6.6l-.3-1.9c-.5-.2-1-.5-1.4-.8l-1.8.7-1.4-2.4 1.5-1.2a4.6 4.6 0 0 1 0-1.6L1.7 6.6l1.4-2.4 1.8.7c.4-.3.9-.6 1.4-.8L6.6 1h2.8zM8 5.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5z"
+            />
+          </svg>
+          {t("Settings")}
+        </button>
         <button onClick={() => setHelpOpen(true)} title={t("Keyboard shortcuts (F1)")}>
           ?
         </button>
@@ -395,7 +416,7 @@ export default function App() {
           {t("{nodes} nodes · {connections} connections", { nodes: snapshot.nodeCount, connections: snapshot.connectionCount })}
           {snapshot.selectionCount > 0 && ` · ${t("{count} selected", { count: snapshot.selectionCount })}`}
         </span>
-        {stats && (
+        {stats && showDebug && (
           <span className="status-stat" title={t("CPU time of the last rendered frames; visible elements after culling")}>
             {t("{ms} ms/frame · {visible}/{total} visible", { ms: stats.frameMs.toFixed(1), visible: stats.visibleNodes, total: snapshot.nodeCount })}
           </span>
@@ -407,6 +428,16 @@ export default function App() {
       {helpOpen && <ShortcutHelp onClose={() => setHelpOpen(false)} />}
 
       {pasteQuestion && <PasteModeDialog question={pasteQuestion.question} onAnswer={answerPaste} />}
+
+      {settingsOpen && (
+        <SettingsDialog
+          autoExport={snapshot.autoExport}
+          onAutoExportChange={(on) => editor.setAutoExport(on)}
+          showDebug={showDebug}
+          onShowDebugChange={changeShowDebug}
+          onClose={() => setSettingsOpen(false)}
+        />
+      )}
     </div>
   );
 }

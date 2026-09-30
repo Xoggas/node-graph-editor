@@ -80,61 +80,10 @@ body,
   background: var(--border);
 }
 
-/* A toggle in the toolbar, sized like the buttons: a custom box instead of the native checkbox. */
-.toolbar-check {
+.toolbar-settings {
   display: flex;
   align-items: center;
-  gap: 7px;
-  min-height: 26px;
-  padding: 3px 10px 3px 8px;
-  color: #e5e7eb;
-  background: var(--button);
-  border: 1px solid var(--button-border);
-  border-radius: 3px;
-  cursor: pointer;
-}
-
-.toolbar-check:hover {
-  background: var(--button-hover);
-  border-color: #999da6;
-}
-
-.toolbar-check input {
-  display: grid;
-  place-content: center;
-  width: 14px;
-  height: 14px;
-  margin: 0;
-  background: #25272c;
-  border: 1px solid #8a8f99;
-  border-radius: 3px;
-  cursor: pointer;
-  appearance: none;
-}
-
-.toolbar-check input::after {
-  width: 8px;
-  height: 5px;
-  margin-top: -2px;
-  border: solid #fff;
-  border-width: 0 0 2px 2px;
-  transform: rotate(-45deg);
-  content: "";
-  visibility: hidden;
-}
-
-.toolbar-check input:checked {
-  background: #4a78c0;
-  border-color: #6f9be0;
-}
-
-.toolbar-check input:checked::after {
-  visibility: visible;
-}
-
-.toolbar-check input:focus-visible {
-  outline: 2px solid #8ab4ff;
-  outline-offset: 1px;
+  gap: 6px;
 }
 
 .toolbar-spacer {
@@ -1073,6 +1022,122 @@ body,
   transform: none;
 }
 
+/* Settings */
+
+.dialog.settings {
+  width: min(560px, calc(100vw - 32px));
+  padding: 22px 24px 10px;
+}
+
+.settings-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.settings-header h2 {
+  margin: 0;
+}
+
+.settings-close {
+  width: 32px;
+  height: 32px;
+  color: var(--muted);
+  font-size: 22px;
+  line-height: 1;
+  background: none;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+.settings-close:hover {
+  color: #eceef2;
+  background: var(--button-hover);
+}
+
+/* A setting: its name and explanation on the left, the control on the right. */
+.settings-row {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  padding: 14px 0;
+  border-top: 1px solid #3a3d44;
+  cursor: pointer;
+}
+
+.settings-text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 4px;
+  cursor: pointer;
+}
+
+.settings-label {
+  color: #eceef2;
+  font-size: 14px;
+}
+
+.settings-hint {
+  color: var(--muted);
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+
+.settings-select {
+  min-width: 130px;
+  padding: 5px 8px;
+  color: #e5e7eb;
+  font: inherit;
+  background: var(--button);
+  border: 1px solid var(--button-border);
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+/* The same custom box as elsewhere, a bit larger. */
+.settings-check {
+  display: grid;
+  flex-shrink: 0;
+  place-content: center;
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  background: #25272c;
+  border: 1px solid #8a8f99;
+  border-radius: 4px;
+  cursor: pointer;
+  appearance: none;
+}
+
+.settings-check::after {
+  width: 10px;
+  height: 6px;
+  margin-top: -2px;
+  border: solid #fff;
+  border-width: 0 0 2px 2px;
+  transform: rotate(-45deg);
+  content: "";
+  visibility: hidden;
+}
+
+.settings-check:checked {
+  background: #4a78c0;
+  border-color: #6f9be0;
+}
+
+.settings-check:checked::after {
+  visibility: visible;
+}
+
+.settings-check:focus-visible,
+.settings-select:focus-visible {
+  outline: 2px solid #8ab4ff;
+  outline-offset: 2px;
+}
+
 .help-backdrop {
   position: fixed;
   inset: 0;
@@ -1084,7 +1149,7 @@ body,
 }
 
 .help-dialog {
-  width: min(1320px, calc(100vw - 32px));
+  width: min(1760px, calc(100vw - 32px));
   max-height: calc(100vh - 32px);
   overflow-y: auto;
   font-size: 15px;
@@ -1120,11 +1185,10 @@ body,
   background: var(--button-hover);
 }
 
-/* Four columns in one row; a column may stack two groups. */
+/* Four columns in one row, all reaching the bottom; the mouse column has the longest captions. */
 .help-columns {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  align-items: start;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr) minmax(0, 1fr) minmax(0, 1.3fr);
   gap: 14px;
   padding: 16px;
 }
@@ -1133,6 +1197,11 @@ body,
   display: flex;
   flex-direction: column;
   gap: 14px;
+}
+
+/* The last group of a column takes the rest of its height. */
+.help-column > section:last-child {
+  flex: 1;
 }
 
 .help-columns section {
@@ -1158,7 +1227,14 @@ body,
   align-items: baseline;
   justify-content: space-between;
   gap: 14px;
-  padding: 4px 0;
+  /* Reaches the card edges, so the zebra stripes span the whole row. */
+  margin: 0 -8px;
+  padding: 4px 8px;
+  border-radius: 4px;
+}
+
+.help-row:nth-of-type(even) {
+  background: #2c2f35;
 }
 
 /* The description keeps at least 40% of the row; long key captions wrap instead of overflowing. */

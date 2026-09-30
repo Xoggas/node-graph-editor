@@ -7,6 +7,7 @@ export interface ShortcutContext {
   renderer: GraphRenderer | null;
   toggleHelp: () => void;
   openSearch: () => void;
+  openSettings: () => void;
 }
 
 interface KeyBinding {
@@ -319,6 +320,14 @@ export const shortcuts: Shortcut[] = [
       { code: "Numpad0", ctrl: true },
     ],
     run: withRenderer((renderer) => renderer.resetZoom()),
+  },
+  {
+    group: "Help",
+    description: "Settings",
+    keys: ["Ctrl+,"],
+    bindings: [{ code: "Comma", ctrl: true }],
+    global: true,
+    run: ({ openSettings }) => openSettings(),
   },
   {
     group: "Help",
