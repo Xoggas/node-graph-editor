@@ -1,0 +1,9 @@
+{
+  "id": "f256bd3e-f7b6-478c-9778-eb5518afb6a7",
+  "type": "background",
+  "name": "Cave_Corridors",
+  "image": "Sprites/Background/Cave_Corridors/Cave_Corridors.jpg",
+  "properties": {
+    "bloomIntensity": 0
+  }
+}

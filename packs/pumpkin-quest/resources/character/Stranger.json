@@ -1,0 +1,19 @@
+{
+  "id": "4b2abe3d-0316-441b-8c4a-0e131cf83754",
+  "type": "character",
+  "name": "Stranger",
+  "image": "Sprites/Characters/Meval_Ghost.png",
+  "variants": {
+    "emotions": [
+      {
+        "id": "Idle",
+        "label": "Idle",
+        "image": "Sprites/Characters/Meval_Ghost.png"
+      }
+    ]
+  },
+  "properties": {
+    "nameKey": "Stranger",
+    "isMainCharacter": false
+  }
+}

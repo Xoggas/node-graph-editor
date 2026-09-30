@@ -1,0 +1,33 @@
+{
+  "id": "dialogue.add-diary-entry",
+  "title": "Add Diary Entry",
+  "description": "Добавляет запись в дневник игрока.\n\nНеблокирующая: выполняется сразу, диалог идёт дальше.",
+  "menu": "Diary",
+  "order": 1,
+  "color": "#46b0bd",
+  "blocking": false,
+  "ports": [
+    {
+      "id": "in",
+      "direction": "input",
+      "type": "flow",
+      "label": "Input"
+    },
+    {
+      "id": "out",
+      "direction": "output",
+      "type": "flow",
+      "label": "Output"
+    }
+  ],
+  "fields": [
+    {
+      "id": "entry",
+      "type": "resource",
+      "resourceType": "diaryEntry",
+      "label": "Entry",
+      "previewHeight": 0,
+      "required": true
+    }
+  ]
+}

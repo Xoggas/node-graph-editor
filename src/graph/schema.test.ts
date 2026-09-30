@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { SchemaRegistry } from "./registry";
 import { createData, derivePorts, normalizeData, parseSchemaPack, SchemaError } from "./schema";
 import { testPackFiles } from "./testPack";
 
@@ -99,5 +100,21 @@ describe("data", () => {
       "outcome:1",
       "outcome:2",
     ]);
+  });
+});
+
+describe("palette order", () => {
+  it("sorts by pack menus, then the schema order, then file order", () => {
+    const registry = new SchemaRegistry(
+      parseSchemaPack([
+        { path: "pack.json", text: JSON.stringify({ id: "o", portTypes: {}, menus: ["Flow", "Dialogue"] }) },
+        { path: "nodes/dialogue/choice.json", text: JSON.stringify({ id: "choice", menu: "Dialogue", order: 2 }) },
+        { path: "nodes/dialogue/line.json", text: JSON.stringify({ id: "line", menu: "Dialogue", order: 1 }) },
+        { path: "nodes/dialogue/note.json", text: JSON.stringify({ id: "extra", menu: "Dialogue" }) },
+        { path: "nodes/flow/if.json", text: JSON.stringify({ id: "if", menu: "Flow", order: 2 }) },
+        { path: "nodes/flow/start.json", text: JSON.stringify({ id: "start", menu: "Flow", order: 1 }) },
+      ]),
+    );
+    expect(registry.descriptors().map((descriptor) => descriptor.schemaId)).toEqual(["start", "if", "line", "choice", "extra"]);
   });
 });

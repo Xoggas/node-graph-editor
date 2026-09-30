@@ -1,0 +1,26 @@
+{
+  "id": "condition.or",
+  "title": "Or",
+  "description": "Истинно, если истинно хотя бы одно из подключённых условий.\n\nНе часть потока диалога: только вычисляет значение для If и логических нод.",
+  "menu": "Logic",
+  "order": 2,
+  "color": "#a07f93",
+  "naming": {
+    "editable": false
+  },
+  "ports": [
+    {
+      "id": "conditions",
+      "direction": "input",
+      "type": "bool",
+      "capacity": "multiple",
+      "label": "Conditions"
+    },
+    {
+      "id": "result",
+      "direction": "output",
+      "type": "bool",
+      "label": "Result"
+    }
+  ]
+}

@@ -1,0 +1,9 @@
+{
+  "id": "950ed8f3-37f2-4b26-bdff-5b80ebc95288",
+  "type": "background",
+  "name": "Mushroom_Cave",
+  "image": "Sprites/Background/Cave/Mushroom_Cave.png",
+  "properties": {
+    "bloomIntensity": 5
+  }
+}

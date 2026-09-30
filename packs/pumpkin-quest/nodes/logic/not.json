@@ -1,0 +1,25 @@
+{
+  "id": "condition.not",
+  "title": "Not",
+  "description": "Обращает условие: истинно, когда входное условие ложно.\n\nНе часть потока диалога: только вычисляет значение для If и логических нод.",
+  "menu": "Logic",
+  "order": 3,
+  "color": "#a07f93",
+  "naming": {
+    "editable": false
+  },
+  "ports": [
+    {
+      "id": "condition",
+      "direction": "input",
+      "type": "bool",
+      "label": "Condition"
+    },
+    {
+      "id": "result",
+      "direction": "output",
+      "type": "bool",
+      "label": "Result"
+    }
+  ]
+}

@@ -41,6 +41,9 @@
       ]
     }
   },
+  "resources": {
+    "root": "../../../pumpkin-quest/PumpkinQuest/Assets"
+  },
   "resourceTypes": {
     "character": {
       "label": "Characters",

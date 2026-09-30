@@ -1,0 +1,33 @@
+{
+  "id": "dialogue.strikethrough-diary-entry",
+  "title": "Strikethrough Diary Entry",
+  "description": "Зачёркивает запись в дневнике — например, когда задача выполнена или больше не актуальна.\n\nНеблокирующая: выполняется сразу, диалог идёт дальше.",
+  "menu": "Diary",
+  "order": 2,
+  "color": "#46b0bd",
+  "blocking": false,
+  "ports": [
+    {
+      "id": "in",
+      "direction": "input",
+      "type": "flow",
+      "label": "Input"
+    },
+    {
+      "id": "out",
+      "direction": "output",
+      "type": "flow",
+      "label": "Output"
+    }
+  ],
+  "fields": [
+    {
+      "id": "entry",
+      "type": "resource",
+      "resourceType": "diaryEntry",
+      "label": "Entry",
+      "previewHeight": 0,
+      "required": true
+    }
+  ]
+}

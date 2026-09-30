@@ -75,6 +75,31 @@ describe("parseLibraries", () => {
   });
 });
 
+describe("one resource per file", () => {
+  it("reads single-resource files against the pack's resources.root", () => {
+    const warnings: string[] = [];
+    const pack = parseSchemaPack(
+      [
+        {
+          path: "pack.json",
+          text: JSON.stringify({ id: "p", portTypes: {}, resources: { root: "../Unity/Assets" }, resourceTypes: { music: { media: "audio" } } }),
+        },
+        { path: "resources/music/Theme.json", text: JSON.stringify({ id: "theme", type: "music", name: "Theme", file: "Music/theme.ogg" }) },
+        { path: "resources/music/Rain.json", text: JSON.stringify({ id: "rain", type: "music", name: "Rain", file: "Music/rain.ogg" }) },
+        { path: "resources/broken.json", text: JSON.stringify({ name: "No id" }) },
+      ],
+      "C:/Games/Pack",
+    );
+    warnings.push(...pack.warnings);
+    expect(resourcesOfType(pack.resources, "music").map((item) => item.file)).toEqual([
+      "C:/Games/Unity/Assets/Music/rain.ogg",
+      "C:/Games/Unity/Assets/Music/theme.ogg",
+    ]);
+    expect(pack.resources.roots).toEqual(["C:/Games/Unity/Assets"]);
+    expect(warnings).toHaveLength(1);
+  });
+});
+
 describe("resource fields in schemas", () => {
   it("validates resource types and variant sources", () => {
     const pack = parseSchemaPack([

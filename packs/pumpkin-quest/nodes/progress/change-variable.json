@@ -1,0 +1,40 @@
+{
+  "id": "dialogue.change-variable",
+  "title": "Change Variable",
+  "description": "Прибавляет Value to add к переменной Name (отрицательное значение уменьшает). Значение проверяется нодой Variable Comparer.\n\nНеблокирующая: выполняется сразу, диалог идёт дальше.",
+  "menu": "Progress",
+  "order": 1,
+  "color": "#a3b54a",
+  "blocking": false,
+  "ports": [
+    {
+      "id": "in",
+      "direction": "input",
+      "type": "flow",
+      "label": "Input"
+    },
+    {
+      "id": "out",
+      "direction": "output",
+      "type": "flow",
+      "label": "Output"
+    }
+  ],
+  "fields": [
+    {
+      "id": "variable",
+      "type": "string",
+      "label": "Name",
+      "required": true,
+      "symbol": {
+        "kind": "variable",
+        "use": "write"
+      }
+    },
+    {
+      "id": "valueToAdd",
+      "type": "int",
+      "label": "Value to add"
+    }
+  ]
+}

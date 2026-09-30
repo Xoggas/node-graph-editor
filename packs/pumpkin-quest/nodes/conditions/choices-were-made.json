@@ -1,0 +1,43 @@
+{
+  "id": "condition.choices-were-made",
+  "title": "Choices Were Made",
+  "description": "Истинно, если каждый выбор из списка в нужном состоянии: с отметкой Was made — сделан, без неё — не сделан.\n\nНе часть потока диалога: только вычисляет значение для If и логических нод.",
+  "menu": "Conditions",
+  "order": 2,
+  "color": "#c46f9f",
+  "ports": [
+    {
+      "id": "result",
+      "direction": "output",
+      "type": "bool",
+      "label": "Result"
+    }
+  ],
+  "fields": [
+    {
+      "id": "choices",
+      "type": "list",
+      "label": "Choices",
+      "maxItems": 15,
+      "item": {
+        "type": "record",
+        "fields": [
+          {
+            "id": "choice",
+            "type": "nodeRef",
+            "schema": "dialogue.choice",
+            "label": "Choice",
+            "required": true
+          },
+          {
+            "id": "made",
+            "type": "bool",
+            "default": true,
+            "label": "Was made"
+          }
+        ]
+      },
+      "required": true
+    }
+  ]
+}

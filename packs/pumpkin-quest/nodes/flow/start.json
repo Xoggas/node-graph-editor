@@ -1,0 +1,21 @@
+{
+  "id": "dialogue.start",
+  "title": "Start",
+  "description": "Точка входа: с неё начинается выполнение диалога. В графе может быть только одна.\n\nНеблокирующая: выполняется сразу, диалог идёт дальше.",
+  "menu": "Flow",
+  "order": 1,
+  "color": "#4fb37a",
+  "blocking": false,
+  "singleton": true,
+  "naming": {
+    "editable": false
+  },
+  "ports": [
+    {
+      "id": "out",
+      "direction": "output",
+      "type": "flow",
+      "label": "Output"
+    }
+  ]
+}

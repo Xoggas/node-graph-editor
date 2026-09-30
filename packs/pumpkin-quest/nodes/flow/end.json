@@ -1,0 +1,37 @@
+{
+  "id": "dialogue.end",
+  "title": "End",
+  "description": "Завершает диалог. Ending задаёт, что будет дальше: выход в главное меню или перезапуск.\n\nНеблокирующая: выполняется сразу, диалог идёт дальше.",
+  "menu": "Flow",
+  "order": 4,
+  "color": "#4fb37a",
+  "blocking": false,
+  "naming": {
+    "editable": false
+  },
+  "ports": [
+    {
+      "id": "in",
+      "direction": "input",
+      "type": "flow",
+      "label": "Input"
+    }
+  ],
+  "fields": [
+    {
+      "id": "endingType",
+      "type": "enum",
+      "label": "Ending",
+      "options": [
+        {
+          "value": "GoToMainMenu",
+          "label": "Go to main menu"
+        },
+        {
+          "value": "Restart",
+          "label": "Restart"
+        }
+      ]
+    }
+  ]
+}

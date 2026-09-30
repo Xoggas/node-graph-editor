@@ -175,6 +175,8 @@ export interface NodeSchema {
   version: number;
   title: string;
   menu: string;
+  /** Position inside its menu in the palette; schemas without one follow, by title. */
+  order: number | null;
   color: number | null;
   description?: string;
   naming: NamingRules;
@@ -244,9 +246,9 @@ const ID_PATTERN = /^[A-Za-z_][A-Za-z0-9_.-]*$/;
 // ---------------------------------------------------------------------------------------------
 
 /**
- * Builds a pack from `pack.json`, `nodes/**.json` (one schema or an array per file) and
- * `resources/**.json` (resource libraries). `packDir` is the absolute pack folder used to resolve
- * resource files; without it resources load but have no images.
+ * Builds a pack from `pack.json`, `nodes/**.json` (one schema per file, or an array) and
+ * `resources/**.json` (one resource per file, or a library with `items`). `packDir` is the absolute
+ * pack folder used to resolve resource files; without it resources load but have no images.
  */
 export function parseSchemaPack(files: PackFile[], packDir: string | null = null): SchemaPack {
   const manifestFile = files.find((file) => file.path === "pack.json");
@@ -302,11 +304,14 @@ export function parseSchemaPack(files: PackFile[], packDir: string | null = null
     throw new SchemaError(reader.errors.join("\n"));
   }
 
+  // `resources.root`: the folder resource `image`/`file` paths are relative to, relative to the pack.
+  const resourceSettings = reader.optionalObject(root, "resources");
   pack.resources = parseLibraries(
     files.filter((file) => file.path.startsWith("resources/") && file.path.endsWith(".json")),
     resourceTypes,
     packDir,
     pack.warnings,
+    resourceSettings ? reader.optionalString(resourceSettings, "root") ?? null : null,
   );
 
   for (const file of files) {
@@ -454,6 +459,7 @@ export function parseNodeSchema(json: unknown, location: string, pack: Pick<Sche
     version: reader.int(root, "version", 1),
     title: reader.string(root, "title", id),
     menu: reader.string(root, "menu", ""),
+    order: reader.optionalNumber(root, "order") ?? null,
     color: reader.color(root, "color"),
     description: reader.optionalString(root, "description"),
     naming: {

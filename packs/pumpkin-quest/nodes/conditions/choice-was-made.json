@@ -1,0 +1,28 @@
+{
+  "id": "condition.choice-was-made",
+  "title": "Choice Was Made",
+  "description": "Истинно, если игрок выбрал вариант Choice.\n\nНе часть потока диалога: только вычисляет значение для If и логических нод.",
+  "menu": "Conditions",
+  "order": 1,
+  "color": "#c46f9f",
+  "naming": {
+    "editable": false
+  },
+  "ports": [
+    {
+      "id": "result",
+      "direction": "output",
+      "type": "bool",
+      "label": "Result"
+    }
+  ],
+  "fields": [
+    {
+      "id": "choice",
+      "type": "nodeRef",
+      "schema": "dialogue.choice",
+      "label": "Choice",
+      "required": true
+    }
+  ]
+}

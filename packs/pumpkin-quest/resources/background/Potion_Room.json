@@ -1,0 +1,9 @@
+{
+  "id": "75675b2f-5dc2-43b7-b0d4-8b06b2783d84",
+  "type": "background",
+  "name": "Potion_Room",
+  "image": "Sprites/Background/Potion_Room.jpg",
+  "properties": {
+    "bloomIntensity": 0
+  }
+}

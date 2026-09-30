@@ -1,0 +1,89 @@
+{
+  "id": "1c384f57-c4dd-45ba-8dc0-0bc1e5f993f8",
+  "type": "character",
+  "name": "Braylin",
+  "image": "Sprites/Characters/Braylin_New.png",
+  "variants": {
+    "emotions": [
+      {
+        "id": "Idle",
+        "label": "Idle",
+        "image": "Sprites/Characters/Braylin_New.png"
+      },
+      {
+        "id": "Braylin_Anger_1",
+        "label": "Anger 1",
+        "image": "Sprites/Emotions/Braylin/Braylin_Anger_1.png"
+      },
+      {
+        "id": "Braylin_Awkwardness_1",
+        "label": "Awkwardness 1",
+        "image": "Sprites/Emotions/Braylin/Braylin_Awkwardness_1.png"
+      },
+      {
+        "id": "Braylin_Awkwardness_2",
+        "label": "Awkwardness 2",
+        "image": "Sprites/Emotions/Braylin/Braylin_Awkwardness_2.png"
+      },
+      {
+        "id": "Braylin_Determination_1",
+        "label": "Determination 1",
+        "image": "Sprites/Emotions/Braylin/Braylin_Determination_1.png"
+      },
+      {
+        "id": "Braylin_Determination_2",
+        "label": "Determination 2",
+        "image": "Sprites/Emotions/Braylin/Braylin_Determination_2.png"
+      },
+      {
+        "id": "Braylin_Determination_3",
+        "label": "Determination 3",
+        "image": "Sprites/Emotions/Braylin/Braylin_Determination_3.png"
+      },
+      {
+        "id": "Braylin_excited_1",
+        "label": "excited 1",
+        "image": "Sprites/Emotions/Braylin/Braylin_excited_1.png"
+      },
+      {
+        "id": "Braylin_Loughter_1",
+        "label": "Loughter 1",
+        "image": "Sprites/Emotions/Braylin/Braylin_Loughter_1.png"
+      },
+      {
+        "id": "Braylin_Sadness_1",
+        "label": "Sadness 1",
+        "image": "Sprites/Emotions/Braylin/Braylin_Sadness_1.png"
+      },
+      {
+        "id": "Braylin_Sarcasm_1",
+        "label": "Sarcasm 1",
+        "image": "Sprites/Emotions/Braylin/Braylin_Sarcasm_1.png"
+      },
+      {
+        "id": "Braylin_Sarcasm_2",
+        "label": "Sarcasm 2",
+        "image": "Sprites/Emotions/Braylin/Braylin_Sarcasm_2.png"
+      },
+      {
+        "id": "Braylin_Smile_1",
+        "label": "Smile 1",
+        "image": "Sprites/Emotions/Braylin/Braylin_Smile_1.png"
+      },
+      {
+        "id": "Braylin_Smile_2",
+        "label": "Smile 2",
+        "image": "Sprites/Emotions/Braylin/Braylin_Smile_2.png"
+      },
+      {
+        "id": "Braylin_Surprise_1",
+        "label": "Surprise 1",
+        "image": "Sprites/Emotions/Braylin/Braylin_Surprise_1.png"
+      }
+    ]
+  },
+  "properties": {
+    "nameKey": "Braylin",
+    "isMainCharacter": false
+  }
+}

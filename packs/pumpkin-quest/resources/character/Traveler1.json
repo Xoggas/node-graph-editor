@@ -1,0 +1,19 @@
+{
+  "id": "5bc58a61-3af1-41ec-8544-3d098a119eac",
+  "type": "character",
+  "name": "Traveler1",
+  "image": "Sprites/Characters/Traveler1.png",
+  "variants": {
+    "emotions": [
+      {
+        "id": "Idle",
+        "label": "Idle",
+        "image": "Sprites/Characters/Traveler1.png"
+      }
+    ]
+  },
+  "properties": {
+    "nameKey": "Traveler1",
+    "isMainCharacter": false
+  }
+}

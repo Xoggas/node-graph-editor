@@ -1,0 +1,38 @@
+{
+  "id": "dialogue.add-relationship-points",
+  "title": "Add Relationship Points",
+  "description": "Меняет очки отношений с персонажем Character на Points to add (отрицательное значение уменьшает). Проверяются нодой Relationship Point Comparer.\n\nНеблокирующая: выполняется сразу, диалог идёт дальше.",
+  "menu": "Progress",
+  "order": 2,
+  "color": "#a3b54a",
+  "blocking": false,
+  "ports": [
+    {
+      "id": "in",
+      "direction": "input",
+      "type": "flow",
+      "label": "Input"
+    },
+    {
+      "id": "out",
+      "direction": "output",
+      "type": "flow",
+      "label": "Output"
+    }
+  ],
+  "fields": [
+    {
+      "id": "character",
+      "type": "resource",
+      "resourceType": "character",
+      "label": "Character",
+      "previewHeight": 200,
+      "required": true
+    },
+    {
+      "id": "pointsToAdd",
+      "type": "int",
+      "label": "Points to add"
+    }
+  ]
+}

@@ -1,0 +1,38 @@
+{
+  "id": "dialogue.choice",
+  "title": "Choice",
+  "description": "Вариант ответа игрока: кнопка с текстом Text. Выход ведёт в ветку, которая выполнится, если игрок выберет этот вариант. Сделанный выбор проверяется нодами Choice Was Made и Choices Were Made. Имя ноды — ключ локализации текста.\n\nБлокирующая: диалог ждёт, пока игрок не выберет вариант.",
+  "menu": "Dialogue",
+  "order": 2,
+  "color": "#5b8fd9",
+  "blocking": true,
+  "choice": true,
+  "naming": {
+    "unique": true,
+    "pattern": "^[\\p{L}0-9 ,.']+$",
+    "auto": "chapter.index"
+  },
+  "ports": [
+    {
+      "id": "in",
+      "direction": "input",
+      "type": "flow",
+      "label": "Input"
+    },
+    {
+      "id": "out",
+      "direction": "output",
+      "type": "flow",
+      "label": "Output"
+    }
+  ],
+  "fields": [
+    {
+      "id": "text",
+      "type": "localizedText",
+      "keyFrom": "name",
+      "multiline": true,
+      "label": "Text"
+    }
+  ]
+}

@@ -12,7 +12,7 @@
  *   A copy shares the node's data and id but keeps its own connections. Choices that conditions refer
  *   to stay separate: merging them would make one saved decision out of several.
  */
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { dirname, join, resolve } from "node:path";
 import { parseLocalizationTable, parseNodePositions } from "./unity-yaml.mjs";
@@ -38,8 +38,7 @@ const read = (path) => readFileSync(path, "utf8").replace(/^﻿/, "");
 const graphsDir = join(assetsDir, "Resources", "Graphs");
 const baked = JSON.parse(read(join(graphsDir, `${graphName}_Baked.json`)));
 const positions = parseNodePositions(read(join(graphsDir, `${graphName}.asset`)));
-const library = JSON.parse(read(join(packDir, "resources", "library.json")));
-const resources = new Map(library.items.map((item) => [item.id, item]));
+const resources = new Map(readResources(join(packDir, "resources")).map((item) => [item.id, item]));
 const emotions = csharpEnum(findSource("DialogueSystem/Data/CharacterEmotion.cs"));
 
 const values = (value) => (value && Array.isArray(value.$values) ? value.$values : Array.isArray(value) ? value : []);
@@ -417,4 +416,19 @@ function findSource(relative) {
 function csharpEnum(text) {
   const body = /enum\s+\w+\s*\{([^}]*)\}/.exec(text.replace(/\/\/.*$/gm, ""))?.[1] ?? "";
   return body.split(",").map((item) => item.trim()).filter(Boolean);
+}
+
+/** Every resource of the pack: one per file under resources/ (or libraries with `items`). */
+function readResources(directory) {
+  const items = [];
+  for (const entry of readdirSync(directory)) {
+    const path = join(directory, entry);
+    if (statSync(path).isDirectory()) {
+      items.push(...readResources(path));
+    } else if (entry.endsWith(".json")) {
+      const json = JSON.parse(read(path));
+      items.push(...(Array.isArray(json.items) ? json.items : [json]));
+    }
+  }
+  return items;
 }

@@ -1,0 +1,39 @@
+{
+  "id": "32c61ebe-bcad-40a1-b882-6524798c92c2",
+  "type": "character",
+  "name": "Kenku",
+  "image": "Sprites/Characters/Kenku.png",
+  "variants": {
+    "emotions": [
+      {
+        "id": "Idle",
+        "label": "Idle",
+        "image": "Sprites/Characters/Kenku.png"
+      },
+      {
+        "id": "Kenku_Alarm",
+        "label": "Alarm",
+        "image": "Sprites/Emotions/Kenku/Kenku_Alarm.png"
+      },
+      {
+        "id": "Kenku_Laughter",
+        "label": "Laughter",
+        "image": "Sprites/Emotions/Kenku/Kenku_laughter.png"
+      },
+      {
+        "id": "Kenku_Sadness",
+        "label": "Sadness",
+        "image": "Sprites/Emotions/Kenku/Kenku_Sadness.png"
+      },
+      {
+        "id": "Kenku_Smile",
+        "label": "Smile",
+        "image": "Sprites/Emotions/Kenku/Kenku_Smile.png"
+      }
+    ]
+  },
+  "properties": {
+    "nameKey": "Kenku",
+    "isMainCharacter": false
+  }
+}

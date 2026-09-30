@@ -64,14 +64,24 @@ docs/          Design notes (docs/schema-design.md)
 ## Schema packs
 
 The editor has no built-in nodes. Node kinds, port types and resources come from a **schema pack** —
-a folder with `pack.json` and `nodes/*.json`. Choose it with **Pack…** in the palette; **Reload**
-re-reads it from disk (the open graph keeps its data). The last folder is remembered.
+a folder with `pack.json` and one JSON file per entity: a node type per file under `nodes/`, a resource
+per file under `resources/`. Subfolders are free-form (the editor reads every `.json` inside), so a game
+can load the pack by walking the folders. Choose it with **Pack…** in the palette; **Reload** re-reads it
+from disk (the open graph keeps its data). The last folder is remembered.
+
+```text
+packs/pumpkin-quest/
+  pack.json                          ports, menus, resource types, resources.root, export
+  nodes/<menu>/<name>.json           e.g. nodes/dialogue/line.json, nodes/flow/if.json
+  resources/<type>/<name>.json       e.g. resources/character/Arleen.json
+  localization/<language>.json       flat key → text tables
+```
 
 ```jsonc
 // pack.json
 {
   "id": "my-game", "name": "My Game", "version": 1,
-  "menus": ["Flow", "Dialogue", "Conditions"],   // palette category order; nodes keep their file order
+  "menus": ["Flow", "Dialogue", "Conditions"],   // palette category order; inside one, node types by "order"
   "portTypes": {
     // `required`: ports of this type should be connected (checked, see "Problems")
     "flow": { "color": "#b8bcc5", "capacity": { "input": "multiple", "output": "single" }, "required": ["input", "output"] },
@@ -81,12 +91,13 @@ re-reads it from disk (the open graph keeps its data). The last folder is rememb
 ```
 
 ```jsonc
-// nodes/lines.json — one schema or an array of schemas per file
+// nodes/dialogue/line.json — one schema per file (an array of schemas also works)
 {
   "id": "dialogue.line",
   "title": "Line",
   "description": "What the node does; shown by the ? in its header",
   "menu": "Dialogue",
+  "order": 1,                                     // position in its palette menu; without it: after, in path order
   "color": "#508cdc",
   "naming": { "unique": true, "pattern": "^[\\p{L}0-9 ,.']+$" },
   "blocking": true,                               // the dialogue waits here for the player (the game reads it from the pack)
@@ -135,30 +146,30 @@ a node copies them, and **Save** writes the changed language files together with
 
 ### Resource library
 
-`pack.json` declares resource types; `resources/*.json` list the items. Images are not copied: a
-library's `root` (relative to the library file, or absolute) points at the folder the paths are
-relative to, and the editor loads and downscales images on demand. Only files inside library roots can
-be read.
+`pack.json` declares resource types; every resource is its own file under `resources/` (by convention
+`resources/<type>/<name>.json`). Images are not copied: `resources.root` in `pack.json` (relative to the
+pack, or absolute) points at the folder the `image`/`file` paths are relative to, and the editor loads and
+downscales images on demand. Only files inside that root can be read. A file with `{ "root"?, "items": [...] }`
+(a whole library, `root` relative to that file) is still accepted.
 
 ```jsonc
 // pack.json
+"resources": { "root": "../../../pumpkin-quest/PumpkinQuest/Assets" },
 "resourceTypes": {
   "character": { "label": "Characters", "variants": { "emotions": { "label": "Emotion", "default": "Idle" } } },
   "background": { "label": "Backgrounds" },
   "music": { "label": "Music", "media": "audio" }
 }
-// resources/library.json
+// resources/character/Arleen.json
 {
-  "root": "../../../../pumpkin-quest/PumpkinQuest/Assets",
-  "items": [
-    { "id": "ec497a02-…", "type": "character", "name": "Arleen", "image": "Sprites/Characters/Arleen.png",
-      "variants": { "emotions": [{ "id": "Arleen_Laughter", "label": "Laughter", "image": "Sprites/Emotions/Arleen/Arleen_Laughter.png" }] } }
-  ]
+  "id": "ec497a02-…", "type": "character", "name": "Arleen", "image": "Sprites/Characters/Arleen.png",
+  "variants": { "emotions": [{ "id": "Arleen_Laughter", "label": "Laughter", "image": "Sprites/Emotions/Arleen/Arleen_Laughter.png" }] }
 }
 ```
 
-`tools/import-unity-resources.mjs <UnityProject/Assets>` regenerates the Pumpkin Quest library from the
-Unity project (characters with emotions, backgrounds, music, sfx, diary entries), keeping the asset ids.
+`tools/import-unity-resources.mjs <UnityProject/Assets> [pack folder]` regenerates the Pumpkin Quest
+resources from the Unity project (characters with emotions, backgrounds, music, sfx, diary entries) as one
+file each, keeping the asset ids; it sets `resources.root` and removes files of resources that are gone.
 
 `tools/import-unity-graph.mjs <UnityProject/Assets> <out.json> [graph name]` converts a baked Unity
 dialogue graph (`Resources/Graphs/<name>_Baked.json`, positions from `<name>.asset`) into an editor graph

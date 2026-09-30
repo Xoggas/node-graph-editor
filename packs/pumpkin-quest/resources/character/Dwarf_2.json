@@ -1,0 +1,19 @@
+{
+  "id": "d9a3d40c-bb51-49f5-95b9-1fc1cf1641da",
+  "type": "character",
+  "name": "Dwarf_2",
+  "image": "Sprites/Characters/Dwarf_2.png",
+  "variants": {
+    "emotions": [
+      {
+        "id": "Idle",
+        "label": "Idle",
+        "image": "Sprites/Characters/Dwarf_2.png"
+      }
+    ]
+  },
+  "properties": {
+    "nameKey": "Dwarf_2",
+    "isMainCharacter": false
+  }
+}

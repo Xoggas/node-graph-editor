@@ -1,0 +1,66 @@
+{
+  "id": "condition.relationship-points",
+  "title": "Relationship Point Comparer",
+  "description": "Сравнивает очки отношений с персонажем Character с Target value выбранным оператором.\n\nНе часть потока диалога: только вычисляет значение для If и логических нод.",
+  "menu": "Conditions",
+  "order": 4,
+  "color": "#c46f9f",
+  "naming": {
+    "editable": false
+  },
+  "ports": [
+    {
+      "id": "result",
+      "direction": "output",
+      "type": "bool",
+      "label": "Result"
+    }
+  ],
+  "fields": [
+    {
+      "id": "character",
+      "type": "resource",
+      "resourceType": "character",
+      "label": "Character",
+      "previewHeight": 200,
+      "required": true
+    },
+    {
+      "id": "comparison",
+      "type": "enum",
+      "display": "segmented",
+      "label": "Comparison",
+      "options": [
+        {
+          "value": "Equal",
+          "label": "="
+        },
+        {
+          "value": "NotEqual",
+          "label": "≠"
+        },
+        {
+          "value": "Greater",
+          "label": ">"
+        },
+        {
+          "value": "GreaterOrEqual",
+          "label": "≥"
+        },
+        {
+          "value": "Less",
+          "label": "<"
+        },
+        {
+          "value": "LessOrEqual",
+          "label": "≤"
+        }
+      ]
+    },
+    {
+      "id": "targetValue",
+      "type": "int",
+      "label": "Target value"
+    }
+  ]
+}

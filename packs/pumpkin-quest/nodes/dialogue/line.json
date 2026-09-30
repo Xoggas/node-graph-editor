@@ -1,0 +1,52 @@
+{
+  "id": "dialogue.line",
+  "title": "Line",
+  "description": "Реплика: персонаж Character с эмоцией Emotion произносит текст Line. Имя ноды — ключ локализации текста. Варианты ответа — ноды Choice, подключённые к Next.\n\nБлокирующая: диалог ждёт, пока игрок не продолжит.",
+  "menu": "Dialogue",
+  "order": 1,
+  "color": "#5b8fd9",
+  "blocking": true,
+  "naming": {
+    "unique": true,
+    "pattern": "^[\\p{L}0-9 ,.']+$",
+    "auto": "chapter.index"
+  },
+  "ports": [
+    {
+      "id": "in",
+      "direction": "input",
+      "type": "flow",
+      "label": "Input"
+    },
+    {
+      "id": "next",
+      "direction": "output",
+      "type": "flow",
+      "capacity": "multiple",
+      "label": "Next"
+    }
+  ],
+  "fields": [
+    {
+      "id": "speaker",
+      "type": "resource",
+      "resourceType": "character",
+      "label": "Character",
+      "previewHeight": 200
+    },
+    {
+      "id": "emotion",
+      "type": "resourceVariant",
+      "source": "speaker",
+      "collection": "emotions",
+      "label": "Emotion"
+    },
+    {
+      "id": "line",
+      "type": "localizedText",
+      "keyFrom": "name",
+      "multiline": true,
+      "label": "Line"
+    }
+  ]
+}

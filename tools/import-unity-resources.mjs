@@ -1,18 +1,20 @@
 #!/usr/bin/env node
 /**
- * Builds a resource library for the Pumpkin Quest schema pack from the Unity project:
- * characters (with emotions), backgrounds, music, sfx and diary entries, keeping their asset ids.
- * Images are not copied — the library points at them through its `root`.
+ * Builds the resource library of the Pumpkin Quest schema pack from the Unity project: characters
+ * (with emotions), backgrounds, music, sfx and diary entries, keeping their asset ids. Every resource
+ * becomes its own file, `resources/<type>/<name>.json`; the pack's `resources.root` in pack.json
+ * points at the Unity Assets folder, which image and file paths are relative to. Images are not copied.
+ * Resource files of the imported types that no longer exist in Unity are removed.
  *
- *   node tools/import-unity-resources.mjs <UnityProject/Assets> [packs/pumpkin-quest/resources/library.json]
+ *   node tools/import-unity-resources.mjs <UnityProject/Assets> [packs/pumpkin-quest]
  */
-import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
-import { dirname, join, relative, resolve, sep } from "node:path";
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { join, relative, resolve, sep } from "node:path";
 
 const assetsDir = resolve(process.argv[2] ?? "");
-const outFile = resolve(process.argv[3] ?? "packs/pumpkin-quest/resources/library.json");
-if (!process.argv[2] || !existsSync(join(assetsDir, "Resources"))) {
-  console.error("Usage: node tools/import-unity-resources.mjs <UnityProject/Assets> [out/library.json]");
+const packDir = resolve(process.argv[3] ?? "packs/pumpkin-quest");
+if (!process.argv[2] || !existsSync(join(assetsDir, "Resources")) || !existsSync(join(packDir, "pack.json"))) {
+  console.error("Usage: node tools/import-unity-resources.mjs <UnityProject/Assets> [pack folder]");
   process.exit(1);
 }
 
@@ -98,16 +100,41 @@ for (const text of assets("Diary")) {
   add({ id: scalar(text, "_id"), type: "diaryEntry", name: scalar(text, "m_Name"), properties: { textKey: nested(text, "Text", "Key") } });
 }
 
-const library = {
-  // Relative to this file; resource paths below are relative to the Unity Assets folder.
-  root: toPosix(relative(dirname(outFile), assetsDir)),
-  items: items.sort((a, b) => a.type.localeCompare(b.type) || a.name.localeCompare(b.name)),
-};
-mkdirSync(dirname(outFile), { recursive: true });
-writeFileSync(outFile, `${JSON.stringify(library, null, 2)}\n`);
+// One file per resource; names that clash (case-insensitively) get the start of the id.
+const resourcesDir = join(packDir, "resources");
+const safe = (name) => name.replace(/[\\/:*?"<>|]/g, "_").trim();
+const files = new Map();
+for (const item of items.sort((a, b) => a.type.localeCompare(b.type) || a.name.localeCompare(b.name))) {
+  let file = join(resourcesDir, item.type, `${safe(item.name)}.json`);
+  if (files.has(file.toLowerCase())) file = join(resourcesDir, item.type, `${safe(item.name)}-${item.id.slice(0, 8)}.json`);
+  files.set(file.toLowerCase(), { file, item });
+}
+const types = new Set(items.map((item) => item.type));
+for (const type of types) {
+  const folder = join(resourcesDir, type);
+  if (!existsSync(folder)) continue;
+  for (const name of readdirSync(folder)) {
+    const path = join(folder, name);
+    if (name.endsWith(".json") && !files.has(path.toLowerCase())) rmSync(path);
+  }
+}
+for (const { file, item } of files.values()) {
+  mkdirSync(join(file, ".."), { recursive: true });
+  writeFileSync(file, `${JSON.stringify(item, null, 2)}\n`);
+}
+
+// pack.json → resources.root: the Assets folder, relative to the pack.
+const manifestPath = join(packDir, "pack.json");
+const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
+const root = toPosix(relative(packDir, assetsDir));
+if (manifest.resources?.root !== root) {
+  manifest.resources = { ...manifest.resources, root };
+  writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
+  console.log(`pack.json → resources.root = ${root}`);
+}
 
 const counts = items.reduce((result, item) => ({ ...result, [item.type]: (result[item.type] ?? 0) + 1 }), {});
-console.log(`Wrote ${items.length} resources to ${outFile}:`, counts);
+console.log(`Wrote ${items.length} resource files to ${resourcesDir}:`, counts);
 if (skipped.length > 0) console.warn(`Skipped assets without an id: ${skipped.join(", ")}`);
 
 function findFile(directory, name) {

@@ -1,0 +1,19 @@
+{
+  "id": "f717e094-e4b1-4a55-9b94-fab2012553e3",
+  "type": "character",
+  "name": "Lizard",
+  "image": "Sprites/Characters/Lizard.png",
+  "variants": {
+    "emotions": [
+      {
+        "id": "Idle",
+        "label": "Idle",
+        "image": "Sprites/Characters/Lizard.png"
+      }
+    ]
+  },
+  "properties": {
+    "nameKey": "Lizard",
+    "isMainCharacter": false
+  }
+}

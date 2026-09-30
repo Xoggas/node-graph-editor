@@ -1,0 +1,9 @@
+{
+  "id": "afdf883c-a89c-4fa8-8690-941af84d59bd",
+  "type": "background",
+  "name": "Tavern",
+  "image": "Sprites/Background/Tavern/Tavern.png",
+  "properties": {
+    "bloomIntensity": 4
+  }
+}

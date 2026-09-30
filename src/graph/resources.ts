@@ -71,15 +71,18 @@ export function parseResourceTypes(value: unknown, warnings: string[]): Map<stri
 }
 
 /**
- * Parses library files (`resources/*.json` of a pack). Each file has an optional `root` — the folder
- * its `image`/`file` paths are relative to, itself relative to the library file (or absolute) — and
- * `items`. `packDir` is the absolute pack folder, or null when file paths cannot be resolved.
+ * Parses the resource files of a pack (`resources/**.json`): one resource object per file (e.g.
+ * `resources/character/Arleen.json`), or a library `{ "root"?, "items": [...] }`. `image`/`file`
+ * paths are relative to a root folder: the library's own `root` (relative to that file), else the
+ * pack's `resources.root` (`packRoot`, relative to the pack folder), else the file's folder.
+ * `packDir` is the absolute pack folder, or null when file paths cannot be resolved.
  */
 export function parseLibraries(
   files: { path: string; text: string }[],
   types: Map<string, ResourceTypeSchema>,
   packDir: string | null,
   warnings: string[],
+  packRoot: string | null = null,
 ): ResourceLibrary {
   const library: ResourceLibrary = { types, items: new Map(), roots: [] };
   for (const file of files) {
@@ -90,20 +93,24 @@ export function parseLibraries(
       warnings.push(`${file.path}: invalid JSON (${(error as Error).message}).`);
       continue;
     }
-    if (!isRecord(json) || !Array.isArray(json.items)) {
-      warnings.push(`${file.path}: expected { "items": [...] }.`);
+    const single = isRecord(json) && !Array.isArray(json.items) && typeof json.id === "string";
+    if (!isRecord(json) || (!single && !Array.isArray(json.items))) {
+      warnings.push(`${file.path}: expected one resource ({ "id", "type", ... }) or a library ({ "items": [...] }).`);
       continue;
     }
     const fileDir = dirname(file.path);
-    const rootSpec = typeof json.root === "string" ? json.root : ".";
-    const root = packDir === null ? null : isAbsolute(rootSpec) ? normalizePath(rootSpec) : joinPath(packDir, fileDir, rootSpec);
+    const ownRoot = !single && typeof json.root === "string" ? json.root : null;
+    const rootSpec = ownRoot ?? packRoot ?? ".";
+    const base = ownRoot === null && packRoot !== null ? "." : fileDir;
+    const root = packDir === null ? null : isAbsolute(rootSpec) ? normalizePath(rootSpec) : joinPath(packDir, base, rootSpec);
     if (root && !library.roots.includes(root)) {
       library.roots.push(root);
     }
     const resolve = (value: unknown) => (typeof value === "string" && value && root ? joinPath(root, value) : null);
 
-    json.items.forEach((raw, index) => {
-      const location = `${file.path} → items[${index}]`;
+    const entries: unknown[] = single ? [json] : (json.items as unknown[]);
+    entries.forEach((raw, index) => {
+      const location = single ? file.path : `${file.path} → items[${index}]`;
       if (!isRecord(raw) || typeof raw.id !== "string" || !raw.id || typeof raw.type !== "string") {
         warnings.push(`${location}: an item needs a string 'id' and 'type'.`);
         return;

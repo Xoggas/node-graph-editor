@@ -1,0 +1,33 @@
+{
+  "id": "dialogue.play-music",
+  "title": "Play Music",
+  "description": "Включает фоновую музыку.\n\nНеблокирующая: выполняется сразу, диалог идёт дальше.",
+  "menu": "Audio",
+  "order": 1,
+  "color": "#d9a441",
+  "blocking": false,
+  "ports": [
+    {
+      "id": "in",
+      "direction": "input",
+      "type": "flow",
+      "label": "Input"
+    },
+    {
+      "id": "out",
+      "direction": "output",
+      "type": "flow",
+      "label": "Output"
+    }
+  ],
+  "fields": [
+    {
+      "id": "music",
+      "type": "resource",
+      "resourceType": "music",
+      "label": "Music",
+      "previewHeight": 0,
+      "required": true
+    }
+  ]
+}

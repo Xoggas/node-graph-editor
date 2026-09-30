@@ -1,0 +1,19 @@
+{
+  "id": "da355f75-c957-4c3e-8484-05d7d8453acd",
+  "type": "character",
+  "name": "Tavernkeeper",
+  "image": "Sprites/Characters/Tavernkeeper.png",
+  "variants": {
+    "emotions": [
+      {
+        "id": "Idle",
+        "label": "Idle",
+        "image": "Sprites/Characters/Tavernkeeper.png"
+      }
+    ]
+  },
+  "properties": {
+    "nameKey": "Tavernkeeper",
+    "isMainCharacter": false
+  }
+}

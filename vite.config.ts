@@ -2,19 +2,18 @@ import { defineConfig, searchForWorkspaceRoot } from "vite";
 // @ts-expect-error type error without @types/node package
 import { existsSync, readFileSync } from "node:fs";
 // @ts-expect-error type error without @types/node package
-import { dirname, resolve } from "node:path";
+import { resolve } from "node:path";
 import react from "@vitejs/plugin-react";
 // @ts-expect-error type error without @types/node package
 import process from "node:process";
 const host = process.env.TAURI_DEV_HOST;
 
-// The built-in pack's resource library points outside the repo (at the game's assets). In a browser
-// dev session those files are served through /@fs/, so allow the library root.
+// The built-in pack's resources point outside the repo (at the game's assets, pack.json →
+// resources.root). In a browser dev session those files are served through /@fs/, so allow that root.
 const bundledPackDir = resolve(process.cwd(), "packs/pumpkin-quest");
-const libraryFile = resolve(bundledPackDir, "resources/library.json");
-const libraryRoot = existsSync(libraryFile)
-  ? resolve(dirname(libraryFile), JSON.parse(readFileSync(libraryFile, "utf8")).root ?? ".")
-  : null;
+const manifestFile = resolve(bundledPackDir, "pack.json");
+const resourcesRoot = existsSync(manifestFile) ? JSON.parse(readFileSync(manifestFile, "utf8")).resources?.root : undefined;
+const libraryRoot = typeof resourcesRoot === "string" ? resolve(bundledPackDir, resourcesRoot) : null;
 
 // https://vite.dev/config/
 export default defineConfig(() => ({

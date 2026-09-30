@@ -1,0 +1,36 @@
+{
+  "id": "dialogue.if",
+  "title": "If",
+  "description": "Ветвление: проверяет условие на входе Condition и продолжает по выходу True или False. Если False ни к чему не подключён, при ложном условии ничего не происходит — например, выбор за If просто не показывается. Условия собираются из нод Conditions и Logic.\n\nНеблокирующая: выполняется сразу, диалог идёт дальше.",
+  "menu": "Flow",
+  "order": 2,
+  "color": "#4fb37a",
+  "blocking": false,
+  "ports": [
+    {
+      "id": "in",
+      "direction": "input",
+      "type": "flow",
+      "label": "Input"
+    },
+    {
+      "id": "condition",
+      "direction": "input",
+      "type": "bool",
+      "label": "Condition"
+    },
+    {
+      "id": "true",
+      "direction": "output",
+      "type": "flow",
+      "label": "True"
+    },
+    {
+      "id": "false",
+      "direction": "output",
+      "type": "flow",
+      "label": "False",
+      "optional": true
+    }
+  ]
+}

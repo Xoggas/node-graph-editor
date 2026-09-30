@@ -40,10 +40,15 @@ export class SchemaRegistry {
       const index = menus.indexOf(menu);
       return index < 0 ? menus.length : index;
     };
+    // Within a menu: the schema `order`, then definition order (files are read sorted by path).
+    const position = (order: number | null) => order ?? Number.MAX_SAFE_INTEGER;
     return [...(this.pack?.nodes.values() ?? [])]
-      .map((schema, order) => ({ schemaId: schema.id, title: schema.title, menu: schema.menu, color: schema.color, order }))
-      .sort((a, b) => rank(a.menu) - rank(b.menu) || a.menu.localeCompare(b.menu) || a.order - b.order)
-      .map(({ order: _order, ...descriptor }) => descriptor);
+      .map((schema, index) => ({ schemaId: schema.id, title: schema.title, menu: schema.menu, color: schema.color, order: schema.order, index }))
+      .sort(
+        (a, b) =>
+          rank(a.menu) - rank(b.menu) || a.menu.localeCompare(b.menu) || position(a.order) - position(b.order) || a.index - b.index,
+      )
+      .map(({ order: _order, index: _index, ...descriptor }) => descriptor);
   }
 
   private ancestors(typeId: string): ReadonlySet<string> {
