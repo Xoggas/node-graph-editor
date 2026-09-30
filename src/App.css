@@ -84,12 +84,356 @@ body,
   flex: 1;
 }
 
+/* Tabs under the workspace: the graph and the resource library lists */
+
+.tabs {
+  display: flex;
+  align-items: center;
+  /* The same gap around every tab and at the edges. */
+  gap: 4px;
+  flex-shrink: 0;
+  padding: 4px;
+  overflow: hidden;
+  background: var(--toolbar);
+  border-top: 1px solid var(--border);
+}
+
+.tab {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 24px;
+  padding: 0 10px;
+  color: var(--muted);
+  font: inherit;
+  white-space: nowrap;
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.tab:hover {
+  color: #e5e7eb;
+  background: #2e3036;
+}
+
+.tab.active {
+  color: #fafafa;
+  background: #3d4049;
+}
+
+.tab.active .tab-count {
+  color: #e5e7eb;
+  background: #545864;
+}
+
+.tab-count {
+  min-width: 18px;
+  padding: 0 5px;
+  line-height: 16px;
+  color: var(--muted);
+  font-size: 11px;
+  text-align: center;
+  background: #373a41;
+  border-radius: 8px;
+}
+
+.tabs-separator {
+  align-self: center;
+  width: 1px;
+  height: 16px;
+  margin: 0;
+  background: var(--border);
+}
+
 /* Workspace */
 
 .workspace {
+  position: relative;
   display: flex;
   flex: 1;
   min-height: 0;
+}
+
+/* Resource list: covers the workspace; the graph stays alive underneath. */
+
+.resource-browser {
+  position: absolute;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  background: #18191d;
+  user-select: text;
+}
+
+.resource-header {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  padding: 12px 16px;
+  border-bottom: 1px solid #33363d;
+}
+
+.resource-header h2 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.resource-count {
+  color: var(--muted);
+}
+
+.resource-filter {
+  align-self: center;
+  width: min(360px, 100%);
+  margin-left: auto;
+  padding: 5px 9px;
+  color: #e5e7eb;
+  font: inherit;
+  background: #25272c;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  outline: none;
+}
+
+.resource-filter:focus {
+  border-color: #7aa2e8;
+}
+
+.resource-empty {
+  padding: 32px 16px;
+  color: var(--muted);
+  text-align: center;
+}
+
+.resource-list {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+.resource-list table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.resource-list th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: 7px 12px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-align: left;
+  text-transform: uppercase;
+  background: #1f2025;
+  border-bottom: 1px solid #33363d;
+}
+
+.resource-list td {
+  padding: 8px 12px;
+  vertical-align: middle;
+  border-bottom: 1px solid #2a2c32;
+}
+
+/* The outer columns line up with the header above. */
+.resource-list th:first-child,
+.resource-list td:first-child {
+  padding-left: 16px;
+}
+
+.resource-list th:last-child,
+.resource-list td:last-child {
+  padding-right: 16px;
+}
+
+.resource-list tbody tr:hover {
+  background: #202227;
+}
+
+.resource-col-preview {
+  width: 1%;
+}
+
+.resource-col-name {
+  width: 1%;
+  min-width: 200px;
+  white-space: nowrap;
+}
+
+.resource-col-uses {
+  width: 1%;
+  white-space: nowrap;
+  text-align: center;
+}
+
+.resource-thumbnail {
+  display: block;
+  object-fit: contain;
+  background: #0f1013 repeating-conic-gradient(#1c1d22 0% 25%, #0f1013 0% 50%) 0 0 / 12px 12px;
+  border: 1px solid #33363d;
+  border-radius: 4px;
+}
+
+.resource-thumbnail.large {
+  width: 96px;
+  height: 72px;
+}
+
+.resource-thumbnail.small {
+  display: inline-block;
+  width: 22px;
+  height: 22px;
+  border-radius: 3px;
+}
+
+.resource-thumbnail.missing,
+.resource-thumbnail.loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #e07a6c;
+  font-weight: 600;
+  background: #202227;
+}
+
+.resource-thumbnail.small.missing,
+.resource-thumbnail.small.loading {
+  display: inline-flex;
+}
+
+.resource-play {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  color: #e5e7eb;
+  font: inherit;
+  font-size: 13px;
+  background: var(--button);
+  border: 1px solid var(--button-border);
+  border-radius: 50%;
+  cursor: pointer;
+}
+
+.resource-play:hover:not(:disabled) {
+  background: var(--button-hover);
+}
+
+.resource-play.playing {
+  color: #18191d;
+  background: #7aa2e8;
+  border-color: #7aa2e8;
+}
+
+.resource-play:disabled {
+  color: #7d818a;
+  cursor: default;
+}
+
+.resource-name {
+  font-weight: 600;
+}
+
+.resource-id {
+  display: block;
+  padding: 0;
+  margin-top: 3px;
+  color: #80858f;
+  font: 11px Consolas, "Cascadia Mono", monospace;
+  background: none;
+  border: none;
+  cursor: copy;
+}
+
+.resource-id:hover {
+  color: #c8ccd4;
+}
+
+.resource-variants {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.resource-variant {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 28px;
+  padding: 0 8px 0 2px;
+  font-size: 12px;
+  background: #2b2e35;
+  border: 1px solid #3a3d45;
+  border-radius: 4px;
+}
+
+.resource-variant.no-image {
+  padding-left: 8px;
+}
+
+.resource-variant.default {
+  border-color: #7aa2e8;
+}
+
+.resource-file {
+  max-width: 280px;
+  overflow: hidden;
+  color: #c8ccd4;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Two columns, so the values line up. */
+.resource-properties {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 3px 12px;
+  margin: 0;
+}
+
+.resource-properties div {
+  display: contents;
+}
+
+.resource-properties dt {
+  color: var(--muted);
+}
+
+.resource-properties dd {
+  margin: 0;
+}
+
+.resource-translation {
+  display: block;
+  color: #9fb7de;
+  font-style: italic;
+}
+
+.resource-uses {
+  min-width: 68px;
+  padding: 2px 8px;
+  color: #cfe0ff;
+  font: inherit;
+  background: #2d3a52;
+  border: 1px solid #45597d;
+  border-radius: 10px;
+  cursor: pointer;
+}
+
+.resource-uses:hover {
+  background: #37476a;
+}
+
+.resource-none {
+  color: #6c717b;
 }
 
 .canvas-host {
@@ -132,6 +476,16 @@ body,
   gap: 6px;
   padding: 0 8px 10px;
   margin-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+/* Its own row: the label on the left, the list on the right. */
+.palette-pack .language-select {
+  align-self: stretch;
+  justify-content: space-between;
+  /* The line spans the whole palette, like the one under the pack. */
+  padding: 0 8px 8px;
+  margin: 0 -8px 2px;
   border-bottom: 1px solid var(--border);
 }
 
@@ -518,15 +872,15 @@ kbd {
 
 /* Localization */
 
-.toolbar-language {
+.language-select {
   display: flex;
   align-items: center;
+  align-self: center;
   gap: 6px;
-  margin-right: 8px;
   color: var(--muted);
 }
 
-.toolbar-language select {
+.language-select select {
   padding: 3px 6px;
   color: #e5e7eb;
   font: inherit;

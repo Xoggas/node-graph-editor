@@ -21,7 +21,7 @@ const registry = new SchemaRegistry(
       path: "nodes/n.json",
       text: JSON.stringify([
         flowNode("line", { blocking: true }),
-        flowNode("choice", { choice: true }),
+        flowNode("choice", { blocking: true, choice: true }),
         flowNode("matrix"),
         flowNode("sound"),
       ]),

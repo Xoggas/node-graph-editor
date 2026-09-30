@@ -191,7 +191,8 @@ clicking it opens the list, clicking a row goes to the node. The checks re-run a
 
 A node schema with `"choice": true` is an answer option. The blocking node before it shows it — directly
 or through non-blocking nodes, e.g. `Line → Choice Matrix → Choice` or `Line → If → Choice`: following the
-flow from a blocking node, every choice reached before the next blocking node belongs to it. The
+flow from a blocking node, every choice reached before the next blocking node belongs to it (choices
+themselves may be blocking — the dialogue waits for the pick — and are never sources). The
 connections of indirect routes — the whole chain, e.g. Line → If and If → Choice — are always drawn dashed; a direct
 Line → Choice connection stays solid
 (`src/graph/choices.ts`, recomputed after every edit).

@@ -16,14 +16,15 @@ export interface ChoiceLink {
 }
 
 /**
- * Which choices each blocking place shows: following the flow from its outputs through nodes that
- * neither block nor are choices, every choice reached belongs to it. The walk stops at choices and at
- * blocking nodes. The link is transitive, e.g. Line → Choice Matrix → Choice.
+ * Which choices each blocking place (other than a choice) shows: following the flow from its outputs
+ * through nodes that neither block nor are choices, every choice reached belongs to it. The walk stops
+ * at choices (which may block themselves: the dialogue waits for the pick) and at other blocking nodes.
+ * The link is transitive, e.g. Line → Choice Matrix → Choice.
  */
 export function choiceLinks(graph: GraphModel): ChoiceLink[] {
   const links: ChoiceLink[] = [];
   for (const node of graph.nodes) {
-    if (!node.schema?.blocking) continue;
+    if (!node.schema?.blocking || node.schema.choice) continue;
     for (const source of graph.viewIdsOf(node.id)) {
       links.push(...linksFrom(graph, source));
     }
@@ -46,7 +47,7 @@ function linksFrom(graph: GraphModel, source: string): ChoiceLink[] {
     const from = queue.pop()!;
     for (const { to, connection } of flowConnections(graph, from)) {
       const schema = graph.viewNode(to)?.schema;
-      if (!schema || schema.blocking) continue;
+      if (!schema || (schema.blocking && !schema.choice)) continue;
       let edges = incoming.get(to);
       if (!edges) incoming.set(to, (edges = []));
       edges.push({ from, connection });

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { Editor, type Notice } from "./app/editor";
 import { physicalKey } from "./app/keys";
 import { findShortcut, isEditableTarget } from "./app/shortcuts";
@@ -8,6 +8,7 @@ import { buildContextMenu } from "./ui/contextMenuItems";
 import { GraphCanvas } from "./ui/GraphCanvas";
 import { NodePalette } from "./ui/NodePalette";
 import { ProblemsPanel, summary } from "./ui/ProblemsPanel";
+import { ResourceBrowser } from "./ui/ResourceBrowser";
 import { SearchPanel } from "./ui/SearchPanel";
 import { ShortcutHelp } from "./ui/ShortcutHelp";
 import "./App.css";
@@ -18,6 +19,8 @@ const DROP_OFFSET = { x: 110, y: 48 };
 const STATUS_VISIBLE_MS = 4000;
 const TOAST_VISIBLE_MS = 5000;
 const MAX_TOASTS = 3;
+/** The tab with the graph; the others are resource types of the pack. */
+const GRAPH_TAB = "graph";
 
 interface Toast extends Notice {
   id: number;
@@ -47,6 +50,23 @@ export default function App() {
   const [problemsOpen, setProblemsOpen] = useState(false);
   const [menu, setMenu] = useState<{ x: number; y: number; items: ContextMenuItem[] } | null>(null);
   const closeMenu = useCallback(() => setMenu(null), []);
+
+  // Tabs: the graph, then one list per resource type of the pack (in pack.json order).
+  const library = useMemo(() => editor.registry.pack?.resources ?? null, [snapshot.pack]);
+  const resourceTypes = useMemo(() => (library ? [...library.types.values()] : []), [library]);
+  const [tab, setTab] = useState(GRAPH_TAB);
+  const resourceType = tab === GRAPH_TAB ? undefined : resourceTypes.find((type) => type.id === tab);
+  const activeTab = resourceType ? tab : GRAPH_TAB;
+  const activeTabRef = useRef(activeTab);
+  activeTabRef.current = activeTab;
+  const [resourceFocusRequest, setResourceFocusRequest] = useState(0);
+  const showUses = useCallback((nodeIds: string[]) => {
+    setTab(GRAPH_TAB);
+    const renderer = rendererRef.current;
+    if (!renderer) return;
+    renderer.selectViews(nodeIds);
+    renderer.frameSelection();
+  }, []);
 
   const onRenderer = useCallback((renderer: GraphRenderer | null) => {
     rendererRef.current?.onContextMenu(null);
@@ -95,8 +115,21 @@ export default function App() {
       if (!shortcut || (!shortcut.global && isEditableTarget(event.target))) {
         return;
       }
+      // Graph commands do nothing on a resource tab, where the graph is hidden.
+      const onGraph = activeTabRef.current === GRAPH_TAB;
+      if (!onGraph && !shortcut.global) {
+        return;
+      }
       event.preventDefault();
-      shortcut.run({ editor, renderer: rendererRef.current, toggleHelp: () => setHelpOpen((open) => !open), openSearch: () => setSearchRequest((request) => request + 1) }, event);
+      shortcut.run(
+        {
+          editor,
+          renderer: onGraph ? rendererRef.current : null,
+          toggleHelp: () => setHelpOpen((open) => !open),
+          openSearch: () => (onGraph ? setSearchRequest((request) => request + 1) : setResourceFocusRequest((request) => request + 1)),
+        },
+        event,
+      );
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
@@ -133,6 +166,20 @@ export default function App() {
     document.title = `${title} — Node Graph Editor`;
   }, [title]);
 
+  // Shown in the palette header and in the resource lists (their texts follow it too).
+  const languageSelect = snapshot.languages.length > 0 && (
+    <label className="language-select" title="Language of the texts shown">
+      Language
+      <select value={snapshot.displayLanguage ?? ""} onChange={(event) => editor.setDisplayLanguage(event.target.value)}>
+        {snapshot.languages.map((language) => (
+          <option key={language} value={language}>
+            {language.toUpperCase()}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+
   return (
     <div className="app">
       <header className="toolbar">
@@ -155,18 +202,6 @@ export default function App() {
           Redo
         </button>
         <span className="toolbar-spacer" />
-        {snapshot.languages.length > 0 && (
-          <label className="toolbar-language" title="Language shown on nodes">
-            Text
-            <select value={snapshot.displayLanguage ?? ""} onChange={(event) => editor.setDisplayLanguage(event.target.value)}>
-              {snapshot.languages.map((language) => (
-                <option key={language} value={language}>
-                  {language.toUpperCase()}
-                </option>
-              ))}
-            </select>
-          </label>
-        )}
         <button onClick={() => setHelpOpen(true)} title="Keyboard shortcuts (F1)">
           ?
         </button>
@@ -204,12 +239,47 @@ export default function App() {
           descriptors={snapshot.descriptors}
           pack={snapshot.pack}
           packWarnings={snapshot.packWarnings}
+          languageSelect={languageSelect || null}
           onDrop={onDrop}
           onAdd={onAdd}
           onChoosePack={() => void editor.choosePackFolder()}
           onReloadPack={() => void editor.reloadPack()}
         />
+        {resourceType && library && (
+          <ResourceBrowser
+            editor={editor}
+            library={library}
+            type={resourceType}
+            language={snapshot.displayLanguage}
+            languageSelect={languageSelect || null}
+            focusRequest={resourceFocusRequest}
+            onShowUses={showUses}
+          />
+        )}
       </main>
+
+      {/* At the bottom, away from the toolbar buttons. */}
+      {resourceTypes.length > 0 && (
+        <nav className="tabs" role="tablist">
+          <button role="tab" aria-selected={activeTab === GRAPH_TAB} className={`tab${activeTab === GRAPH_TAB ? " active" : ""}`} onClick={() => setTab(GRAPH_TAB)}>
+            Graph
+          </button>
+          <span className="tabs-separator" />
+          {resourceTypes.map((type) => (
+            <button
+              key={type.id}
+              role="tab"
+              aria-selected={activeTab === type.id}
+              className={`tab${activeTab === type.id ? " active" : ""}`}
+              onClick={() => setTab(type.id)}
+              title={`Resource library: ${type.label}`}
+            >
+              {type.label}
+              <span className="tab-count">{[...library!.items.values()].filter((item) => item.type === type.id).length}</span>
+            </button>
+          ))}
+        </nav>
+      )}
 
       <footer className="statusbar">
         <span

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useState } from "react";
 import type { PackInfo } from "../app/editor";
 import type { NodeDescriptor } from "../graph/registry";
 
@@ -6,6 +6,8 @@ interface NodePaletteProps {
   descriptors: readonly NodeDescriptor[];
   pack: PackInfo | null;
   packWarnings: readonly string[];
+  /** The language switch, on its own row above the pack name. */
+  languageSelect: ReactNode;
   /** Drop at a client position; the host decides whether it landed on the canvas. */
   onDrop: (schemaId: string, clientX: number, clientY: number) => void;
   /** Click without dragging. */
@@ -26,7 +28,7 @@ interface DragState {
 
 const DRAG_THRESHOLD = 4;
 
-export function NodePalette({ descriptors, pack, packWarnings, onDrop, onAdd, onChoosePack, onReloadPack }: NodePaletteProps) {
+export function NodePalette({ descriptors, pack, packWarnings, languageSelect, onDrop, onAdd, onChoosePack, onReloadPack }: NodePaletteProps) {
   const [drag, setDrag] = useState<DragState | null>(null);
   const [filter, setFilter] = useState("");
 
@@ -76,6 +78,7 @@ export function NodePalette({ descriptors, pack, packWarnings, onDrop, onAdd, on
   return (
     <aside className="palette">
       <div className="palette-pack">
+        {languageSelect}
         <div className="palette-pack-name" title={pack?.source}>
           {pack ? pack.name : "No schema pack"}
           {pack && <span className="palette-pack-version">v{pack.version}</span>}

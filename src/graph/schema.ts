@@ -187,7 +187,8 @@ export interface NodeSchema {
   blocking: boolean;
   /**
    * An answer option: the blocking node before it shows it (possibly through non-blocking nodes such
-   * as conditions), and the dialogue goes on from it when the player picks it. See `choiceLinks`.
+   * as conditions), and the dialogue goes on from it when the player picks it. A choice may itself be
+   * blocking (the dialogue waits for the pick); it still never shows other choices. See `choiceLinks`.
    */
   choice: boolean;
   /** Opaque data for the game; the editor only stores and exports it. */
