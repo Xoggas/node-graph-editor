@@ -89,6 +89,7 @@ re-reads it from disk (the open graph keeps its data). The last folder is rememb
   "color": "#508cdc",
   "naming": { "unique": true, "pattern": "^[\\p{L}0-9 ,.']+$" },
   "blocking": true,                               // the dialogue waits here for the player; exported per type
+  // "choice": true,                              // an answer option, shown by the blocking node before it
   "meta": { "voice": "narrator" },                // anything else for the game: stored and exported as-is
   "ports": [
     { "id": "in", "direction": "input", "type": "flow" },
@@ -185,6 +186,15 @@ clicking it opens the list, clicking a row goes to the node. The checks re-run a
 - **Texts:** texts without a localization key (unnamed node) and keys missing a translation.
 - **Graph:** no start node or several, unknown node types, connections that could not be restored, and
   endless loops — a flow cycle without a `blocking` node would run forever without the player.
+
+## Choices shown by a line
+
+A node schema with `"choice": true` is an answer option. The blocking node before it shows it — directly
+or through non-blocking nodes, e.g. `Line → Choice Matrix → Choice` or `Line → If → Choice`: following the
+flow from a blocking node, every choice reached before the next blocking node belongs to it. The
+connections of indirect routes — the whole chain, e.g. Line → If and If → Choice — are always drawn dashed; a direct
+Line → Choice connection stays solid
+(`src/graph/choices.ts`, recomputed after every edit).
 
 ## Linked copies
 

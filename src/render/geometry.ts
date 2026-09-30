@@ -94,6 +94,11 @@ export function hitTestEdge(path: EdgePath, point: Vec2, tolerance: number): boo
   return false;
 }
 
+/** Points along the edge: the corners of a route, or samples of a bezier. */
+export function samplePath(path: EdgePath, segments = 32): Vec2[] {
+  return path.kind === "route" ? path.points : Array.from({ length: segments + 1 }, (_, i) => evaluateCubic(path, i / segments));
+}
+
 /** True when any part of the edge passes through `area`. */
 export function edgeIntersectsBounds(path: EdgePath, area: Bounds): boolean {
   const points = path.kind === "route" ? path.points : Array.from({ length: 33 }, (_, i) => evaluateCubic(path, i / 32));

@@ -1,16 +1,22 @@
 import { Graphics } from "pixi.js";
 import type { Connection } from "../graph/types";
-import { type Bounds, type EdgePath, edgeBounds, ROUTE_CORNER_RADIUS, translatePath } from "./geometry";
+import type { Vec2 } from "../graph/types";
+import { type Bounds, type EdgePath, edgeBounds, ROUTE_CORNER_RADIUS, samplePath, translatePath } from "./geometry";
 import { theme } from "./theme";
 
 const EDGE_WIDTH = 2.25;
 const SELECTED_EDGE_WIDTH = 4;
+/** Dash and gap (world px at 100%) of edges drawn dashed. */
+const DASH = 10;
+const GAP = 6;
 
 export class EdgeView {
   readonly graphics = new Graphics();
   path: EdgePath | null = null;
   bounds: Bounds = { minX: 0, minY: 0, maxX: -1, maxY: -1 };
   selected = false;
+  /** On a route from a line to a choice it shows (see `choiceRouteConnections`). */
+  dashed = false;
 
   constructor(
     readonly connection: Connection,
@@ -49,13 +55,42 @@ export class EdgeView {
     // Geometry is drawn in world coordinates; undo any pending translation offset first.
     const { x: offsetX, y: offsetY } = this.graphics.position;
     const path = offsetX === 0 && offsetY === 0 ? this.path : translatePath(this.path, -offsetX, -offsetY);
-    traceEdgePath(g, path);
-    g.stroke({ width, color: this.selected ? theme.connectionSelected : this.color, cap: "round", join: "round" });
+    if (this.dashed) {
+      dashedLine(g, samplePath(path, 48), DASH * scale, GAP * scale);
+    } else {
+      traceEdgePath(g, path);
+    }
+    const color = this.selected ? theme.connectionSelected : this.dashed ? theme.choiceRoute : this.color;
+    g.stroke({ width, color, cap: "round", join: "round" });
     this.bounds = edgeBounds(this.path, width);
   }
 
   destroy(): void {
     this.graphics.destroy();
+  }
+}
+
+/** Adds dashes along a polyline to the graphics path (stroke it afterwards). */
+function dashedLine(g: Graphics, points: Vec2[], dash: number, gap: number): void {
+  let drawing = true;
+  let left = dash;
+  for (let i = 1; i < points.length; i++) {
+    let from = points[i - 1];
+    const to = points[i];
+    let length = Math.hypot(to.x - from.x, to.y - from.y);
+    while (length > 0) {
+      const step = Math.min(left, length);
+      const t = step / length;
+      const next = { x: from.x + (to.x - from.x) * t, y: from.y + (to.y - from.y) * t };
+      if (drawing) g.moveTo(from.x, from.y).lineTo(next.x, next.y);
+      from = next;
+      length -= step;
+      left -= step;
+      if (left <= 0) {
+        drawing = !drawing;
+        left = drawing ? dash : gap;
+      }
+    }
   }
 }
 

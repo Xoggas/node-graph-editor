@@ -37,6 +37,8 @@ export const theme = {
 
   connection: 0xb8bcc5,
   connectionSelected: 0xfad860,
+  /** Connections on the way from a line to a choice it shows through other nodes, and their ports' rings. */
+  choiceRoute: 0xe0a93a,
   connectionPreview: 0xb8bcc5,
   portIncompatibleAlpha: 0.25,
 

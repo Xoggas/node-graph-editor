@@ -11,6 +11,7 @@ import { physicalKey } from "../app/keys";
 import { resourcesOfType } from "../graph/resources";
 import { ImageCache } from "./ImageCache";
 import { InlineEditor } from "./InlineEditor";
+import { choiceRouteConnections } from "../graph/choices";
 import { NodeTooltip } from "./NodeTooltip";
 import { getIn, itemRefCandidates, itemRefLabel, nodeRefCandidates } from "../graph/dataOps";
 import { type Control, formatNumber, INFO_KEY, type NodeHit, NodeView, type PortHighlight } from "./NodeView";
@@ -109,6 +110,10 @@ export class GraphRenderer {
   private hovered: NodeView | null = null;
   private interaction: Interaction = { kind: "none" };
   private highlightCache = new Map<string, PortHighlight>();
+  /** Connections on routes from lines to the choices they show get dashed (see `choiceRouteConnections`). */
+  private choiceRoutesDirty = true;
+  /** `<view id>|<port id>` of the ports those connections start or end at: drawn with a ring. */
+  private choiceRoutePorts = new Set<string>();
 
   private viewport: Viewport = { x: 0, y: 0, zoom: 1 };
   private screen = { width: 1, height: 1 };
@@ -444,6 +449,7 @@ export class GraphRenderer {
   }
 
   private rebuildAll(): void {
+    this.choiceRoutesDirty = true;
     for (const view of this.nodeViews.values()) {
       view.destroy();
     }
@@ -475,6 +481,9 @@ export class GraphRenderer {
   }
 
   private readonly onGraphChange = (change: GraphChange): void => {
+    if (change.kind !== "viewportChanged" && change.kind !== "nodeMoved" && change.kind !== "aliasMoved") {
+      this.choiceRoutesDirty = true;
+    }
     switch (change.kind) {
       case "nodeAdded":
         this.addNodeView(change.node.id);
@@ -549,6 +558,7 @@ export class GraphRenderer {
       return;
     }
     const view = new NodeView(node, {
+      isPortOnChoiceRoute: (portId) => this.choiceRoutePorts.has(`${viewId}|${portId}`),
       isPortConnected: (portId) => {
         for (const connection of this.graph.getPortConnections(portId)) {
           if ((connection.outputPortId === portId ? connection.outputViewId : connection.inputViewId) === viewId) return true;
@@ -654,6 +664,11 @@ export class GraphRenderer {
     }
     const started = performance.now();
 
+    if (this.choiceRoutesDirty) {
+      this.choiceRoutesDirty = false;
+      this.updateChoiceRoutes();
+    }
+
     if (this.allEdgesDirty) {
       this.allEdgesDirty = false;
       this.dirtyEdges.clear();
@@ -687,6 +702,37 @@ export class GraphRenderer {
       this.frameTimes.shift();
     }
   };
+
+  /**
+   * Dashes the connections that lead from lines to the choices they show and rings their ports;
+   * restyles only what changed.
+   */
+  private updateChoiceRoutes(): void {
+    const routes = choiceRouteConnections(this.graph);
+    const ports = new Set<string>();
+    for (const [id, view] of this.edgeViews) {
+      const dashed = routes.has(id);
+      if (dashed) {
+        const { connection } = view;
+        ports.add(`${connection.outputViewId}|${connection.outputPortId}`);
+        ports.add(`${connection.inputViewId}|${connection.inputPortId}`);
+      }
+      if (view.dashed !== dashed) {
+        view.dashed = dashed;
+        this.restyleEdges.add(id);
+      }
+    }
+    const changedViews = new Set<string>();
+    for (const key of ports) if (!this.choiceRoutePorts.has(key)) changedViews.add(key.split("|")[0]);
+    for (const key of this.choiceRoutePorts) if (!ports.has(key)) changedViews.add(key.split("|")[0]);
+    this.choiceRoutePorts = ports;
+    for (const viewId of changedViews) {
+      const view = this.nodeViews.get(viewId);
+      if (!view) continue;
+      if (view.container.visible) view.redraw();
+      else view.stale = true;
+    }
+  }
 
   private restyleEdgesWithinBudget(started: number): void {
     let processed = 0;

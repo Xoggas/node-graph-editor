@@ -106,6 +106,8 @@ export type PortHighlight = "normal" | "compatible" | "incompatible";
 export interface NodeViewContext {
   /** Whether this view (the node or a linked copy) has a connection on the port. */
   isPortConnected(portId: string): boolean;
+  /** Whether this view's port has a connection on the way from a line to a choice (see `choiceRouteConnections`). */
+  isPortOnChoiceRoute(portId: string): boolean;
   /** Number of linked copies of the node. */
   aliasCount(): number;
   /** Only consulted while a connection is being dragged. */
@@ -397,6 +399,9 @@ export class NodeView {
         g.circle(x, y, radius).fill({ color, alpha });
       } else {
         g.circle(x, y, radius).fill({ color: theme.nodePorts, alpha }).stroke({ width: 2, color, alpha });
+      }
+      if (this.context.isPortOnChoiceRoute(port.id)) {
+        g.circle(x, y, radius + 3).stroke({ width: 1.75, color: theme.choiceRoute, alpha });
       }
     }
   }

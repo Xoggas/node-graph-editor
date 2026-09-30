@@ -3,6 +3,7 @@ import { localizationKey } from "./localization";
 import type { NodeModel } from "./node";
 import { type FieldSchema, isRecord } from "./schema";
 import type { Port } from "./types";
+import { flowSuccessors, traversed } from "./flow";
 
 export type ProblemSeverity = "error" | "warning";
 
@@ -139,11 +140,6 @@ function isConnected(graph: GraphModel, port: Port, viewId: string): boolean {
   return false;
 }
 
-/** Connections of types required on both ends (the dialogue flow) lead from one place to the next. */
-function traversed(graph: GraphModel, typeId: string): boolean {
-  const type = graph.registry.portTypes.get(typeId);
-  return !!type && type.required.input && type.required.output;
-}
 
 function reachableViews(graph: GraphModel, starts: string[]): Set<string> {
   const reached = new Set<string>(starts);
@@ -164,18 +160,6 @@ function reachableViews(graph: GraphModel, starts: string[]): Set<string> {
   return reached;
 }
 
-/** Places connected by the flow (see `traversed`), from each output to the input it leads to. */
-function flowSuccessors(graph: GraphModel, viewId: string): string[] {
-  const node = graph.viewNode(viewId);
-  const result: string[] = [];
-  for (const port of node?.outputs ?? []) {
-    if (!traversed(graph, port.typeId)) continue;
-    for (const connection of graph.getPortConnections(port.id)) {
-      if (connection.outputPortId === port.id && connection.outputViewId === viewId) result.push(connection.inputViewId);
-    }
-  }
-  return result;
-}
 
 /** Strongly connected parts of the flow that loop (Tarjan), each as a list of places. */
 function flowLoops(graph: GraphModel): string[][] {

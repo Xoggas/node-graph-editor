@@ -217,6 +217,7 @@
     "menu": "Dialogue",
     "color": "#5b8fd9",
     "blocking": false,
+    "choice": true,
     "naming": {
       "unique": true,
       "pattern": "^[\\p{L}0-9 ,.']+$",

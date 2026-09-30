@@ -185,6 +185,11 @@ export interface NodeSchema {
    * per type; a flow loop without a blocking node is reported as endless.
    */
   blocking: boolean;
+  /**
+   * An answer option: the blocking node before it shows it (possibly through non-blocking nodes such
+   * as conditions), and the dialogue goes on from it when the player picks it. See `choiceLinks`.
+   */
+  choice: boolean;
   /** Opaque data for the game; the editor only stores and exports it. */
   meta: Record<string, unknown>;
   ports: PortSchema[];
@@ -458,6 +463,7 @@ export function parseNodeSchema(json: unknown, location: string, pack: Pick<Sche
     },
     singleton: reader.bool(root, "singleton", false),
     blocking: reader.bool(root, "blocking", false),
+    choice: reader.bool(root, "choice", false),
     meta: reader.optionalObject(root, "meta") ?? {},
     ports,
     fields,
