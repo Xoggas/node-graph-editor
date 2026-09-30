@@ -25,16 +25,16 @@ export interface Connection {
   outputNodeId: string;
   inputNodeId: string;
   /**
-   * Where each end is drawn: the node id for the node itself, or the id of one of its aliases.
-   * Purely visual — the connection always links the node's ports.
+   * The view each end belongs to: the node id for the node itself, or the id of one of its aliases.
+   * Every view has its own connections (a linked copy shares data and id, not connections).
    */
   outputViewId: string;
   inputViewId: string;
 }
 
 /**
- * A linked copy of a node: a second place in the graph that shows the same node (same data, name
- * and ports). Connections can be attached to it; for the engine it does not exist.
+ * A linked copy of a node: another place in the graph with the same data, name and id (data is
+ * deduplicated, e.g. one translated text), but connections of its own.
  */
 export interface NodeAlias {
   id: string;
@@ -42,7 +42,7 @@ export interface NodeAlias {
   position: Vec2;
 }
 
-/** Views a connection is drawn at, when not the nodes themselves (see `Connection.outputViewId`). */
+/** Views a connection belongs to, when not the nodes themselves (see `Connection.outputViewId`). */
 export interface ConnectionViews {
   output?: string;
   input?: string;

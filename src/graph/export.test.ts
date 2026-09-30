@@ -22,7 +22,8 @@ const registry = () =>
           {
             id: "line",
             title: "Line",
-            meta: { nodeType: "Blocking" },
+            blocking: true,
+            meta: { voice: "narrator" },
             ports: [
               { id: "in", direction: "input", type: "flow" },
               { id: "condition", direction: "input", type: "bool" },
@@ -57,7 +58,7 @@ describe("exportRuntimeGraph", () => {
 
     expect(warnings).toEqual([]);
     expect(runtime).toMatchObject({ format: "node-graph-runtime", version: 1, graph: graph.id, pack: "game", entry: start.id });
-    expect(runtime.types).toEqual({ line: { nodeType: "Blocking" } });
+    expect(runtime.types).toEqual({ start: { blocking: false }, line: { blocking: true, voice: "narrator" }, flag: { blocking: false } });
     expect(runtime.nodes[start.id]).toEqual({ type: "start", data: {}, outputs: { out: [line.id] } });
     expect(runtime.nodes[line.id]).toEqual({
       type: "line",

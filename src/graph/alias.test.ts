@@ -29,14 +29,27 @@ function linkedSetup() {
 }
 
 describe("linked copies", () => {
-  it("share the node's ports: a connection at the copy links the node itself", () => {
+  it("share the node's data and id, but each view has connections of its own", () => {
     const { start, line, alias, connection } = linkedSetup();
     expect(connection).toMatchObject({ inputNodeId: line.id, inputViewId: alias.id, outputViewId: start.id });
     expect(graph.viewNode(alias.id)).toBe(line);
     expect(graph.viewIdsOf(line.id)).toEqual([line.id, alias.id]);
-    // The same ports are already linked, whichever view the connection is drawn at.
-    const again = graph.connect(start.getPort("out")!.id, line.getPort("in")!.id);
+    // The same input at another view is a different place: it takes its own connections...
+    const other = graph.addNode("test.line", at(0, 300));
+    expect(graph.connect(other.getPort("next")!.id, line.getPort("in")!.id).success).toBe(true);
+    // ...but the same view pair twice is a duplicate.
+    const again = graph.connect(start.getPort("out")!.id, line.getPort("in")!.id, undefined, { input: alias.id });
     expect(again.success ? null : again.reason).toBe("DuplicateConnection");
+  });
+
+  it("count single capacity per view", () => {
+    const { line, alias } = linkedSetup();
+    const next = line.getPort("next")!;
+    const targets = [0, 1, 2].map((i) => graph.addNode("test.line", at(1200, i * 200)));
+    graph.connect(next.id, targets[0].getPort("in")!.id);
+    graph.connect(next.id, targets[1].getPort("in")!.id, undefined, { output: alias.id });
+    const views = [...graph.getPortConnections(next.id)].map((connection) => connection.outputViewId).sort();
+    expect(views).toEqual([alias.id, line.id].sort());
   });
 
   it("ignores a view that is not a copy of the port's node", () => {
@@ -102,11 +115,16 @@ describe("linked copies", () => {
     expect([...loaded.connections][0].inputViewId).toBe(alias.id);
   });
 
-  it("do not exist for the engine", () => {
-    const { start, line } = linkedSetup();
+  it("export as aliases of the node with their own connections", () => {
+    const { start, line, alias } = linkedSetup();
+    const end = graph.addNode("test.line", at(1200));
+    graph.connect(line.getPort("next")!.id, end.getPort("in")!.id, undefined, { output: alias.id });
     const runtime = exportRuntimeGraph(graph).graph;
-    expect(Object.keys(runtime.nodes).sort()).toEqual([start.id, line.id].sort());
-    expect(runtime.nodes[line.id].inputs).toEqual({ in: [start.id] });
+    expect(Object.keys(runtime.nodes).sort()).toEqual([start.id, line.id, end.id].sort());
+    expect(runtime.nodes[start.id].outputs).toEqual({ out: [alias.id] });
+    expect(runtime.nodes[line.id].inputs).toBeUndefined();
+    expect(runtime.aliases).toEqual({ [alias.id]: { node: line.id, inputs: { in: [start.id] }, outputs: { next: [end.id] } } });
+    expect(runtime.nodes[end.id].inputs).toEqual({ in: [alias.id] });
   });
 
   it("paste: with its node the copy links to the pasted node, alone it links to the same node", () => {

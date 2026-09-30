@@ -6,12 +6,25 @@ import { type FieldSchema, isRecord, type NodeData } from "./schema";
 export const RUNTIME_FORMAT = "node-graph-runtime";
 export const RUNTIME_FORMAT_VERSION = 1;
 
+/**
+ * Port key → the places connected to it; ports without connections are omitted. A place is a node id,
+ * or the id of a linked copy (see `RuntimeGraph.aliases`).
+ */
+export type RuntimeConnections = Record<string, string[]>;
+
 export interface RuntimeNode {
   type: string;
   data: NodeData;
-  /** Port key → ids of the nodes connected to it; ports without connections are omitted. */
-  inputs?: Record<string, string[]>;
-  outputs?: Record<string, string[]>;
+  /** Connections of the node itself. */
+  inputs?: RuntimeConnections;
+  outputs?: RuntimeConnections;
+}
+
+/** A linked copy: the node `node` (same data and id) at another place, with connections of its own. */
+export interface RuntimeAlias {
+  node: string;
+  inputs?: RuntimeConnections;
+  outputs?: RuntimeConnections;
 }
 
 export interface RuntimeGraph {
@@ -21,9 +34,11 @@ export interface RuntimeGraph {
   pack: string | null;
   /** The node execution starts from (the pack's `export.entry` schema), when present. */
   entry?: string;
-  /** Per node type: the schema `meta` (e.g. whether the node blocks), written once instead of per node. */
+  /** Per node type: whether it blocks and the schema `meta`, written once instead of per node. */
   types: Record<string, Record<string, unknown>>;
   nodes: Record<string, RuntimeNode>;
+  /** Linked copies by id; omitted when there are none. */
+  aliases?: Record<string, RuntimeAlias>;
 }
 
 export interface RuntimeExport {
@@ -46,18 +61,20 @@ export function exportRuntimeGraph(graph: GraphModel): RuntimeExport {
     const label = node.name || node.schema?.title || node.schemaId;
     if (!node.schema) {
       warnings.push(`'${label}' has no schema ('${node.schemaId}') and is exported as-is.`);
-    } else if (Object.keys(node.schema.meta).length > 0) {
-      types[node.schemaId] = node.schema.meta;
+    } else {
+      types[node.schemaId] = { blocking: node.schema.blocking, ...node.schema.meta };
     }
     const runtime: RuntimeNode = { type: node.schemaId, data: node.schema ? exportData(graph, node, warnings) : node.data };
-    const inputs = connectedPorts(graph, node, "Input");
-    const outputs = connectedPorts(graph, node, "Output");
-    if (inputs) runtime.inputs = inputs;
-    if (outputs) runtime.outputs = outputs;
+    Object.assign(runtime, viewConnections(graph, node, node.id));
     nodes[node.id] = runtime;
+  }
+  const aliases: Record<string, RuntimeAlias> = {};
+  for (const alias of graph.aliases) {
+    aliases[alias.id] = { node: alias.nodeId, ...viewConnections(graph, graph.getNode(alias.nodeId)!, alias.id) };
   }
 
   const result: RuntimeGraph = { format: RUNTIME_FORMAT, version: RUNTIME_FORMAT_VERSION, graph: graph.id, pack: pack?.id ?? null, types, nodes };
+  if (Object.keys(aliases).length > 0) result.aliases = aliases;
   const entrySchema = pack?.exportEntry;
   if (entrySchema) {
     const entries = [...graph.nodes].filter((node) => node.schemaId === entrySchema);
@@ -74,16 +91,27 @@ export function exportRuntimeGraph(graph: GraphModel): RuntimeExport {
   return { graph: result, warnings };
 }
 
-function connectedPorts(graph: GraphModel, node: NodeModel, direction: "Input" | "Output"): Record<string, string[]> | undefined {
-  const result: Record<string, string[]> = {};
-  for (const port of node.ports) {
-    if (port.direction !== direction) continue;
-    const targets = [...graph.getPortConnections(port.id)].map((connection) =>
-      direction === "Output" ? connection.inputNodeId : connection.outputNodeId,
-    );
-    if (targets.length > 0) result[port.key] = targets;
-  }
-  return Object.keys(result).length > 0 ? result : undefined;
+/** Connections of one view of a node (the node itself or a linked copy), to the views at the other end. */
+function viewConnections(graph: GraphModel, node: NodeModel, viewId: string): Pick<RuntimeNode, "inputs" | "outputs"> {
+  const collect = (direction: "Input" | "Output") => {
+    const result: RuntimeConnections = {};
+    for (const port of node.ports) {
+      if (port.direction !== direction) continue;
+      const targets: string[] = [];
+      for (const connection of graph.getPortConnections(port.id)) {
+        if (direction === "Output" && connection.outputPortId === port.id && connection.outputViewId === viewId) targets.push(connection.inputViewId);
+        if (direction === "Input" && connection.inputPortId === port.id && connection.inputViewId === viewId) targets.push(connection.outputViewId);
+      }
+      if (targets.length > 0) result[port.key] = targets;
+    }
+    return Object.keys(result).length > 0 ? result : undefined;
+  };
+  const result: Pick<RuntimeNode, "inputs" | "outputs"> = {};
+  const inputs = collect("Input");
+  const outputs = collect("Output");
+  if (inputs) result.inputs = inputs;
+  if (outputs) result.outputs = outputs;
+  return result;
 }
 
 /** Node data with localized texts replaced by their keys and references checked. */

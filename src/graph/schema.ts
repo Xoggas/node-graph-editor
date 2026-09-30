@@ -13,6 +13,8 @@ export interface PortTypeSchema {
   extends: string[];
   /** Default capacity per direction for ports of this type. */
   capacity: { input?: PortCapacity; output?: PortCapacity };
+  /** Ports of this type that should be connected; checked by `validateGraph` (e.g. flow: both). */
+  required: { input: boolean; output: boolean };
 }
 
 export type PortRepeat = { list: string; label?: string } | { count: string; label?: string };
@@ -25,11 +27,20 @@ export interface PortSchema {
   capacity?: PortCapacity;
   /** One port per list element (keyed by the element GUID) or per number in a count field. */
   repeat?: PortRepeat;
+  /** May stay unconnected even when its port type is `required` (e.g. an If's False branch). */
+  optional?: boolean;
 }
 
 interface FieldBase {
   id: string;
   label: string;
+  /** An empty value is reported by `validateGraph`. */
+  required?: boolean;
+  /**
+   * A name shared between nodes, e.g. a variable: `validateGraph` reports names that are read but
+   * never written (usually a typo).
+   */
+  symbol?: { kind: string; use: "read" | "write" };
 }
 
 export interface NumberField extends FieldBase {
@@ -169,6 +180,11 @@ export interface NodeSchema {
   naming: NamingRules;
   /** At most one node of this schema per graph. */
   singleton: boolean;
+  /**
+   * The dialogue stops at this node until the player goes on (a line, a click-through). Exported
+   * per type; a flow loop without a blocking node is reported as endless.
+   */
+  blocking: boolean;
   /** Opaque data for the game; the editor only stores and exports it. */
   meta: Record<string, unknown>;
   ports: PortSchema[];
@@ -262,6 +278,10 @@ export function parseSchemaPack(files: PackFile[], packDir: string | null = null
       capacity: {
         input: reader.optionalEnum(capacity, "input", CAPACITIES),
         output: reader.optionalEnum(capacity, "output", CAPACITIES),
+      },
+      required: {
+        input: reader.stringArray(type, "required", []).includes("input"),
+        output: reader.stringArray(type, "required", []).includes("output"),
       },
     });
   }
@@ -397,6 +417,7 @@ export function parseNodeSchema(json: unknown, location: string, pack: Pick<Sche
       type,
       label: reader.optionalString(port, "label"),
       capacity: reader.optionalEnum(port, "capacity", CAPACITIES, path),
+      optional: reader.bool(port, "optional", false) || undefined,
     };
     const repeat = reader.optionalObject(port, "repeat", path);
     if (repeat) {
@@ -436,6 +457,7 @@ export function parseNodeSchema(json: unknown, location: string, pack: Pick<Sche
       auto: naming.auto === undefined ? null : reader.enum(naming, "auto", ["chapter.index"] as const, "naming"),
     },
     singleton: reader.bool(root, "singleton", false),
+    blocking: reader.bool(root, "blocking", false),
     meta: reader.optionalObject(root, "meta") ?? {},
     ports,
     fields,
@@ -448,6 +470,19 @@ export function parseNodeSchema(json: unknown, location: string, pack: Pick<Sche
 }
 
 function parseField(reader: Reader, raw: unknown, path: string, requireId = true): FieldSchema {
+  const field = parseFieldType(reader, raw, path, requireId);
+  const source: Record<string, unknown> = isRecord(raw) ? raw : {};
+  if (reader.bool(source, "required", false)) {
+    field.required = true;
+  }
+  const symbol = reader.optionalObject(source, "symbol", path);
+  if (symbol) {
+    field.symbol = { kind: reader.string(symbol, "kind", "", path) || "name", use: reader.enum(symbol, "use", ["read", "write"] as const, path) };
+  }
+  return field;
+}
+
+function parseFieldType(reader: Reader, raw: unknown, path: string, requireId: boolean): FieldSchema {
   const field = reader.object(raw, path);
   const id = requireId ? reader.id(field, "id", path) : reader.string(field, "id", "item");
   const type = reader.string(field, "type", "", path);

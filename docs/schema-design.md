@@ -151,7 +151,7 @@ pumpkin-quest.schemas/
   "menu": "Dialogue/Choice",
   "color": "#508cdc",
   "naming": { "unique": true, "pattern": "^[\\p{L}0-9 ,.']+$", "auto": "{chapter}.{index}" },
-  "meta": { "nodeType": "Blocking" },
+  "blocking": true,
   "ports": [
     { "id": "in",  "direction": "input",  "type": "flow", "capacity": "multiple" },
     { "id": "out", "direction": "output", "type": "flow", "capacity": "multiple" }

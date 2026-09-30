@@ -5,9 +5,7 @@
     "description": "Меняет фон сцены на выбранный.\n\nНеблокирующая: выполняется сразу, диалог идёт дальше.",
     "menu": "Scene",
     "color": "#9a7bd6",
-    "meta": {
-      "nodeType": "NonBlocking"
-    },
+    "blocking": false,
     "ports": [
       {
         "id": "in",
@@ -28,7 +26,8 @@
         "type": "resource",
         "resourceType": "background",
         "label": "Background",
-        "previewHeight": 140
+        "previewHeight": 140,
+        "required": true
       }
     ]
   },
@@ -38,9 +37,7 @@
     "description": "Включает фоновую музыку.\n\nНеблокирующая: выполняется сразу, диалог идёт дальше.",
     "menu": "Audio",
     "color": "#d9a441",
-    "meta": {
-      "nodeType": "NonBlocking"
-    },
+    "blocking": false,
     "ports": [
       {
         "id": "in",
@@ -61,7 +58,8 @@
         "type": "resource",
         "resourceType": "music",
         "label": "Music",
-        "previewHeight": 0
+        "previewHeight": 0,
+        "required": true
       }
     ]
   },
@@ -71,9 +69,7 @@
     "description": "Проигрывает звуковой эффект.\n\nНеблокирующая: выполняется сразу, диалог идёт дальше.",
     "menu": "Audio",
     "color": "#d9a441",
-    "meta": {
-      "nodeType": "NonBlocking"
-    },
+    "blocking": false,
     "ports": [
       {
         "id": "in",
@@ -94,7 +90,8 @@
         "type": "resource",
         "resourceType": "sfx",
         "label": "Sfx",
-        "previewHeight": 0
+        "previewHeight": 0,
+        "required": true
       }
     ]
   },
@@ -104,9 +101,7 @@
     "description": "Добавляет запись в дневник игрока.\n\nНеблокирующая: выполняется сразу, диалог идёт дальше.",
     "menu": "Diary",
     "color": "#46b0bd",
-    "meta": {
-      "nodeType": "NonBlocking"
-    },
+    "blocking": false,
     "ports": [
       {
         "id": "in",
@@ -127,7 +122,8 @@
         "type": "resource",
         "resourceType": "diaryEntry",
         "label": "Entry",
-        "previewHeight": 0
+        "previewHeight": 0,
+        "required": true
       }
     ]
   },
@@ -137,9 +133,7 @@
     "description": "Зачёркивает запись в дневнике — например, когда задача выполнена или больше не актуальна.\n\nНеблокирующая: выполняется сразу, диалог идёт дальше.",
     "menu": "Diary",
     "color": "#46b0bd",
-    "meta": {
-      "nodeType": "NonBlocking"
-    },
+    "blocking": false,
     "ports": [
       {
         "id": "in",
@@ -160,7 +154,8 @@
         "type": "resource",
         "resourceType": "diaryEntry",
         "label": "Entry",
-        "previewHeight": 0
+        "previewHeight": 0,
+        "required": true
       }
     ]
   },
@@ -170,9 +165,7 @@
     "description": "Прибавляет Value to add к переменной Name (отрицательное значение уменьшает). Значение проверяется нодой Variable Comparer.\n\nНеблокирующая: выполняется сразу, диалог идёт дальше.",
     "menu": "Progress",
     "color": "#a3b54a",
-    "meta": {
-      "nodeType": "NonBlocking"
-    },
+    "blocking": false,
     "ports": [
       {
         "id": "in",
@@ -191,7 +184,12 @@
       {
         "id": "variable",
         "type": "string",
-        "label": "Name"
+        "label": "Name",
+        "required": true,
+        "symbol": {
+          "kind": "variable",
+          "use": "write"
+        }
       },
       {
         "id": "valueToAdd",
@@ -206,9 +204,7 @@
     "description": "Меняет очки отношений с персонажем Character на Points to add (отрицательное значение уменьшает). Проверяются нодой Relationship Point Comparer.\n\nНеблокирующая: выполняется сразу, диалог идёт дальше.",
     "menu": "Progress",
     "color": "#a3b54a",
-    "meta": {
-      "nodeType": "NonBlocking"
-    },
+    "blocking": false,
     "ports": [
       {
         "id": "in",
@@ -229,7 +225,8 @@
         "type": "resource",
         "resourceType": "character",
         "label": "Character",
-        "previewHeight": 200
+        "previewHeight": 200,
+        "required": true
       },
       {
         "id": "pointsToAdd",

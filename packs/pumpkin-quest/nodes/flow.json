@@ -5,12 +5,10 @@
     "description": "Точка входа: с неё начинается выполнение диалога. В графе может быть только одна.\n\nНеблокирующая: выполняется сразу, диалог идёт дальше.",
     "menu": "Flow",
     "color": "#4fb37a",
+    "blocking": false,
     "singleton": true,
     "naming": {
       "editable": false
-    },
-    "meta": {
-      "nodeType": "NonBlocking"
     },
     "ports": [
       {
@@ -24,12 +22,10 @@
   {
     "id": "dialogue.if",
     "title": "If",
-    "description": "Ветвление: проверяет условие на входе Condition и продолжает по выходу True или False. Условия собираются из нод Conditions и Logic.\n\nНеблокирующая: выполняется сразу, диалог идёт дальше.",
+    "description": "Ветвление: проверяет условие на входе Condition и продолжает по выходу True или False. Если False ни к чему не подключён, при ложном условии ничего не происходит — например, выбор за If просто не показывается. Условия собираются из нод Conditions и Logic.\n\nНеблокирующая: выполняется сразу, диалог идёт дальше.",
     "menu": "Flow",
     "color": "#4fb37a",
-    "meta": {
-      "nodeType": "NonBlocking"
-    },
+    "blocking": false,
     "ports": [
       {
         "id": "in",
@@ -53,7 +49,8 @@
         "id": "false",
         "direction": "output",
         "type": "flow",
-        "label": "False"
+        "label": "False",
+        "optional": true
       }
     ]
   },
@@ -63,9 +60,7 @@
     "description": "Выбирает исход по сделанным ранее выборам. Столбцы (C1, C2…) — выборы из списка Conditions, строки (O1, O2…) — исходы. Отмеченная клетка — выбор должен быть сделан, пустая — не сделан. Срабатывает первый исход, у которого совпала вся строка, и диалог идёт в его выход Output N; если ни один не подошёл — в Default.\n\nНеблокирующая: выполняется сразу, диалог идёт дальше.",
     "menu": "Flow",
     "color": "#4fb37a",
-    "meta": {
-      "nodeType": "NonBlocking"
-    },
+    "blocking": false,
     "ports": [
       {
         "id": "in",
@@ -102,10 +97,12 @@
               "id": "choice",
               "type": "nodeRef",
               "schema": "dialogue.choice",
-              "label": "Choice"
+              "label": "Choice",
+              "required": true
             }
           ]
-        }
+        },
+        "required": true
       },
       {
         "id": "outcomes",
@@ -132,11 +129,9 @@
     "description": "Завершает диалог. Ending задаёт, что будет дальше: выход в главное меню или перезапуск.\n\nНеблокирующая: выполняется сразу, диалог идёт дальше.",
     "menu": "Flow",
     "color": "#4fb37a",
+    "blocking": false,
     "naming": {
       "editable": false
-    },
-    "meta": {
-      "nodeType": "NonBlocking"
     },
     "ports": [
       {
@@ -170,13 +165,11 @@
     "description": "Реплика: персонаж Character с эмоцией Emotion произносит текст Line. Имя ноды — ключ локализации текста. Варианты ответа — ноды Choice, подключённые к Next.\n\nБлокирующая: диалог ждёт, пока игрок не продолжит.",
     "menu": "Dialogue",
     "color": "#5b8fd9",
+    "blocking": true,
     "naming": {
       "unique": true,
       "pattern": "^[\\p{L}0-9 ,.']+$",
       "auto": "chapter.index"
-    },
-    "meta": {
-      "nodeType": "Blocking"
     },
     "ports": [
       {
@@ -223,13 +216,11 @@
     "description": "Вариант ответа игрока: кнопка с текстом Text. Выход ведёт в ветку, которая выполнится, если игрок выберет этот вариант. Сделанный выбор проверяется нодами Choice Was Made и Choices Were Made. Имя ноды — ключ локализации текста.\n\nНеблокирующая: выполняется сразу, диалог идёт дальше.",
     "menu": "Dialogue",
     "color": "#5b8fd9",
+    "blocking": false,
     "naming": {
       "unique": true,
       "pattern": "^[\\p{L}0-9 ,.']+$",
       "auto": "chapter.index"
-    },
-    "meta": {
-      "nodeType": "NonBlocking"
     },
     "ports": [
       {
@@ -261,9 +252,7 @@
     "description": "Скрывает интерфейс диалога, чтобы было видно сцену.\n\nБлокирующая: диалог ждёт, пока игрок не продолжит.",
     "menu": "Scene",
     "color": "#9a7bd6",
-    "meta": {
-      "nodeType": "Blocking"
-    },
+    "blocking": true,
     "ports": [
       {
         "id": "in",

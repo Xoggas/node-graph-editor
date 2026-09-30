@@ -549,16 +549,14 @@ export class GraphRenderer {
       return;
     }
     const view = new NodeView(node, {
-      portConnection: (portId) => {
-        let state: "here" | "elsewhere" | null = null;
+      isPortConnected: (portId) => {
         for (const connection of this.graph.getPortConnections(portId)) {
-          if ((connection.outputPortId === portId ? connection.outputViewId : connection.inputViewId) === viewId) return "here";
-          state = "elsewhere";
+          if ((connection.outputPortId === portId ? connection.outputViewId : connection.inputViewId) === viewId) return true;
         }
-        return state;
+        return false;
       },
       aliasCount: () => this.graph.aliasesOf(node.id).length,
-      portHighlight: (port) => this.portHighlight(port),
+      portHighlight: (port) => this.portHighlight(port, viewId),
       portColor: (typeId) => this.portColor(typeId),
       resources: () => this.graph.registry.pack?.resources ?? null,
       localizedText: (field, path, value) => {
@@ -952,22 +950,25 @@ export class GraphRenderer {
     return null;
   }
 
-  private portHighlight(port: Port): PortHighlight {
+  /** Whether `port` of view `viewId` can take the connection being dragged (capacity counts per view). */
+  private portHighlight(port: Port, viewId: string): PortHighlight {
     if (this.interaction.kind !== "connect") {
       return "normal";
     }
-    let highlight = this.highlightCache.get(port.id);
+    const cacheKey = `${viewId}|${port.id}`;
+    let highlight = this.highlightCache.get(cacheKey);
     if (highlight === undefined) {
-      const from = this.interaction.from;
-      if (port.id === from.id) {
+      const { from, fromView } = this.interaction;
+      if (port.id === from.id && viewId === fromView.viewId) {
         highlight = "compatible";
       } else if (port.direction === from.direction) {
         highlight = "incompatible";
       } else {
         const [output, input] = from.direction === "Output" ? [from, port] : [port, from];
-        highlight = this.graph.canConnect(output.id, input.id) === null ? "compatible" : "incompatible";
+        const views = from.direction === "Output" ? { output: fromView.viewId, input: viewId } : { output: viewId, input: fromView.viewId };
+        highlight = this.graph.canConnect(output.id, input.id, views) === null ? "compatible" : "incompatible";
       }
-      this.highlightCache.set(port.id, highlight);
+      this.highlightCache.set(cacheKey, highlight);
     }
     return highlight;
   }
@@ -1193,7 +1194,7 @@ export class GraphRenderer {
         const hit = this.hitTest(world, false);
         const port = hit?.kind === "node" && hit.hit.kind === "port" ? hit.hit.port : null;
         interaction.target =
-          port && hit?.kind === "node" && this.portHighlight(port) === "compatible" && port.id !== interaction.from.id
+          port && hit?.kind === "node" && this.portHighlight(port, hit.view.viewId) === "compatible" && port.id !== interaction.from.id
             ? { port, view: hit.view }
             : null;
         this.requestFrame();

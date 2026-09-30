@@ -21,7 +21,8 @@
         "id": "choice",
         "type": "nodeRef",
         "schema": "dialogue.choice",
-        "label": "Choice"
+        "label": "Choice",
+        "required": true
       }
     ]
   },
@@ -52,7 +53,8 @@
               "id": "choice",
               "type": "nodeRef",
               "schema": "dialogue.choice",
-              "label": "Choice"
+              "label": "Choice",
+              "required": true
             },
             {
               "id": "made",
@@ -61,7 +63,8 @@
               "label": "Was made"
             }
           ]
-        }
+        },
+        "required": true
       }
     ]
   },
@@ -86,7 +89,12 @@
       {
         "id": "variable",
         "type": "string",
-        "label": "Name"
+        "label": "Name",
+        "required": true,
+        "symbol": {
+          "kind": "variable",
+          "use": "read"
+        }
       },
       {
         "id": "comparison",
@@ -150,7 +158,8 @@
         "type": "resource",
         "resourceType": "character",
         "label": "Character",
-        "previewHeight": 200
+        "previewHeight": 200,
+        "required": true
       },
       {
         "id": "comparison",

@@ -384,8 +384,8 @@ export class GraphModel {
     return true;
   }
 
-  /** Checks whether a connection is allowed without creating it. */
-  canConnect(outputPortId: string, inputPortId: string): ConnectionResult | null {
+  /** Checks whether a connection is allowed without creating it; capacity counts per view. */
+  canConnect(outputPortId: string, inputPortId: string, views: ConnectionViews = {}): ConnectionResult | null {
     const output = this.portMap.get(outputPortId);
     const input = this.portMap.get(inputPortId);
     if (!output || !input) {
@@ -405,16 +405,21 @@ export class GraphModel {
     if (outputKnown && inputKnown && !types.isAssignable(input.typeId, output.typeId)) {
       return fail("IncompatibleTypes", `'${output.typeId}' cannot be connected to '${input.typeId}'.`);
     }
-    const inputConnections = this.getPortConnections(input.id);
-    if (input.capacity === "Single" && inputConnections.size > 0) {
+    const outputView = this.viewOf(output.nodeId, views.output);
+    const inputView = this.viewOf(input.nodeId, views.input);
+    const inputConnections = [...this.getPortConnections(input.id)].filter((connection) => connection.inputViewId === inputView);
+    if (input.capacity === "Single" && inputConnections.length > 0) {
       return fail("InputCapacityReached", "The input port already has a connection.");
     }
     for (const connection of inputConnections) {
-      if (connection.outputPortId === output.id) {
+      if (connection.outputPortId === output.id && connection.outputViewId === outputView) {
         return fail("DuplicateConnection", "This connection already exists.");
       }
     }
-    if (output.capacity === "Single" && this.hasConnections(output.id)) {
+    const outputTaken = [...this.getPortConnections(output.id)].some(
+      (connection) => connection.outputPortId === output.id && connection.outputViewId === outputView,
+    );
+    if (output.capacity === "Single" && outputTaken) {
       return fail("OutputCapacityReached", "The output port already has a connection.");
     }
     return null;
@@ -422,7 +427,7 @@ export class GraphModel {
 
   /** `views` names aliases to draw the ends at; ids that are not aliases of the port's node are ignored. */
   connect(outputPortId: string, inputPortId: string, connectionId?: string, views: ConnectionViews = {}): ConnectionResult {
-    const failure = this.canConnect(outputPortId, inputPortId);
+    const failure = this.canConnect(outputPortId, inputPortId, views);
     if (failure) {
       return failure;
     }

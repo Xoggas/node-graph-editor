@@ -7,6 +7,7 @@ import { ContextMenu, type ContextMenuItem } from "./ui/ContextMenu";
 import { buildContextMenu } from "./ui/contextMenuItems";
 import { GraphCanvas } from "./ui/GraphCanvas";
 import { NodePalette } from "./ui/NodePalette";
+import { ProblemsPanel, summary } from "./ui/ProblemsPanel";
 import { SearchPanel } from "./ui/SearchPanel";
 import { ShortcutHelp } from "./ui/ShortcutHelp";
 import "./App.css";
@@ -43,6 +44,7 @@ export default function App() {
   // Bumped on every Ctrl+F, so pressing it again refocuses and selects the query.
   const [searchRequest, setSearchRequest] = useState(0);
   const closeSearch = useCallback(() => setSearchRequest(0), []);
+  const [problemsOpen, setProblemsOpen] = useState(false);
   const [menu, setMenu] = useState<{ x: number; y: number; items: ContextMenuItem[] } | null>(null);
   const closeMenu = useCallback(() => setMenu(null), []);
 
@@ -173,6 +175,17 @@ export default function App() {
       <main className="workspace">
         <div className="canvas-area">
           <GraphCanvas editor={editor} onRenderer={onRenderer} />
+          {problemsOpen && (
+            <ProblemsPanel
+              problems={snapshot.problems}
+              loadWarnings={snapshot.warnings}
+              onShow={(problem) => {
+                const target = problem.viewId ?? problem.nodeId;
+                if (target) rendererRef.current?.focusView(target);
+              }}
+              onClose={() => setProblemsOpen(false)}
+            />
+          )}
           {searchRequest > 0 && (
             <SearchPanel editor={editor} renderer={() => rendererRef.current} focusRequest={searchRequest} onClose={closeSearch} />
           )}
@@ -219,11 +232,19 @@ export default function App() {
         <span className={`status-message${statusVisible && snapshot.statusKind === "info" ? " visible" : ""}`}>
           {snapshot.statusKind === "info" && snapshot.status}
         </span>
-        {snapshot.warnings.length > 0 && (
-          <span className="status-warnings" title={snapshot.warnings.join("\n")}>
-            ⚠ {snapshot.warnings.length} warning(s)
-          </span>
-        )}
+        {(() => {
+          const errors = snapshot.problems.filter((problem) => problem.severity === "error").length;
+          const warnings = snapshot.problems.length - errors + snapshot.warnings.length;
+          return (
+            <button
+              className={`status-problems${errors > 0 ? " errors" : warnings > 0 ? " warnings" : ""}`}
+              onClick={() => setProblemsOpen((open) => !open)}
+              title="Graph checks: what would break or look wrong in the game"
+            >
+              {errors + warnings === 0 ? "✓ No problems" : `${errors > 0 ? "✕" : "⚠"} ${summary(errors, warnings)}`}
+            </button>
+          );
+        })()}
         <span className="status-stat">
           {snapshot.nodeCount} nodes · {snapshot.connectionCount} connections
           {snapshot.selectionCount > 0 && ` · ${snapshot.selectionCount} selected`}

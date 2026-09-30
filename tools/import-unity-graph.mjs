@@ -8,9 +8,9 @@
  * - Node ids are kept (references to choices stay valid); positions come from the graph asset as they
  *   are, and nodes that would cover each other here (ours are taller: portraits, texts) move down.
  * - A choice with a condition becomes If(condition) → Choice, as the pack models conditions with If.
- * - Duplicates become one node plus linked copies: nodes of the same type with the same data and text
- *   whose outputs lead to the same nodes (flow), or with the same inputs (conditions). Choices that
- *   conditions refer to stay separate, since each one is its own saved decision.
+ * - Duplicated texts become one node plus linked copies: lines and choices with the same text and data.
+ *   A copy shares the node's data and id but keeps its own connections. Choices that conditions refer
+ *   to stay separate: merging them would make one saved decision out of several.
  */
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
@@ -92,7 +92,11 @@ const CONVERT = {
   ChangeVariable: (n) => flowAction("dialogue.change-variable", { variable: n.VariableName ?? "", valueToAdd: n.ValueToAdd ?? 0 }),
   AddRelationshipPoints: (n) =>
     flowAction("dialogue.add-relationship-points", { character: resource(n.CharacterId), pointsToAdd: n.PointsToAdd ?? 0 }),
-  ChoiceWasMade: (n) => ({ schema: "condition.choice-was-made", data: { choice: n.ChoiceNodeId }, ports: { Result: "result" } }),
+  ChoiceWasMade: (n) => ({
+    schema: "condition.choice-was-made",
+    data: { choice: n.ChoiceNodeId && n.ChoiceNodeId !== EMPTY_GUID ? n.ChoiceNodeId : null },
+    ports: { Result: "result" },
+  }),
   ChoicesWereMade: (n) => {
     const states = values(n.States);
     const choices = values(n.ChoiceNodeIds).map((choice, index) => ({ id: randomUUID(), choice, made: states[index] !== false }));
@@ -216,20 +220,17 @@ const find = (id) => {
 };
 const conditionOf = (id) => links.filter((link) => link.to === id && link.toPort === "Condition").map((link) => find(link.from)).sort();
 
+/** Nodes with the same signature become one node with linked copies; null keeps a node on its own. */
 const signature = (node) => {
-  if (node.type === "MultipleChoiceOption" && (referencedChoices.has(node.id) || conditionOf(node.id).length > 0)) return null;
-  if (node.type === "Start") return null;
-  const text = node.source.Line?.Key ? (texts.ru.get(node.source.Line.Key) ?? node.source.Line.Key) : "";
-  const base = [node.type, JSON.stringify(stripIds(node.data)), text];
-  if (PURE.has(node.type)) {
-    const inputs = links.filter((link) => link.to === node.id).map((link) => `${link.toPort}<${find(link.from)}`).sort();
-    return [...base, ...inputs].join("|");
-  }
-  const outputs = links.filter((link) => link.from === node.id).map((link) => `${link.fromPort}>${find(link.to)}.${link.toPort}`).sort();
-  return [...base, ...outputs].join("|");
+  if (node.schema !== "dialogue.line" && node.schema !== "dialogue.choice") return null;
+  if (node.schema === "dialogue.choice" && referencedChoices.has(node.id)) return null;
+  const texts = Object.values(allTexts).map((table) => table.get(node.source.Line?.Key ?? "") ?? "");
+  if (texts.every((text) => !text)) return null;
+  const { line, text, ...data } = node.data;
+  return [node.schema, JSON.stringify(data), ...texts].join("|");
 };
 
-const texts = {
+const allTexts = {
   ru: parseLocalizationTable(read(join(assetsDir, "Resources", "Localization", "Dialogues", "russian.asset"))),
   en: parseLocalizationTable(read(join(assetsDir, "Resources", "Localization", "Dialogues", "english.asset"))),
 };
@@ -275,7 +276,7 @@ for (const node of converted.values()) {
 const connections = [];
 const seen = new Set();
 const connect = (from, fromPort, to, toPort) => {
-  const key = `${from.node}.${fromPort}>${to.node}.${toPort}`;
+  const key = `${from.view}.${fromPort}>${to.view}.${toPort}`;
   if (seen.has(key)) return;
   seen.add(key);
   const ref = (end, port) => (end.view === end.node ? { node: end.node, port } : { node: end.node, port, view: end.view });
@@ -347,7 +348,7 @@ writeFileSync(outFile, `${JSON.stringify(graph, null, 2)}\n`);
 // Texts: the Dialogues tables become the pack's localization (keys unchanged).
 const localizationDir = join(packDir, "localization");
 mkdirSync(localizationDir, { recursive: true });
-for (const [language, table] of Object.entries(texts)) {
+for (const [language, table] of Object.entries(allTexts)) {
   const target = join(localizationDir, `${language}.json`);
   const existing = existsSync(target) ? JSON.parse(read(target)) : {};
   writeFileSync(target, `${JSON.stringify({ ...existing, ...Object.fromEntries(table) }, null, 2)}\n`);
@@ -355,7 +356,7 @@ for (const [language, table] of Object.entries(texts)) {
 
 const merged = converted.size - nodes.length + guards.size;
 console.log(`${source.length} Unity nodes → ${nodes.length} nodes (${guards.size} If added for choice conditions), ${aliases.length} linked copies (${merged} duplicates merged), ${connections.length} connections.`);
-console.log(`Texts: ${texts.ru.size} ru, ${texts.en.size} en → ${localizationDir}`);
+console.log(`Texts: ${allTexts.ru.size} ru, ${allTexts.en.size} en → ${localizationDir}`);
 console.log(`Graph: ${outFile}`);
 if (warnings.length) console.log(`\n${warnings.length} warning(s):\n${[...new Set(warnings)].join("\n")}`);
 

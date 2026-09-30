@@ -23,7 +23,11 @@
       "capacity": {
         "input": "multiple",
         "output": "single"
-      }
+      },
+      "required": [
+        "input",
+        "output"
+      ]
     },
     "bool": {
       "label": "Condition",
@@ -31,7 +35,10 @@
       "capacity": {
         "input": "single",
         "output": "multiple"
-      }
+      },
+      "required": [
+        "input"
+      ]
     }
   },
   "resourceTypes": {

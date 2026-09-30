@@ -103,11 +103,9 @@ export type NodeHit =
 
 export type PortHighlight = "normal" | "compatible" | "incompatible";
 
-/** A port's connections as seen from one view: drawn here, only at another view of the node, or none. */
-export type PortConnectionState = "here" | "elsewhere" | null;
-
 export interface NodeViewContext {
-  portConnection(portId: string): PortConnectionState;
+  /** Whether this view (the node or a linked copy) has a connection on the port. */
+  isPortConnected(portId: string): boolean;
   /** Number of linked copies of the node. */
   aliasCount(): number;
   /** Only consulted while a connection is being dragged. */
@@ -395,13 +393,8 @@ export class NodeView {
       const highlight = this.context.portHighlight(port);
       const alpha = highlight === "incompatible" ? theme.portIncompatibleAlpha : 1;
       const radius = port.id === this.hoveredPortId || highlight === "compatible" ? PORT_RADIUS + 1.5 : PORT_RADIUS;
-      const connection = this.context.portConnection(port.id);
-      if (connection === "here") {
+      if (this.context.isPortConnected(port.id)) {
         g.circle(x, y, radius).fill({ color, alpha });
-      } else if (connection === "elsewhere") {
-        // Connected at another view of this node.
-        g.circle(x, y, radius).fill({ color: theme.nodePorts, alpha }).stroke({ width: 2, color, alpha });
-        g.circle(x, y, 2).fill({ color, alpha });
       } else {
         g.circle(x, y, radius).fill({ color: theme.nodePorts, alpha }).stroke({ width: 2, color, alpha });
       }

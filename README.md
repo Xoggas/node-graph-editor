@@ -72,8 +72,9 @@ re-reads it from disk (the open graph keeps its data). The last folder is rememb
   "id": "my-game", "name": "My Game", "version": 1,
   "menus": ["Flow", "Dialogue", "Conditions"],   // palette category order; nodes keep their file order
   "portTypes": {
-    "flow": { "color": "#b8bcc5", "capacity": { "input": "multiple", "output": "single" } },
-    "bool": { "color": "#e07a6f" }
+    // `required`: ports of this type should be connected (checked, see "Problems")
+    "flow": { "color": "#b8bcc5", "capacity": { "input": "multiple", "output": "single" }, "required": ["input", "output"] },
+    "bool": { "color": "#e07a6f", "required": ["input"] }
   }
 }
 ```
@@ -87,7 +88,8 @@ re-reads it from disk (the open graph keeps its data). The last folder is rememb
   "menu": "Dialogue",
   "color": "#508cdc",
   "naming": { "unique": true, "pattern": "^[\\p{L}0-9 ,.']+$" },
-  "meta": { "nodeType": "Blocking" },            // stored and exported as-is
+  "blocking": true,                               // the dialogue waits here for the player; exported per type
+  "meta": { "voice": "narrator" },                // anything else for the game: stored and exported as-is
   "ports": [
     { "id": "in", "direction": "input", "type": "flow" },
     { "id": "choice", "direction": "output", "type": "flow", "repeat": { "list": "choices", "label": "Choice {n}" } },
@@ -168,20 +170,35 @@ and writes the `Dialogues` localization tables into the pack's `localization/*.j
 See `docs/schema-design.md` for the full design, including the planned resource library,
 localization and the remaining field types.
 
+## Problems
+
+The status bar shows the result of the graph checks (**✓ No problems** / **⚠ N warnings** / **✕ N errors**);
+clicking it opens the list, clicking a row goes to the node. The checks re-run after every edit.
+
+- **Connections** (per node and per linked copy): ports whose type is `required` but that are not
+  connected — a dialogue that stops, a missing condition; a port marked `"optional": true` in the node
+  schema may stay open (e.g. an If's False branch). Flow nodes that cannot be reached from the start.
+- **Data:** empty fields marked `"required": true`, references to deleted nodes or list elements,
+  resources missing from the library, lists shorter than `minItems`. String fields with
+  `"symbol": { "kind": "variable", "use": "read" | "write" }` must be written by some node when read
+  (catches typos in variable names).
+- **Texts:** texts without a localization key (unnamed node) and keys missing a translation.
+- **Graph:** no start node or several, unknown node types, connections that could not be restored, and
+  endless loops — a flow cycle without a `blocking` node would run forever without the player.
+
 ## Linked copies
 
-A linked copy (Ctrl+L) shows the same node in another place of the graph — handy instead of a long
-edge across the canvas. It has no data of its own: fields, name and ports are the node's, so an edit in
-one place shows in all of them. Connections can be attached to any view; they always link the node's
-ports (capacity and duplicate checks see them all), each end just remembers where it is drawn.
+A linked copy (Ctrl+L) deduplicates data: it is the same node — same fields, name, localization key and
+**id** — at another place of the graph, so an edit in one place shows in all of them and a choice made
+through any copy is the same choice for the game. Connections are **not** shared: every copy (and the
+node itself) has its own, with capacity and duplicate checks per copy.
 
 - Copies sit in a blue outer frame and have a `↗ link` badge; the node shows `↗ N` for its N copies. Selecting a
   view highlights the others; Ctrl+Shift+L walks through them.
-- A port dot with a center point is connected at another view of the node.
 - Deleting a copy deletes the connections drawn at it; deleting the node deletes its copies.
 - Copy/paste: a copy pasted together with its node links to the pasted node, a copy pasted alone links
   to the same node again.
-- The runtime export ignores copies: connections are already between the nodes.
+- The runtime export lists copies in `aliases` with their own connections (see below).
 
 ## File format
 
@@ -203,7 +220,7 @@ new file.
   "format": "node-graph-runtime", "version": 1,
   "graph": "<graph id>", "pack": "pumpkin-quest",
   "entry": "<start node id>",                        // node of the schema named by pack.json "export.entry"
-  "types": { "dialogue.line": { "nodeType": "Blocking" } },   // schema meta, once per type
+  "types": { "dialogue.line": { "blocking": true } },   // `blocking` + schema meta, once per type
   "nodes": {
     "<node id>": {
       "type": "dialogue.line",
@@ -211,9 +228,16 @@ new file.
       "inputs":  { "in":   ["<node id>"] },          // port key → connected nodes; empty ports omitted
       "outputs": { "next": ["<node id>"] }
     }
+  },
+  "aliases": {                                       // linked copies; omitted when there are none
+    "<alias id>": { "node": "<node id>", "inputs": { "in": ["<node id>"] }, "outputs": { "next": ["<alias id>"] } }
   }
 }
 ```
+
+Connections point at places: a node id, or an alias id — the copy shares the node's `type`, `data` and
+id (`aliases[id].node`) but continues along its own outputs. The engine should keep the place it is at
+(e.g. in a save) and use the node id for identity, such as remembering a made choice.
 
 Next to the export the editor writes `localization/<language>.json` — the texts as they are in the editor, unsaved edits included (the pack's own files are updated by Save). Problems (no start node, deleted
 references, texts without a key, nodes without a schema) are reported as warnings and do not stop the

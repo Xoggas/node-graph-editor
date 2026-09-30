@@ -9,6 +9,7 @@ import { defaultVariant } from "../graph/resources";
 import { type NodeData, type NodeSchema, type PackFile, parseSchemaPack, reconcileData } from "../graph/schema";
 import { exportRuntimeGraph } from "../graph/export";
 import { GraphJsonSerializer } from "../graph/serializer";
+import { type Problem, validateGraph } from "../graph/validate";
 import type { Vec2 } from "../graph/types";
 import { bundledPack } from "./bundledPack";
 import { createFileSystem, type GraphFileSystem, type OpenedFile } from "./files";
@@ -46,6 +47,8 @@ export interface EditorSnapshot {
   selectionCount: number;
   /** Problems found while loading the current document. */
   warnings: readonly string[];
+  /** Results of `validateGraph`, refreshed shortly after every change. */
+  problems: readonly Problem[];
   pack: PackInfo | null;
   /** Problems found while loading the schema pack. */
   packWarnings: readonly string[];
@@ -66,6 +69,8 @@ const PASTE_STEP = 32;
 /** Where a new linked copy appears relative to the node it links to. */
 const LINK_OFFSET = { x: 48, y: 48 };
 const PACK_FOLDER_KEY = "node-graph-editor.packFolder";
+/** Delay before the checks re-run after a change. */
+const VALIDATION_DELAY_MS = 250;
 /** Path of the last opened or saved graph, reopened on start. */
 const LAST_GRAPH_KEY = "node-graph-editor.lastGraph";
 
@@ -97,6 +102,7 @@ export class Editor {
   private pasteCount = 0;
   private localizationStore = new LocalizationStore([]);
   private unobserveLocalization: () => void = () => {};
+  private validationTimer: ReturnType<typeof setTimeout> | null = null;
   private readonly localizationListeners = new Set<LocalizationListener>();
   private readonly noticeListeners = new Set<(notice: Notice) => void>();
 
@@ -114,6 +120,7 @@ export class Editor {
       connectionCount: 0,
       selectionCount: 0,
       warnings: [],
+      problems: [],
       pack: null,
       packWarnings: [],
       languages: [],
@@ -302,7 +309,9 @@ export class Editor {
     const unsubscribe = store.subscribe((change) => {
       this.update({ localizationDirty: store.isDirty });
       this.notifyLocalization(change);
+      this.scheduleValidation();
     });
+    this.scheduleValidation();
     const unobserve = this.history.observe<LocalizationChange>(
       (listener) => store.subscribe(listener),
       (change) => ({
@@ -819,6 +828,7 @@ export class Editor {
     this.unsubscribeGraph();
     this.currentGraph = graph;
     this.unsubscribeGraph = graph.subscribe((change) => this.onGraphChanged(change));
+    this.scheduleValidation();
     this.history.attach(graph);
     this.syncCounts();
   }
@@ -827,12 +837,34 @@ export class Editor {
     if (change.kind === "viewportChanged") {
       return;
     }
+    if (change.kind !== "nodeMoved" && change.kind !== "aliasMoved") {
+      this.scheduleValidation();
+    }
     const structural = change.kind !== "nodeMoved" && change.kind !== "nodeDataChanged" && change.kind !== "nodeRenamed";
     if (structural) {
       this.syncCounts({ dirty: true });
     } else if (!this.state.dirty) {
       this.update({ dirty: true });
     }
+  }
+
+  /** Re-runs the checks once edits settle (a drag or a paste emits many changes). */
+  private scheduleValidation(): void {
+    if (this.validationTimer !== null) {
+      clearTimeout(this.validationTimer);
+    }
+    this.validationTimer = setTimeout(() => {
+      this.validationTimer = null;
+      this.validate();
+    }, VALIDATION_DELAY_MS);
+  }
+
+  /** Runs the checks now (see `validateGraph`). */
+  validate(): readonly Problem[] {
+    const store = this.localizationStore;
+    const problems = validateGraph(this.graph, { languages: this.state.languages, text: (language, key) => store.get(language, key) });
+    this.update({ problems });
+    return problems;
   }
 
   private syncCounts(extra: Partial<EditorSnapshot> = {}): void {
