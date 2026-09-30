@@ -26,6 +26,50 @@ body,
   user-select: none;
 }
 
+/* Checkboxes everywhere: a rounded box with a drawn check, like the ones on the canvas. */
+input[type="checkbox"] {
+  display: inline-grid;
+  flex-shrink: 0;
+  place-content: center;
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  background: #24262b;
+  border: 1px solid #6b6f79;
+  border-radius: 4px;
+  cursor: pointer;
+  appearance: none;
+}
+
+input[type="checkbox"]::after {
+  width: 9px;
+  height: 5px;
+  margin-top: -2px;
+  border: solid #fff;
+  border-width: 0 0 2px 2px;
+  transform: rotate(-45deg);
+  content: "";
+  visibility: hidden;
+}
+
+input[type="checkbox"]:hover {
+  border-color: #91959e;
+}
+
+input[type="checkbox"]:checked {
+  background: #4a78c0;
+  border-color: #6f9be0;
+}
+
+input[type="checkbox"]:checked::after {
+  visibility: visible;
+}
+
+input[type="checkbox"]:focus-visible {
+  outline: 2px solid #8ab4ff;
+  outline-offset: 2px;
+}
+
 /* Scrollbars everywhere: a thin rounded thumb on a clear track, no arrow buttons (WebView2 is Chromium). */
 ::-webkit-scrollbar {
   width: 10px;
@@ -927,7 +971,9 @@ body,
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(10, 11, 13, 0.55);
+  background: rgba(10, 11, 13, 0.45);
+  /* Everything under a modal is blurred, so the dialog stands out. */
+  backdrop-filter: blur(5px);
 }
 
 .dialog {
@@ -1088,6 +1134,11 @@ body,
   background: var(--button-hover);
 }
 
+.settings-close:focus-visible {
+  outline: 2px solid #8ab4ff;
+  outline-offset: 1px;
+}
+
 /* A setting: its name and explanation on the left, the control on the right. */
 .settings-row {
   display: flex;
@@ -1128,42 +1179,6 @@ body,
   cursor: pointer;
 }
 
-/* The same custom box as elsewhere, a bit larger. */
-.settings-check {
-  display: grid;
-  flex-shrink: 0;
-  place-content: center;
-  width: 18px;
-  height: 18px;
-  margin: 0;
-  background: #25272c;
-  border: 1px solid #8a8f99;
-  border-radius: 4px;
-  cursor: pointer;
-  appearance: none;
-}
-
-.settings-check::after {
-  width: 10px;
-  height: 6px;
-  margin-top: -2px;
-  border: solid #fff;
-  border-width: 0 0 2px 2px;
-  transform: rotate(-45deg);
-  content: "";
-  visibility: hidden;
-}
-
-.settings-check:checked {
-  background: #4a78c0;
-  border-color: #6f9be0;
-}
-
-.settings-check:checked::after {
-  visibility: visible;
-}
-
-.settings-check:focus-visible,
 .settings-select:focus-visible {
   outline: 2px solid #8ab4ff;
   outline-offset: 2px;
@@ -1176,7 +1191,8 @@ body,
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(10, 11, 13, 0.6);
+  background: rgba(10, 11, 13, 0.45);
+  backdrop-filter: blur(5px);
 }
 
 .help-dialog {

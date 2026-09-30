@@ -27,6 +27,8 @@ export const theme = {
   widgetBorder: 0x5b5f68,
   widgetBorderMuted: 0x44474e,
   checkboxChecked: 0x4a78c0,
+  checkboxCheckedBorder: 0x6f9be0,
+  checkMark: 0xffffff,
   segmentActive: 0x4a78c0,
   buttonBackground: 0x41444b,
   buttonHover: 0x535760,

@@ -674,17 +674,12 @@ export class NodeView {
       text.position.set(Math.round(gridX + column * step + (CELL_SIZE - text.width) / 2), Math.round(cursor + 2));
     });
     cursor += 16;
-    const values = getIn(this.node.data, path);
     rows.forEach((row, rowIndex) => {
       const text = this.detail.addChild(makeText(this.dimensionLabel(field, "rows", rowIndex), SMALL_SIZE, theme.textMuted));
       text.position.set(x, Math.round(cursor + (CELL_SIZE - text.height) / 2));
       columns.forEach((column, columnIndex) => {
         const rect = { x: gridX + columnIndex * step, y: cursor, width: CELL_SIZE, height: CELL_SIZE };
         this.controls.push({ type: "cell", key: `${path.join(".")}[${row}][${column}]`, rect, fieldId: String(path[0]), row, column });
-        if (getIn(values, [row, column]) === true) {
-          const check = this.detail.addChild(makeText("✓", 12, theme.textPrimary, true));
-          check.position.set(Math.round(rect.x + (CELL_SIZE - check.width) / 2), Math.round(rect.y + (CELL_SIZE - check.height) / 2));
-        }
       });
       cursor += step;
     });
@@ -779,7 +774,8 @@ export class NodeView {
           return text;
         });
       case "bool":
-        return value === true ? [positioned(makeText("✓", 13, theme.textPrimary, true), box.x + 4, box.y + 3)] : [];
+        // The box and its check are drawn with the control (see `checkbox`).
+        return [];
       case "dropdown": {
         const option = (field as EnumField).options.find((candidate) => candidate.value === value);
         const text = makeText(fitText(option?.label ?? String(value ?? ""), inner - 12, VALUE_SIZE), VALUE_SIZE, theme.textPrimary);
@@ -871,9 +867,7 @@ export class NodeView {
     }
     if (control.type === "cell") {
       const checked = getIn(this.node.data, [control.fieldId, control.row, control.column]) === true;
-      g.roundRect(control.rect.x, control.rect.y, control.rect.width, control.rect.height, 3)
-        .fill(checked ? theme.checkboxChecked : theme.widgetBackground)
-        .stroke({ width: 1, color: border, alignment: 1 });
+      checkbox(g, control.rect.x, control.rect.y, control.rect.width, checked, border);
       return;
     }
 
@@ -881,9 +875,7 @@ export class NodeView {
     switch (control.kind) {
       case "bool": {
         const checked = getIn(this.node.data, control.path) === true;
-        g.roundRect(box.x + 1, box.y + 5, 14, 14, 3)
-          .fill(checked ? theme.checkboxChecked : theme.widgetBackground)
-          .stroke({ width: 1, color: border, alignment: 1 });
+        checkbox(g, box.x + 1, box.y + 5, 14, checked, border);
         return;
       }
       case "segmented": {
@@ -1029,9 +1021,16 @@ function wrapLines(text: string, width: number, maxLines: number): string[] {
   return lines.map((line) => fitText(line, width, VALUE_SIZE));
 }
 
-function positioned(text: BitmapText, x: number, y: number): BitmapText {
-  text.position.set(x, y);
-  return text;
+/** A checkbox like the HTML ones: a rounded box, blue with a drawn check when checked. */
+function checkbox(g: Graphics, x: number, y: number, size: number, checked: boolean, border: number): void {
+  g.roundRect(x, y, size, size, 3)
+    .fill(checked ? theme.checkboxChecked : theme.widgetBackground)
+    .stroke({ width: 1, color: checked ? theme.checkboxCheckedBorder : border, alignment: 1 });
+  if (!checked) return;
+  g.moveTo(x + size * 0.26, y + size * 0.52)
+    .lineTo(x + size * 0.43, y + size * 0.69)
+    .lineTo(x + size * 0.75, y + size * 0.33)
+    .stroke({ width: Math.max(1.6, size * 0.13), color: theme.checkMark, cap: "round", join: "round" });
 }
 
 /** Rectangle path with separate top and bottom corner radii. */
