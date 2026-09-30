@@ -121,6 +121,11 @@ describe("localization", () => {
     expect(await editor.duplicate([id])).toEqual([]);
     expect(editor.graph.nodeCount).toBe(2);
 
+    // A forced duplicate is always a new node, without asking.
+    const [forced] = await editor.duplicate([id], "copy");
+    expect(editor.graph.getNode(forced)).toBeDefined();
+    expect(editor.graph.nodeCount).toBe(3);
+
     // Nothing to link to once the original is gone: no question.
     editor.cut([id]);
     await editor.paste();

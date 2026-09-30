@@ -750,27 +750,28 @@ export class Editor {
     return this.insert(data, offset, "Pasted");
   }
 
-  async duplicate(viewIds: Iterable<string>): Promise<string[]> {
+  /** `mode` skips the copy-or-link question (e.g. "copy" for a duplicate that is always new nodes). */
+  async duplicate(viewIds: Iterable<string>, mode?: PasteMode): Promise<string[]> {
     const data = copyViews(this.graph, viewIds);
-    return data ? this.insert(data, { x: PASTE_STEP, y: PASTE_STEP }, "Duplicated") : [];
+    return data ? this.insert(data, { x: PASTE_STEP, y: PASTE_STEP }, "Duplicated", mode) : [];
   }
 
   /**
    * Nodes with unique names (e.g. lines, whose name is their localization key) can be pasted as
    * copies or as linked copies of their originals, if those are still in the graph: asks which.
    */
-  private async choosePasteMode(data: ClipboardData): Promise<ClipboardData | null> {
+  private async choosePasteMode(data: ClipboardData, preset?: PasteMode): Promise<ClipboardData | null> {
     const linkable = data.nodes.filter((entry) => this.registry.getSchema(entry.schemaId)?.naming.unique && this.graph.getNode(entry.originalId));
-    if (linkable.length === 0 || !this.askPasteMode) {
+    if (linkable.length === 0 || (!preset && !this.askPasteMode)) {
       return data;
     }
     const types = [...new Set(linkable.map((entry) => this.registry.getSchema(entry.schemaId)!.title))];
-    const mode = await this.askPasteMode({ count: linkable.length, types });
+    const mode = preset ?? (await this.askPasteMode!({ count: linkable.length, types }));
     if (mode === null) return null;
     return mode === "link" ? linkCopiedNodes(data, new Set(linkable.map((entry) => entry.originalId))) : data;
   }
 
-  private async insert(original: ClipboardData, offset: Vec2, verb: string): Promise<string[]> {
+  private async insert(original: ClipboardData, offset: Vec2, verb: string, mode?: PasteMode): Promise<string[]> {
     // Checked before asking anything: there is no point choosing how to paste what cannot be pasted.
     const singletons = original.nodes.filter(
       (entry) => this.registry.getSchema(entry.schemaId)?.singleton && [...this.graph.nodes].some((node) => node.schemaId === entry.schemaId),
@@ -779,7 +780,7 @@ export class Editor {
       this.setStatus(`${verb === "Pasted" ? "Paste" : "Duplicate"} failed: only one '${this.registry.getSchema(singletons[0].schemaId)!.title}' node is allowed.`, "error");
       return [];
     }
-    const data = await this.choosePasteMode(original);
+    const data = await this.choosePasteMode(original, mode);
     if (!data) {
       this.setStatus(`${verb === "Pasted" ? "Paste" : "Duplicate"} cancelled.`);
       return [];

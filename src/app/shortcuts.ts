@@ -25,6 +25,7 @@ export type ShortcutId =
   | "cut"
   | "paste"
   | "duplicate"
+  | "forceDuplicate"
   | "addNote"
   | "linkedCopy"
   | "nextLinked"
@@ -186,6 +187,14 @@ export const shortcuts: Shortcut[] = [
     keys: ["Ctrl+D"],
     bindings: [{ code: "KeyD", ctrl: true }],
     run: whenIdle((renderer, { editor }) => void editor.duplicate(renderer.selectedViewIds()).then((ids) => renderer.selectViews(ids))),
+  },
+  {
+    group: "Edit",
+    id: "forceDuplicate",
+    description: "Duplicate as new nodes (never ask to link)",
+    keys: ["Ctrl+Shift+D"],
+    bindings: [{ code: "KeyD", ctrl: true, shift: true }],
+    run: whenIdle((renderer, { editor }) => void editor.duplicate(renderer.selectedViewIds(), "copy").then((ids) => renderer.selectViews(ids))),
   },
   {
     group: "Edit",

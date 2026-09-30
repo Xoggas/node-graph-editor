@@ -50,6 +50,11 @@ export function buildContextMenu(request: ContextMenuRequest, editor: Editor, re
       shortcut: shortcutLabel("duplicate"),
       action: () => void editor.duplicate(renderer.selectedViewIds()).then((ids) => renderer.selectViews(ids)),
     },
+    {
+      label: `Duplicate as new${count}`,
+      shortcut: shortcutLabel("forceDuplicate"),
+      action: () => void editor.duplicate(renderer.selectedViewIds(), "copy").then((ids) => renderer.selectViews(ids)),
+    },
   ];
 
   if (target.kind === "note") {
