@@ -184,6 +184,8 @@ export interface SchemaPack {
   portTypes: Map<string, PortTypeSchema>;
   nodes: Map<string, NodeSchema>;
   resources: ResourceLibrary;
+  /** Schema of the node runtime exports start from (`export.entry` in pack.json). */
+  exportEntry: string | null;
   /** Problems that did not prevent loading (e.g. an invalid node schema that was skipped). */
   warnings: string[];
 }
@@ -238,8 +240,11 @@ export function parseSchemaPack(files: PackFile[], packDir: string | null = null
     portTypes: new Map(),
     nodes: new Map(),
     resources: { types: new Map(), items: new Map(), roots: [] },
+    exportEntry: null,
     warnings: [],
   };
+  const exportSettings = reader.optionalObject(root, "export");
+  pack.exportEntry = exportSettings ? reader.optionalString(exportSettings, "entry") ?? null : null;
   const resourceTypes = parseResourceTypes(root.resourceTypes, pack.warnings);
 
   const portTypes = reader.optionalObject(root, "portTypes") ?? {};
@@ -300,6 +305,9 @@ export function parseSchemaPack(files: PackFile[], packDir: string | null = null
         pack.warnings.push((error as Error).message);
       }
     });
+  }
+  if (pack.exportEntry && !pack.nodes.has(pack.exportEntry)) {
+    pack.warnings.push(`pack.json → export.entry: node schema '${pack.exportEntry}' does not exist.`);
   }
   for (const schema of pack.nodes.values()) {
     for (const field of collectFields(schema.fields, "resource") as ResourceField[]) {

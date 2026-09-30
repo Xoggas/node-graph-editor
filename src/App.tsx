@@ -105,6 +105,13 @@ export default function App() {
         <button onClick={() => void editor.save()} title="Ctrl+S">Save</button>
         <button onClick={() => void editor.save(true)} title="Ctrl+Shift+S">Save As</button>
         <span className="toolbar-separator" />
+        <button
+          onClick={(event) => void editor.exportGraph(event.shiftKey)}
+          title="Export the engine version of the graph (Ctrl+E; Shift+click or Ctrl+Shift+E to choose the file)"
+        >
+          Export
+        </button>
+        <span className="toolbar-separator" />
         <button onClick={() => editor.undo()} disabled={!snapshot.canUndo} title="Ctrl+Z">
           Undo
         </button>

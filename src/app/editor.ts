@@ -7,6 +7,7 @@ import { type NodeDescriptor, SchemaRegistry } from "../graph/registry";
 import { type DataPath, getIn, listAdd, listMove, listRemove, setIn } from "../graph/dataOps";
 import { defaultVariant } from "../graph/resources";
 import { type NodeData, type NodeSchema, type PackFile, parseSchemaPack, reconcileData } from "../graph/schema";
+import { exportRuntimeGraph } from "../graph/export";
 import { GraphJsonSerializer } from "../graph/serializer";
 import type { Vec2 } from "../graph/types";
 import { bundledPack } from "./bundledPack";
@@ -71,6 +72,8 @@ export class Editor {
   private readonly listeners = new Set<() => void>();
   private readonly graphReplacedListeners = new Set<GraphReplacedListener>();
   private filePath: string | null = null;
+  /** Where the current document was last exported to (this session). */
+  private exportPath: string | null = null;
   private state: EditorSnapshot;
   private notifyScheduled = false;
   private readonly history = new GraphHistory(() =>
@@ -346,6 +349,36 @@ export class Editor {
       this.update({ dirty: false, fileName: saved.name, filePath: saved.path, status: `Saved: ${saved.name}${localizationNote}` });
     } catch (error) {
       this.setStatus(`Save failed: ${errorMessage(error)}`);
+    }
+  }
+
+  /**
+   * Writes the engine version of the graph (no editor data, see `exportRuntimeGraph`). Re-exports go
+   * to the last export path; `chooseLocation` or a first export asks where to save.
+   */
+  async exportGraph(chooseLocation = false): Promise<void> {
+    try {
+      const { graph, warnings } = exportRuntimeGraph(this.graph);
+      const baseName = (this.state.fileName ?? "graph").replace(/\.json$/i, "");
+      const defaultPath = this.filePath ? this.filePath.replace(/[^\\/]*$/, `${baseName}.runtime.json`) : `${baseName}.runtime.json`;
+      const saved = await this.files.save(JSON.stringify(graph), this.exportPath, chooseLocation || !this.exportPath, {
+        title: "Export runtime graph",
+        defaultPath,
+      });
+      if (!saved) {
+        return;
+      }
+      this.exportPath = saved.path;
+      const count = Object.keys(graph.nodes).length;
+      this.update({
+        warnings,
+        status:
+          warnings.length === 0
+            ? `Exported ${count} node(s) to ${saved.name}.`
+            : `Exported ${count} node(s) to ${saved.name} with ${warnings.length} warning(s).`,
+      });
+    } catch (error) {
+      this.setStatus(`Export failed: ${errorMessage(error)}`);
     }
   }
 
@@ -689,6 +722,7 @@ export class Editor {
   private replaceGraph(graph: GraphModel, filePath: string | null, status: string, warnings: string[], frameAll: boolean): void {
     this.attach(graph);
     this.filePath = filePath;
+    this.exportPath = null;
     this.update({ status, warnings, dirty: false, fileName: null, filePath, selectionCount: 0 });
     this.notifyGraphReplaced(graph, frameAll);
   }

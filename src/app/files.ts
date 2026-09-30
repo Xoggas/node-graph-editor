@@ -14,9 +14,15 @@ export interface SavedFile {
   name: string;
 }
 
+export interface SaveOptions {
+  title?: string;
+  defaultPath?: string;
+}
+
 export interface GraphFileSystem {
   open(): Promise<OpenedFile | null>;
-  save(text: string, currentPath: string | null, chooseLocation: boolean): Promise<SavedFile | null>;
+  /** `options.defaultPath` pre-fills the dialog when there is no current path. */
+  save(text: string, currentPath: string | null, chooseLocation: boolean, options?: SaveOptions): Promise<SavedFile | null>;
   confirm(message: string): Promise<boolean>;
   /** Resolves null when the user cancels. */
   pickPackFolder(): Promise<string | null>;
@@ -44,10 +50,14 @@ class TauriFileSystem implements GraphFileSystem {
     return { path, name: fileName(path), text };
   }
 
-  async save(text: string, currentPath: string | null, chooseLocation: boolean): Promise<SavedFile | null> {
+  async save(text: string, currentPath: string | null, chooseLocation: boolean, options: SaveOptions = {}): Promise<SavedFile | null> {
     let path = currentPath;
     if (!path || chooseLocation) {
-      path = await save({ title: "Save node graph", defaultPath: currentPath ?? "graph.json", filters: FILTERS });
+      path = await save({
+        title: options.title ?? "Save node graph",
+        defaultPath: currentPath ?? options.defaultPath ?? "graph.json",
+        filters: FILTERS,
+      });
     }
     if (!path) {
       return null;
@@ -103,8 +113,8 @@ class BrowserFileSystem implements GraphFileSystem {
     });
   }
 
-  async save(text: string, currentPath: string | null): Promise<SavedFile | null> {
-    const name = currentPath ? fileName(currentPath) : "graph.json";
+  async save(text: string, currentPath: string | null, _chooseLocation: boolean, options: SaveOptions = {}): Promise<SavedFile | null> {
+    const name = fileName(currentPath ?? options.defaultPath ?? "graph.json");
     const url = URL.createObjectURL(new Blob([text], { type: "application/json" }));
     const link = document.createElement("a");
     link.href = url;

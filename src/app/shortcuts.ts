@@ -89,6 +89,22 @@ export const shortcuts: Shortcut[] = [
     run: ({ editor }) => void editor.save(true),
   },
   {
+    group: "File",
+    description: "Export for the engine",
+    keys: ["Ctrl+E"],
+    bindings: [{ code: "KeyE", ctrl: true }],
+    global: true,
+    run: ({ editor }) => void editor.exportGraph(),
+  },
+  {
+    group: "File",
+    description: "Export as…",
+    keys: ["Ctrl+Shift+E"],
+    bindings: [{ code: "KeyE", ctrl: true, shift: true }],
+    global: true,
+    run: ({ editor }) => void editor.exportGraph(true),
+  },
+  {
     group: "Edit",
     description: "Undo",
     keys: ["Ctrl+Z"],

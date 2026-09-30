@@ -33,6 +33,7 @@ Requires Node.js and a Rust toolchain ([Tauri prerequisites](https://tauri.app/s
 | Frame selection / Frame all | F / Shift+F or Home |
 | Zoom in / out / 100% | Ctrl+= / Ctrl+- / Ctrl+0 |
 | New / Open / Save / Save As | Ctrl+N / Ctrl+O / Ctrl+S / Ctrl+Shift+S |
+| Export for the engine / Export As | Ctrl+E / Ctrl+Shift+E |
 | Shortcut reference | F1 |
 | Add node | Drag from the palette, or click an item to add it at the view center |
 
@@ -159,6 +160,34 @@ Graphs are JSON (`"format": "node-graph", "version": 2`). Each node stores its s
 name, position and `data`; connections reference `{ node, port }` with the schema port key. Nodes whose
 schema is missing load as placeholders and are written back unchanged; connections that cannot be
 restored (e.g. to a removed repeated port) are kept in `unresolvedConnections`.
+
+## Runtime export
+
+**Export** (Ctrl+E) writes the engine version of the graph — a compact single-line JSON without editor
+data (positions, names, viewport, schema versions, connection ids). The first export asks where to save
+(`<graph>.runtime.json` next to the graph by default); later exports overwrite it, Ctrl+Shift+E picks a
+new file.
+
+```jsonc
+{
+  "format": "node-graph-runtime", "version": 1,
+  "graph": "<graph id>", "pack": "pumpkin-quest",
+  "entry": "<start node id>",                        // node of the schema named by pack.json "export.entry"
+  "types": { "dialogue.line": { "nodeType": "Blocking" } },   // schema meta, once per type
+  "nodes": {
+    "<node id>": {
+      "type": "dialogue.line",
+      "data": { "speaker": "<resource id>", "emotion": "Idle", "line": "1.1" },  // localization key resolved
+      "inputs":  { "in":   ["<node id>"] },          // port key → connected nodes; empty ports omitted
+      "outputs": { "next": ["<node id>"] }
+    }
+  }
+}
+```
+
+Texts stay in the pack's `localization/<language>.json` files. Problems (no start node, deleted
+references, texts without a key, nodes without a schema) are reported as warnings and do not stop the
+export.
 
 ## Performance notes
 

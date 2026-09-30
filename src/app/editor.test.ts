@@ -35,8 +35,11 @@ class FakeFiles implements Partial<GraphFileSystem> {
   async readPackFolder() {
     return packFiles;
   }
-  async save(_text: string, current: string | null) {
-    return { path: current ?? "C:/graphs/g.json", name: "g.json" };
+  saves: { text: string; current: string | null; choose: boolean; defaultPath?: string }[] = [];
+  async save(text: string, current: string | null, choose: boolean, options: { defaultPath?: string } = {}) {
+    this.saves.push({ text, current, choose, defaultPath: options.defaultPath });
+    const path = current ?? options.defaultPath ?? "C:/graphs/g.json";
+    return { path, name: path.split("/").pop()! };
   }
 }
 
@@ -107,5 +110,26 @@ describe("localization", () => {
     await tick();
     editor.setTexts("1.2", { ru: "Новый", en: "" });
     expect(texts("1.2")).toEqual({ ru: "Новый", en: undefined });
+  });
+});
+
+describe("export", () => {
+  it("writes a compact runtime file next to the graph and re-exports without asking", async () => {
+    const id = editor.addNode("line", { x: 0, y: 0 })!;
+    await editor.save();
+    expect(editor.getSnapshot().fileName).toBe("g.json");
+
+    await editor.exportGraph();
+    const first = files.saves[files.saves.length - 1]!;
+    expect(first).toMatchObject({ current: null, choose: true, defaultPath: "C:/graphs/g.runtime.json" });
+    expect(first.text).not.toContain("\n");
+    const runtime = JSON.parse(first.text);
+    expect(runtime.nodes[id]).toEqual({ type: "line", data: { text: "1.1" } });
+    expect(editor.getSnapshot().status).toContain("Exported 1 node(s) to g.runtime.json");
+
+    await editor.exportGraph();
+    expect(files.saves[files.saves.length - 1]).toMatchObject({ current: "C:/graphs/g.runtime.json", choose: false });
+    await editor.exportGraph(true);
+    expect(files.saves[files.saves.length - 1]).toMatchObject({ choose: true });
   });
 });
