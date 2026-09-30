@@ -156,6 +156,15 @@ be read.
 `tools/import-unity-resources.mjs <UnityProject/Assets>` regenerates the Pumpkin Quest library from the
 Unity project (characters with emotions, backgrounds, music, sfx, diary entries), keeping the asset ids.
 
+`tools/import-unity-graph.mjs <UnityProject/Assets> <out.json> [graph name]` converts a baked Unity
+dialogue graph (`Resources/Graphs/<name>_Baked.json`, positions from `<name>.asset`) into an editor graph
+and writes the `Dialogues` localization tables into the pack's `localization/*.json`:
+
+- node ids are kept, so references to choices stay valid;
+- a choice with a condition becomes `If(condition) → Choice`;
+- duplicates become one node with linked copies — same type, data and text, and outputs leading to the same
+  nodes (flow) or the same inputs (conditions); choices that conditions refer to are never merged.
+
 See `docs/schema-design.md` for the full design, including the planned resource library,
 localization and the remaining field types.
 
