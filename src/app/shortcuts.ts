@@ -310,6 +310,7 @@ export const mouseControls: { description: string; keys: string[] }[] = [
   { description: "Zoom", keys: ["Wheel"] },
   { description: "Select / add / toggle", keys: ["Click", "Shift+click", "Ctrl+click"] },
   { description: "Box select", keys: ["Drag on empty space"] },
+  { description: "Select connections (box: only when it touches no node)", keys: ["Click / Shift / Ctrl on a wire", "Box across wires"] },
   { description: "Connect", keys: ["Drag from a port"] },
   { description: "Context menu", keys: ["Right click"] },
   { description: "Add node", keys: ["Drag or click in the palette"] },

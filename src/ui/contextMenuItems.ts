@@ -8,7 +8,10 @@ export function buildContextMenu(request: ContextMenuRequest, editor: Editor, re
   const { target } = request;
 
   if (target.kind === "edge") {
-    return [{ label: "Delete connection", shortcut: shortcutLabel("delete"), danger: true, action: () => renderer.deleteSelection() }];
+    const edges = renderer.selectedConnectionIds().length;
+    const label =
+      renderer.selectedViewIds().length > 0 ? "Delete selection" : edges > 1 ? `Delete ${edges} connections` : "Delete connection";
+    return [{ label, shortcut: shortcutLabel("delete"), danger: true, action: () => renderer.deleteSelection() }];
   }
 
   if (target.kind === "canvas") {

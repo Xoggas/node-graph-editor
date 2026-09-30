@@ -21,7 +21,7 @@ Requires Node.js and a Rust toolchain ([Tauri prerequisites](https://tauri.app/s
 | --- | --- |
 | Pan | Right or middle mouse drag, or Space + left drag |
 | Zoom | Mouse wheel (around the cursor) |
-| Select | Click; Shift adds, Ctrl toggles; drag on empty space for box selection |
+| Select | Click; Shift adds, Ctrl toggles; drag on empty space for box selection. Works for nodes and connections; a box picks connections only when it touches no node |
 | Edit a field | Click it on the node; double-click the header to rename |
 | Move | Drag selected nodes |
 | Connect | Drag from a port to a compatible port (compatible ports are highlighted) |
@@ -30,7 +30,7 @@ Requires Node.js and a Rust toolchain ([Tauri prerequisites](https://tauri.app/s
 | Create linked copy / Go to the next linked copy | Ctrl+L / Ctrl+Shift+L |
 | Rename node / Context menu | F2 / Right click (right drag pans) |
 | Find nodes (name, type, texts in all languages, fields) | Ctrl+F — arrows preview, Enter goes, Esc closes |
-| Delete | Delete / Backspace (selected nodes or connection) |
+| Delete | Delete / Backspace (selected nodes and connections) |
 | Nudge selection | Arrows (Shift: further) |
 | Select all / Clear selection | Ctrl+A / Esc |
 | Frame selection / Frame all | F / Shift+F or Home |

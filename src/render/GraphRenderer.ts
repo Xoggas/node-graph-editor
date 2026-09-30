@@ -4,7 +4,7 @@ import type { GraphChange, GraphModel } from "../graph/graph";
 import { clampZoom, type Connection, type Port, type Vec2, type Viewport } from "../graph/types";
 import { DotGrid } from "./DotGrid";
 import { EdgeView, traceEdgePath } from "./EdgeView";
-import { type Bounds, computeEdgePath, hitTestEdge, rectsIntersect } from "./geometry";
+import { type Bounds, computeEdgePath, edgeIntersectsBounds, hitTestEdge, rectsIntersect } from "./geometry";
 import { clampNumber } from "../graph/schema";
 import { localizationKey } from "../graph/localization";
 import { physicalKey } from "../app/keys";
@@ -46,7 +46,15 @@ type Interaction =
       applied: Vec2;
     }
   | { kind: "connect"; pointerId: number; from: Port; fromView: NodeView; cursor: Vec2; target: { port: Port; view: NodeView } | null }
-  | { kind: "box"; pointerId: number; start: Vec2; current: Vec2; mode: "replace" | "add" | "toggle"; initial: Set<string> }
+  | {
+      kind: "box";
+      pointerId: number;
+      start: Vec2;
+      current: Vec2;
+      mode: "replace" | "add" | "toggle";
+      initial: Set<string>;
+      initialEdges: Set<string>;
+    }
   /** Pressing a checkbox or an enum segment; applied on release over the same target. */
   | { kind: "press"; pointerId: number; view: NodeView; control: Control; segment: number | null };
 
@@ -91,7 +99,8 @@ export class GraphRenderer {
   private readonly selection = new Set<string>();
   /** Other views of the selected nodes, drawn highlighted. */
   private linkHighlights = new Set<string>();
-  private selectedEdge: EdgeView | null = null;
+  /** Selected connections by id. */
+  private readonly selectedEdges = new Map<string, EdgeView>();
   private hovered: NodeView | null = null;
   private interaction: Interaction = { kind: "none" };
   private highlightCache = new Map<string, PortHighlight>();
@@ -335,9 +344,13 @@ export class GraphRenderer {
     return [...this.selection];
   }
 
+  selectedConnectionIds(): string[] {
+    return [...this.selectedEdges.keys()];
+  }
+
   /** Selects nodes and linked copies by view id. */
   selectViews(viewIds: Iterable<string>): void {
-    this.selectEdge(null);
+    this.setEdgeSelection(new Set());
     const ids = new Set([...viewIds].filter((id) => this.nodeViews.has(id)));
     this.setSelection(ids);
     this.bringToFront(ids);
@@ -349,7 +362,7 @@ export class GraphRenderer {
 
   clearSelection(): void {
     this.setSelection(new Set());
-    this.selectEdge(null);
+    this.setEdgeSelection(new Set());
   }
 
   nudgeSelection(dx: number, dy: number): void {
@@ -390,12 +403,12 @@ export class GraphRenderer {
 
   deleteSelection(): void {
     const nodeIds = [...this.selection];
-    const connectionIds = this.selectedEdge ? [this.selectedEdge.connection.id] : [];
+    const connectionIds = [...this.selectedEdges.keys()];
     if (nodeIds.length === 0 && connectionIds.length === 0) {
       return;
     }
     this.setSelection(new Set());
-    this.selectEdge(null);
+    this.setEdgeSelection(new Set());
     this.editor.deleteElements(nodeIds, connectionIds);
   }
 
@@ -438,7 +451,7 @@ export class GraphRenderer {
     this.restyleEdges.clear();
     this.translatingEdges = new Set();
     this.selection.clear();
-    this.selectedEdge = null;
+    this.selectedEdges.clear();
     this.hovered = null;
     this.linkHighlights = new Set();
     for (const node of this.graph.nodes) {
@@ -499,8 +512,8 @@ export class GraphRenderer {
       case "connectionRemoved": {
         const view = this.edgeViews.get(change.connection.id);
         if (view) {
-          if (this.selectedEdge === view) {
-            this.selectedEdge = null;
+          if (this.selectedEdges.delete(change.connection.id)) {
+            this.updateSelectionCount();
           }
           view.destroy();
           this.edgeViews.delete(change.connection.id);
@@ -830,7 +843,7 @@ export class GraphRenderer {
     }
     this.selection.clear();
     next.forEach((id) => this.selection.add(id));
-    this.editor.setSelectionCount(this.selection.size);
+    this.updateSelectionCount();
     this.updateLinkHighlights();
     this.requestFrame();
   }
@@ -864,21 +877,28 @@ export class GraphRenderer {
     }
   }
 
-  private selectEdge(view: EdgeView | null): void {
-    if (this.selectedEdge === view) {
-      return;
+  /** Replaces the selected connections (by id); selected edges are drawn on top. */
+  private setEdgeSelection(next: Set<string>): void {
+    for (const [id, view] of this.selectedEdges) {
+      if (next.has(id)) continue;
+      view.selected = false;
+      view.redraw(this.edgeScale);
+      this.selectedEdges.delete(id);
     }
-    if (this.selectedEdge) {
-      this.selectedEdge.selected = false;
-      this.selectedEdge.redraw(this.edgeScale);
-    }
-    this.selectedEdge = view;
-    if (view) {
+    for (const id of next) {
+      const view = this.edgeViews.get(id);
+      if (!view || this.selectedEdges.has(id)) continue;
       view.selected = true;
       view.redraw(this.edgeScale);
       this.edgeLayer.addChild(view.graphics);
+      this.selectedEdges.set(id, view);
     }
+    this.updateSelectionCount();
     this.requestFrame();
+  }
+
+  private updateSelectionCount(): void {
+    this.editor.setSelectionCount(this.selection.size + this.selectedEdges.size);
   }
 
   private bringToFront(nodeIds: Iterable<string>): void {
@@ -1027,13 +1047,14 @@ export class GraphRenderer {
     const toggle = event.ctrlKey || event.metaKey;
 
     if (hit?.kind === "node" && hit.hit.kind === "port") {
-      this.selectEdge(null);
+      this.setEdgeSelection(new Set());
       this.interaction = { kind: "connect", pointerId: event.pointerId, from: hit.hit.port, fromView: hit.view, cursor: world, target: null };
       this.invalidateAllNodes();
       this.editor.setStatus(`Connecting from ${hit.hit.port.displayName}...`);
     } else if (hit?.kind === "node") {
       const nodeId = hit.view.viewId;
-      this.selectEdge(null);
+      // Shift / Ctrl keep selected connections, like selected nodes.
+      if (!toggle && !additive) this.setEdgeSelection(new Set());
       if (toggle) {
         const next = new Set(this.selection);
         if (!next.delete(nodeId)) {
@@ -1082,14 +1103,22 @@ export class GraphRenderer {
         };
       }
     } else if (hit?.kind === "edge") {
-      this.setSelection(new Set());
-      this.selectEdge(hit.view);
-      this.editor.setStatus("Connection selected.");
+      const id = hit.view.connection.id;
+      if (toggle) {
+        const next = new Set(this.selectedEdges.keys());
+        if (!next.delete(id)) next.add(id);
+        this.setEdgeSelection(next);
+      } else if (additive) {
+        this.setEdgeSelection(new Set([...this.selectedEdges.keys(), id]));
+      } else {
+        this.setSelection(new Set());
+        this.setEdgeSelection(new Set([id]));
+      }
     } else {
-      this.selectEdge(null);
       const mode = toggle ? "toggle" : additive ? "add" : "replace";
       if (mode === "replace") {
         this.setSelection(new Set());
+        this.setEdgeSelection(new Set());
       }
       this.interaction = {
         kind: "box",
@@ -1098,6 +1127,7 @@ export class GraphRenderer {
         current: point,
         mode,
         initial: new Set(this.selection),
+        initialEdges: new Set(this.selectedEdges.keys()),
       };
     }
 
@@ -1237,13 +1267,18 @@ export class GraphRenderer {
     let target: ContextTarget;
     if (hit?.kind === "node") {
       const viewId = hit.view.viewId;
-      this.selectEdge(null);
-      if (!this.selection.has(viewId)) this.setSelection(new Set([viewId]));
+      if (!this.selection.has(viewId)) {
+        this.setEdgeSelection(new Set());
+        this.setSelection(new Set([viewId]));
+      }
       target = { kind: "node", viewId };
     } else if (hit?.kind === "edge") {
-      this.setSelection(new Set());
-      this.selectEdge(hit.view);
-      target = { kind: "edge", connectionId: hit.view.connection.id };
+      const id = hit.view.connection.id;
+      if (!this.selectedEdges.has(id)) {
+        this.setSelection(new Set());
+        this.setEdgeSelection(new Set([id]));
+      }
+      target = { kind: "edge", connectionId: id };
     } else {
       target = { kind: "canvas" };
     }
@@ -1307,20 +1342,31 @@ export class GraphRenderer {
     const a = this.screenToWorld(box.start);
     const b = this.screenToWorld(box.current);
     const area: Bounds = { minX: Math.min(a.x, b.x), minY: Math.min(a.y, b.y), maxX: Math.max(a.x, b.x), maxY: Math.max(a.y, b.y) };
+    const apply = (next: Set<string>, initial: Set<string>, id: string) => {
+      if (box.mode === "toggle" && initial.has(id)) next.delete(id);
+      else next.add(id);
+    };
     const next = box.mode === "replace" ? new Set<string>() : new Set(box.initial);
+    let touchedNodes = false;
     for (const view of this.nodeViews.values()) {
       const { x, y, width, height } = view.rect;
-      if (!rectsIntersect({ minX: x, minY: y, maxX: x + width, maxY: y + height }, area)) {
-        continue;
+      if (rectsIntersect({ minX: x, minY: y, maxX: x + width, maxY: y + height }, area)) {
+        touchedNodes = true;
+        apply(next, box.initial, view.viewId);
       }
-      const id = view.viewId;
-      if (box.mode === "toggle" && box.initial.has(id)) {
-        next.delete(id);
-      } else {
-        next.add(id);
+    }
+    // Connections are picked only by a box over empty space: a box over nodes would otherwise also
+    // grab unrelated wires passing by.
+    const nextEdges = box.mode === "replace" ? new Set<string>() : new Set(box.initialEdges);
+    if (!touchedNodes) {
+      for (const [id, view] of this.edgeViews) {
+        if (view.path && rectsIntersect(view.bounds, area) && edgeIntersectsBounds(view.path, area)) {
+          apply(nextEdges, box.initialEdges, id);
+        }
       }
     }
     this.setSelection(next);
+    this.setEdgeSelection(nextEdges);
   }
 
   // --- Keyboard ------------------------------------------------------------------------

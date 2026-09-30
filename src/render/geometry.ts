@@ -94,6 +94,42 @@ export function hitTestEdge(path: EdgePath, point: Vec2, tolerance: number): boo
   return false;
 }
 
+/** True when any part of the edge passes through `area`. */
+export function edgeIntersectsBounds(path: EdgePath, area: Bounds): boolean {
+  const points = path.kind === "route" ? path.points : Array.from({ length: 33 }, (_, i) => evaluateCubic(path, i / 32));
+  for (let i = 1; i < points.length; i++) {
+    if (segmentIntersectsBounds(points[i - 1], points[i], area)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/** Liang–Barsky clipping: whether the segment a→b has a part inside the box. */
+function segmentIntersectsBounds(a: Vec2, b: Vec2, box: Bounds): boolean {
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  let t0 = 0;
+  let t1 = 1;
+  const edges: [number, number][] = [
+    [-dx, a.x - box.minX],
+    [dx, box.maxX - a.x],
+    [-dy, a.y - box.minY],
+    [dy, box.maxY - a.y],
+  ];
+  for (const [p, q] of edges) {
+    if (p === 0) {
+      if (q < 0) return false;
+    } else {
+      const t = q / p;
+      if (p < 0) t0 = Math.max(t0, t);
+      else t1 = Math.min(t1, t);
+      if (t0 > t1) return false;
+    }
+  }
+  return true;
+}
+
 function evaluateCubic(path: Extract<EdgePath, { kind: "bezier" }>, t: number): Vec2 {
   const u = 1 - t;
   const a = u * u * u;
