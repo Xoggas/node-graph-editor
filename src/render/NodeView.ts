@@ -373,13 +373,15 @@ export class NodeView {
   /** Border, linked-copy frame and port dots, drawn in both looks. */
   private drawOutline(g: Graphics): void {
     const { width, height } = this;
+    // The border takes the node's color (muted at rest, full on hover); selection keeps its own color.
+    const accent = this.node.isPlaceholder ? null : this.node.schema?.color ?? null;
     const borderColor = this.selected
       ? theme.nodeBorderSelected
       : this.linkHighlighted
         ? theme.linkHighlight
         : this.hovered
-          ? theme.nodeBorderHover
-          : theme.nodeBorder;
+          ? accent !== null ? accent : theme.nodeBorderHover
+          : accent !== null ? mix(theme.nodeBorder, accent, 0.65) : theme.nodeBorder;
     const borderWidth = this.selected || this.linkHighlighted ? 2 : 1;
     g.roundRect(0, 0, width, height, CORNER_RADIUS).stroke({ width: borderWidth, color: borderColor, alignment: 1 });
     if (this.alias) {

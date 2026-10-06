@@ -3,7 +3,7 @@ import type { Editor, GraphReplacedOptions } from "../app/editor";
 import type { GraphChange, GraphModel } from "../graph/graph";
 import { clampZoom, type Connection, NOTE_DEFAULT_SIZE, type Port, type Size, type Vec2, type Viewport } from "../graph/types";
 import { DotGrid } from "./DotGrid";
-import { EdgeView, traceEdgePath } from "./EdgeView";
+import { type EdgeFocus, EdgeView, traceEdgePath } from "./EdgeView";
 import { type Bounds, computeEdgePath, edgeIntersectsBounds, hitTestEdge, rectsIntersect } from "./geometry";
 import { clampNumber } from "../graph/schema";
 import { localizationKey } from "../graph/localization";
@@ -35,6 +35,9 @@ const EDGE_BASE_WIDTH = 2.25;
 const BOX_SELECT_THRESHOLD = 4;
 /** Max CPU time per frame spent re-stroking edges after a zoom step; the rest continues next frame. */
 const EDGE_RESTYLE_BUDGET_MS = 6;
+/** How long the pointer rests on a node before its edges are emphasized, and is away before that ends. */
+const HOVER_FOCUS_DELAY_MS = 180;
+const HOVER_UNFOCUS_DELAY_MS = 120;
 
 type Hit =
   | { kind: "node"; view: NodeView; hit: NodeHit }
@@ -123,6 +126,11 @@ export class GraphRenderer {
   /** Selected connections by id. */
   private readonly selectedEdges = new Map<string, EdgeView>();
   private hovered: NodeView | null = null;
+  /** Views whose edges are emphasized: the selected nodes, else the hovered one (see `updateEdgeFocus`). */
+  private focusedViews = new Set<string>();
+  /** The hovered node whose edges are emphasized; it follows `hovered` after a short delay. */
+  private focusHovered: NodeView | null = null;
+  private focusHoverTimer: ReturnType<typeof setTimeout> | null = null;
   private interaction: Interaction = { kind: "none" };
   private highlightCache = new Map<string, PortHighlight>();
   /** Connections on routes from lines to the choices they show get dashed (see `choiceRouteConnections`). */
@@ -231,6 +239,7 @@ export class GraphRenderer {
 
   destroy(): void {
     this.destroyed = true;
+    if (this.focusHoverTimer !== null) clearTimeout(this.focusHoverTimer);
     if (!this.initialized) {
       return;
     }
@@ -516,6 +525,8 @@ export class GraphRenderer {
     this.selection.clear();
     this.selectedEdges.clear();
     this.hovered = null;
+    this.focusHovered = null;
+    this.focusedViews = new Set();
     this.linkHighlights = new Set();
     for (const node of this.graph.nodes) {
       this.addNodeView(node.id);
@@ -702,7 +713,11 @@ export class GraphRenderer {
 
   private addEdgeView(connection: Connection): void {
     const output = this.graph.getPort(connection.outputPortId);
-    const view = new EdgeView(connection, output ? this.portColor(output.typeId) : theme.connection);
+    const fallback = output ? this.portColor(output.typeId) : theme.connection;
+    // An edge blends from its source node's color into its target's, so it tells where it goes.
+    const nodeColor = (viewId: string) => this.graph.viewNode(viewId)?.schema?.color ?? fallback;
+    const view = new EdgeView(connection, nodeColor(connection.outputViewId), nodeColor(connection.inputViewId));
+    view.setFocus(this.edgeFocus(connection));
     this.edgeViews.set(connection.id, view);
     this.edgeLayer.addChild(view.graphics);
     this.dirtyEdges.add(connection.id);
@@ -1010,6 +1025,33 @@ export class GraphRenderer {
       }
     }
     this.linkHighlights = next;
+    this.updateEdgeFocus();
+  }
+
+  /**
+   * Brightens the edges of the selected nodes (or of the hovered node when nothing is selected) and dims
+   * the others; restyles only edges whose state changed.
+   */
+  private updateEdgeFocus(): void {
+    const selected = [...this.selection].filter((id) => this.nodeViews.has(id));
+    const hovered = this.focusHovered && this.nodeViews.get(this.focusHovered.viewId) === this.focusHovered ? this.focusHovered : null;
+    const next = new Set(selected.length > 0 ? selected : hovered ? [hovered.viewId] : []);
+    if (next.size === this.focusedViews.size && [...next].every((id) => this.focusedViews.has(id))) return;
+    this.focusedViews = next;
+    for (const [id, view] of this.edgeViews) {
+      const focus = this.edgeFocus(view.connection);
+      // Dimming needs no redraw; only focused edges get wider.
+      if (view.setFocus(focus)) this.restyleEdges.add(id);
+      // Focused edges go on top of the dimmed ones; selected edges stay topmost.
+      if (focus === "focused" && !view.selected) this.edgeLayer.addChild(view.graphics);
+    }
+    for (const view of this.selectedEdges.values()) this.edgeLayer.addChild(view.graphics);
+    this.requestFrame();
+  }
+
+  private edgeFocus(connection: Connection): EdgeFocus {
+    if (this.focusedViews.size === 0) return "none";
+    return this.focusedViews.has(connection.outputViewId) || this.focusedViews.has(connection.inputViewId) ? "focused" : "dimmed";
   }
 
   private setNodeSelected(nodeId: string, selected: boolean): void {
@@ -1158,7 +1200,31 @@ export class GraphRenderer {
       view.hoveredSegment = segment;
       view.redraw();
     }
+    this.scheduleHoverFocus();
     this.requestFrame();
+  }
+
+  /**
+   * Emphasizes the hovered node's edges once the pointer rests on it, so passing over nodes does not
+   * dim and restore the whole graph.
+   */
+  private scheduleHoverFocus(): void {
+    if (this.focusHovered === this.hovered) {
+      if (this.focusHoverTimer !== null) {
+        clearTimeout(this.focusHoverTimer);
+        this.focusHoverTimer = null;
+      }
+      return;
+    }
+    if (this.focusHoverTimer !== null) clearTimeout(this.focusHoverTimer);
+    this.focusHoverTimer = setTimeout(
+      () => {
+        this.focusHoverTimer = null;
+        this.focusHovered = this.hovered;
+        this.updateEdgeFocus();
+      },
+      this.hovered ? HOVER_FOCUS_DELAY_MS : HOVER_UNFOCUS_DELAY_MS,
+    );
   }
 
   // --- Pointer input ---------------------------------------------------------------

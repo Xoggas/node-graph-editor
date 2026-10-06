@@ -1,14 +1,23 @@
-import { Graphics } from "pixi.js";
+import { FillGradient, Graphics } from "pixi.js";
 import type { Connection } from "../graph/types";
 import type { Vec2 } from "../graph/types";
 import { type Bounds, type EdgePath, edgeBounds, ROUTE_CORNER_RADIUS, samplePath, translatePath } from "./geometry";
 import { theme } from "./theme";
 
 const EDGE_WIDTH = 2.25;
+const FOCUSED_EDGE_WIDTH = 3.25;
 const SELECTED_EDGE_WIDTH = 4;
+/** Opacity of edges that do not touch the focused nodes. */
+const DIMMED_ALPHA = 0.18;
 /** Dash and gap (world px at 100%) of edges drawn dashed. */
 const DASH = 10;
 const GAP = 6;
+
+/**
+ * How an edge relates to the focused nodes (the selection, else the hovered node): it touches one, it does
+ * not, or nothing is focused.
+ */
+export type EdgeFocus = "none" | "focused" | "dimmed";
 
 export class EdgeView {
   readonly graphics = new Graphics();
@@ -17,11 +26,33 @@ export class EdgeView {
   selected = false;
   /** On a route from a line to a choice it shows (see `choiceRouteConnections`). */
   dashed = false;
+  private focus: EdgeFocus = "none";
 
+  /**
+   * @param fromColor color at the output end (the source node's color)
+   * @param toColor color at the input end (the target node's color); the edge blends from one to the other
+   */
   constructor(
     readonly connection: Connection,
-    private readonly color: number,
+    private readonly fromColor: number,
+    private readonly toColor: number,
   ) {}
+
+  /**
+   * Dimming is the object's alpha, so it applies at once to every edge without redrawing; only the width of
+   * focused edges changes the geometry. Returns whether the edge has to be redrawn.
+   */
+  setFocus(focus: EdgeFocus): boolean {
+    if (this.focus === focus) return false;
+    const widthChanged = (this.focus === "focused") !== (focus === "focused");
+    this.focus = focus;
+    this.applyAlpha();
+    return widthChanged;
+  }
+
+  private applyAlpha(): void {
+    this.graphics.alpha = this.focus === "dimmed" && !this.selected ? DIMMED_ALPHA : 1;
+  }
 
   update(path: EdgePath | null, scale: number): void {
     this.path = path;
@@ -51,7 +82,7 @@ export class EdgeView {
       this.bounds = { minX: 0, minY: 0, maxX: -1, maxY: -1 };
       return;
     }
-    const width = (this.selected ? SELECTED_EDGE_WIDTH : EDGE_WIDTH) * scale;
+    const width = (this.selected ? SELECTED_EDGE_WIDTH : this.focus === "focused" ? FOCUSED_EDGE_WIDTH : EDGE_WIDTH) * scale;
     // Geometry is drawn in world coordinates; undo any pending translation offset first.
     const { x: offsetX, y: offsetY } = this.graphics.position;
     const path = offsetX === 0 && offsetY === 0 ? this.path : translatePath(this.path, -offsetX, -offsetY);
@@ -60,14 +91,55 @@ export class EdgeView {
     } else {
       traceEdgePath(g, path);
     }
-    const color = this.selected ? theme.connectionSelected : this.dashed ? theme.choiceRoute : this.color;
-    g.stroke({ width, color, cap: "round", join: "round" });
+    this.applyAlpha();
+    if (this.selected) {
+      g.stroke({ width, color: theme.connectionSelected, cap: "round", join: "round" });
+    } else if (this.dashed) {
+      g.stroke({ width, color: theme.choiceRoute, cap: "round", join: "round" });
+    } else if (this.fromColor === this.toColor) {
+      g.stroke({ width, color: this.fromColor, cap: "round", join: "round" });
+    } else {
+      // The gradient runs left to right over the edge's bounds; flip it when the edge runs right to left.
+      const leftToRight = endPoint(path).x >= startPoint(path).x;
+      const fill = leftToRight ? gradient(this.fromColor, this.toColor) : gradient(this.toColor, this.fromColor);
+      g.stroke({ width, fill, cap: "round", join: "round" });
+    }
     this.bounds = edgeBounds(this.path, width);
   }
 
   destroy(): void {
     this.graphics.destroy();
   }
+}
+
+/** Left-to-right gradients by color pair, shared by all edges (each one is a texture). */
+const gradients = new Map<string, FillGradient>();
+
+function gradient(left: number, right: number): FillGradient {
+  const key = `${left}:${right}`;
+  let fill = gradients.get(key);
+  if (!fill) {
+    fill = new FillGradient({
+      type: "linear",
+      start: { x: 0, y: 0.5 },
+      end: { x: 1, y: 0.5 },
+      colorStops: [
+        { offset: 0, color: left },
+        { offset: 1, color: right },
+      ],
+      textureSpace: "local",
+    });
+    gradients.set(key, fill);
+  }
+  return fill;
+}
+
+function startPoint(path: EdgePath): Vec2 {
+  return path.kind === "bezier" ? path.start : path.points[0];
+}
+
+function endPoint(path: EdgePath): Vec2 {
+  return path.kind === "bezier" ? path.end : path.points[path.points.length - 1];
 }
 
 /** Adds dashes along a polyline to the graphics path (stroke it afterwards). */
