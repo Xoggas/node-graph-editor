@@ -13,7 +13,6 @@ import { type Problem, validateGraph } from "../graph/validate";
 import type { NoteContent, Vec2 } from "../graph/types";
 import { onUiLanguageChange, t } from "../i18n";
 import { relabelPorts } from "../graph/node";
-import { bundledPack } from "./bundledPack";
 import { createFileSystem, type GraphFileSystem, type OpenedFile } from "./files";
 
 export interface PackInfo {
@@ -100,7 +99,8 @@ type LocalizationListener = (change: LocalizationChange | null) => void;
 
 export class Editor {
   private currentRegistry = new SchemaRegistry();
-  private packSource: { kind: "folder"; path: string } | { kind: "bundled" } | null = null;
+  /** The schema pack folder; null until one is chosen. */
+  private packFolder: string | null = null;
   private readonly files: GraphFileSystem;
   private currentGraph: GraphModel;
   private unsubscribeGraph: () => void = () => {};
@@ -199,7 +199,6 @@ export class Editor {
 
   // --- Schema pack ------------------------------------------------------------
 
-  /** Loads the remembered pack folder, or the built-in example pack. */
   /** Startup: the last schema pack folder, then the last opened or saved graph. */
   async start(): Promise<void> {
     await this.loadInitialPack();
@@ -220,17 +219,18 @@ export class Editor {
     }
   }
 
+  /** Loads the remembered pack folder; without one the editor has no node types until a pack is chosen. */
   async loadInitialPack(): Promise<void> {
     const folder = readStored(PACK_FOLDER_KEY);
-    if (folder) {
-      try {
-        await this.loadPackFolder(folder);
-        return;
-      } catch (error) {
-        this.setStatus(t("Could not load the schema pack from '{folder}': {error}", { folder, error: errorMessage(error) }), "error");
-      }
+    if (!folder) {
+      this.setStatus(t("Choose a schema pack folder with Pack… to get node types."), "info");
+      return;
     }
-    this.applyPack(bundledPack.files, { kind: "bundled" });
+    try {
+      await this.loadPackFolder(folder);
+    } catch (error) {
+      this.setStatus(t("Could not load the schema pack from '{folder}': {error}", { folder, error: errorMessage(error) }), "error");
+    }
   }
 
   async choosePackFolder(): Promise<void> {
@@ -253,10 +253,10 @@ export class Editor {
       if (!(await this.confirmDiscardLocalization())) {
         return;
       }
-      if (this.packSource?.kind === "folder") {
-        await this.loadPackFolder(this.packSource.path);
+      if (this.packFolder) {
+        await this.loadPackFolder(this.packFolder);
       } else {
-        this.applyPack(bundledPack.files, { kind: "bundled" });
+        await this.choosePackFolder();
       }
     } catch (error) {
       this.setStatus(t("Could not reload the schema pack: {error}", { error: errorMessage(error) }), "error");
@@ -265,14 +265,13 @@ export class Editor {
 
   private async loadPackFolder(folder: string): Promise<void> {
     const files = await this.files.readPackFolder(folder);
-    this.applyPack(files, { kind: "folder", path: folder });
+    this.applyPack(files, folder);
     writeStored(PACK_FOLDER_KEY, folder);
   }
 
   /** Switches to a new pack and rebinds the open graph to it; node data is preserved. */
-  applyPack(files: PackFile[], source: NonNullable<Editor["packSource"]>): void {
-    const packDir = source.kind === "folder" ? source.path : bundledPack.dir;
-    const pack = parseSchemaPack(files, packDir);
+  applyPack(files: PackFile[], folder: string): void {
+    const pack = parseSchemaPack(files, folder);
     const localization = LocalizationStore.fromFiles(pack.languages, files, pack.warnings);
     this.files.setResourceRoots(pack.resources.roots).catch((error) => this.setStatus(t("Resource folders: {error}", { error: errorMessage(error) }), "error"));
     const registry = new SchemaRegistry(pack);
@@ -281,7 +280,7 @@ export class Editor {
     const dirty = this.state.dirty;
 
     this.currentRegistry = registry;
-    this.packSource = source;
+    this.packFolder = folder;
     this.attach(graph);
     this.setLocalization(localization);
     const displayLanguage =
@@ -291,7 +290,7 @@ export class Editor {
         id: pack.id,
         name: pack.name,
         version: pack.version,
-        source: source.kind === "folder" ? source.path : bundledPack.label,
+        source: folder,
         nodeCount: pack.nodes.size,
         resourceCount: pack.resources.items.size,
       },
@@ -366,9 +365,9 @@ export class Editor {
     if (!store.isDirty) {
       return null;
     }
-    const packDir = this.packSource?.kind === "folder" ? this.packSource.path : bundledPack.dir;
+    const packDir = this.packFolder;
     if (!packDir) {
-      throw new Error(t("the built-in pack cannot be written; choose the pack folder first"));
+      throw new Error(t("no schema pack folder is chosen"));
     }
     const languages = [...store.dirtyLanguages];
     for (const language of languages) {

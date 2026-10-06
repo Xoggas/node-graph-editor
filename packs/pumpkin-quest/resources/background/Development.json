@@ -1,9 +1,0 @@
-{
-  "id": "84067e16-ec45-430d-ac6a-bb2dc205bcf8",
-  "type": "background",
-  "name": "Development",
-  "image": "Sprites/Background/Development.jpg",
-  "properties": {
-    "bloomIntensity": 0
-  }
-}

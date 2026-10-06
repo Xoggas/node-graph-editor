@@ -8,7 +8,7 @@ Designed to stay smooth with 1000+ nodes and thousands of connections.
 ```sh
 npm install
 npm run tauri dev      # desktop app with hot reload
-npm run dev            # frontend only, in a browser (file dialogs fall back to upload/download)
+npm run dev            # frontend only, in a browser (no schema pack: choosing a pack folder needs the desktop app)
 npm test               # graph model + serializer tests (vitest)
 npm run tauri build    # release build + installer
 ```
@@ -68,7 +68,6 @@ src/render/    Pixi renderer: NodeView (fields drawn from the schema), EdgeView,
 src/app/       Editor (document + pack state, commands), file access, keymap
 src/ui/        React components: canvas host, node palette, shortcut help
 src-tauri/     Rust shell: dialogs, atomic graph writes, reading schema pack folders
-packs/         Schema packs; pumpkin-quest is built in and used until another pack is chosen
 docs/          Design notes (docs/schema-design.md)
 ```
 
@@ -78,10 +77,12 @@ The editor has no built-in nodes. Node kinds, port types and resources come from
 a folder with `pack.json` and one JSON file per entity: a node type per file under `nodes/`, a resource
 per file under `resources/`. Subfolders are free-form (the editor reads every `.json` inside), so a game
 can load the pack by walking the folders. Choose it with **Pack…** in the palette; **Reload** re-reads it
-from disk (the open graph keeps its data). The last folder is remembered.
+from disk (the open graph keeps its data). The last folder is remembered; until a pack is chosen there
+are no node types. The editor ships no pack of its own: a game generates its pack (Pumpkin Quest does it
+from its Unity project with the `com.nodegraph.unity` package).
 
 ```text
-packs/pumpkin-quest/
+<pack folder>/
   pack.json                          ports, menus, resource types, resources.root, export
   nodes/<menu>/<name>.json           e.g. nodes/dialogue/line.json, nodes/flow/if.json
   resources/<type>/<name>.json       e.g. resources/character/Arleen.json
@@ -170,7 +171,7 @@ downscales images on demand. Only files inside that root can be read. A file wit
 
 ```jsonc
 // pack.json
-"resources": { "root": "../../../pumpkin-quest/PumpkinQuest/Assets" },
+"resources": { "root": "../.." },
 "resourceTypes": {
   "character": { "label": "Characters", "variants": { "emotions": { "label": "Emotion", "default": "Idle" } } },
   "background": { "label": "Backgrounds" },
@@ -182,19 +183,6 @@ downscales images on demand. Only files inside that root can be read. A file wit
   "variants": { "emotions": [{ "id": "Arleen_Laughter", "label": "Laughter", "image": "Sprites/Emotions/Arleen/Arleen_Laughter.png" }] }
 }
 ```
-
-`tools/import-unity-resources.mjs <UnityProject/Assets> [pack folder]` regenerates the Pumpkin Quest
-resources from the Unity project (characters with emotions, backgrounds, music, sfx, diary entries) as one
-file each, keeping the asset ids; it sets `resources.root` and removes files of resources that are gone.
-
-`tools/import-unity-graph.mjs <UnityProject/Assets> <out.json> [graph name]` converts a baked Unity
-dialogue graph (`Resources/Graphs/<name>_Baked.json`, positions from `<name>.asset`) into an editor graph
-and writes the `Dialogues` localization tables into the pack's `localization/*.json`:
-
-- node ids are kept, so references to choices stay valid;
-- a choice with a condition becomes `If(condition) → Choice`;
-- duplicates become one node with linked copies — same type, data and text, and outputs leading to the same
-  nodes (flow) or the same inputs (conditions); choices that conditions refer to are never merged.
 
 See `docs/schema-design.md` for the full design, including the planned resource library,
 localization and the remaining field types.

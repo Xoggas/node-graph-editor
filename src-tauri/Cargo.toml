@@ -1,6 +1,6 @@
 [package]
 name = "node-graph-editor"
-version = "0.1.0"
+version = "0.1.1"
 description = "Node graph editor"
 authors = ["Alexander Korotkunov"]
 edition = "2021"

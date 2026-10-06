@@ -1,9 +1,0 @@
-{
-  "id": "04ff6399-a42a-4889-bff9-91be67ff4a38",
-  "type": "background",
-  "name": "Kenku_Room",
-  "image": "Sprites/Background/Kenku_Room/Kenku_Room.png",
-  "properties": {
-    "bloomIntensity": 2
-  }
-}

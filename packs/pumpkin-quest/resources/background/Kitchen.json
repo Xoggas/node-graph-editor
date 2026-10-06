@@ -1,9 +1,0 @@
-{
-  "id": "2bac49eb-bb72-4506-ab52-96b2e3edbd4f",
-  "type": "background",
-  "name": "Kitchen",
-  "image": "Sprites/Background/Kitchen.jpg",
-  "properties": {
-    "bloomIntensity": 0
-  }
-}

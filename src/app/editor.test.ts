@@ -59,7 +59,7 @@ let editor: Editor;
 beforeEach(async () => {
   files = new FakeFiles();
   editor = new Editor({ files: files as unknown as GraphFileSystem });
-  editor.applyPack(packFiles, { kind: "folder", path: "C:/pack" });
+  editor.applyPack(packFiles, "C:/pack");
   await tick();
 });
 

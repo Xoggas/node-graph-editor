@@ -147,7 +147,7 @@ class BrowserFileSystem implements GraphFileSystem {
   }
 
   async pickPackFolder(): Promise<string | null> {
-    throw new Error(t("choosing a pack folder needs the desktop app; the built-in pack is used"));
+    throw new Error(t("choosing a pack folder needs the desktop app"));
   }
 
   async readPackFolder(path: string): Promise<PackFile[]> {

@@ -1,9 +1,0 @@
-{
-  "id": "c5b5fe9b-2ff3-498b-bb56-97df38266f08",
-  "type": "background",
-  "name": "Library",
-  "image": "Sprites/Background/Library.jpg",
-  "properties": {
-    "bloomIntensity": 0
-  }
-}

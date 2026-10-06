@@ -1,9 +1,0 @@
-{
-  "id": "628585df-e1df-4456-a79e-1a2188205588",
-  "type": "background",
-  "name": "Black",
-  "image": "Sprites/Background/black.jpg",
-  "properties": {
-    "bloomIntensity": 0
-  }
-}

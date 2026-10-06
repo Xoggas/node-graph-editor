@@ -301,7 +301,8 @@ export const ru: Record<string, Translation> = {
   "Discard unsaved localization changes?": "Отменить несохранённые изменения локализации?",
   "Discard unsaved changes?": "Отменить несохранённые изменения?",
   "Export runtime graph": "Экспорт графа для движка",
-  "the built-in pack cannot be written; choose the pack folder first": "встроенный пак нельзя изменить; сначала выберите папку пака",
+  "no schema pack folder is chosen": "папка пака схем не выбрана",
+  "Choose a schema pack folder with Pack… to get node types.": "Выберите папку пака схем кнопкой «Пак…», чтобы появились типы нод.",
 
   // --- Files ---
   "Open node graph": "Открыть граф",
@@ -309,7 +310,7 @@ export const ru: Record<string, Translation> = {
   "Node Graph Editor": "Редактор графов",
   "JSON graph": "Граф JSON",
   "reading '{path}' needs the desktop app": "чтение «{path}» доступно только в приложении",
-  "choosing a pack folder needs the desktop app; the built-in pack is used": "выбор папки пака доступен только в приложении; используется встроенный пак",
+  "choosing a pack folder needs the desktop app": "выбор папки пака доступен только в приложении",
   "Reading pack folders is only available in the desktop app ('{path}').": "Чтение папок пака доступно только в приложении («{path}»).",
   "saving pack files (localization) needs the desktop app": "сохранение файлов пака (локализации) доступно только в приложении",
   "Could not load '{path}' ({status}).": "Не удалось загрузить «{path}» ({status}).",

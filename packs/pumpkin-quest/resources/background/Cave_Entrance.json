@@ -1,9 +1,0 @@
-{
-  "id": "25c708a3-3e35-4815-b2e1-3449089892dc",
-  "type": "background",
-  "name": "Cave_Entrance",
-  "image": "Sprites/Background/Cave_Entrance.jpg",
-  "properties": {
-    "bloomIntensity": 0
-  }
-}
